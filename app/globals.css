@@ -1,26 +1,88 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --hk-ivory: #f8f7f3;
+  --hk-surface: #ffffff;
+  --hk-surface-soft: #f3f4fb;
+  --hk-surface-muted: #eef1fb;
+  --hk-navy: #08142c;
+  --hk-navy-strong: #071327;
+  --hk-navy-panel: #0b1f3a;
+  --hk-ink: #141b2b;
+  --hk-muted: #5f6675;
+  --hk-border: #cfd4df;
+  --hk-border-strong: #bcc3d1;
+  --hk-gold: #f4cf86;
+  --hk-gold-strong: #d5ab54;
+  --hk-success: #2f7d5c;
+  --hk-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --hk-shadow-soft: 0 4px 20px rgba(11, 31, 58, 0.04);
+  --hk-shadow-card: 0 12px 32px rgba(11, 31, 58, 0.08);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--hk-font-sans);
+  --color-background: var(--hk-ivory);
+  --color-foreground: var(--hk-ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--hk-font-sans);
+}
+
+a,
+button,
+input {
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.hk-range {
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+.hk-range::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  height: 22px;
+  width: 22px;
+  border-radius: 9999px;
+  border: 0;
+  background: var(--hk-navy-strong);
+  cursor: pointer;
+}
+
+.hk-range::-moz-range-thumb {
+  pointer-events: auto;
+  height: 22px;
+  width: 22px;
+  border-radius: 9999px;
+  border: 0;
+  background: var(--hk-navy-strong);
+  cursor: pointer;
+}
+
+.hk-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+
+.hk-range::-moz-range-track {
+  height: 4px;
+  background: transparent;
 }
