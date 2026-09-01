@@ -168,7 +168,7 @@ function SiteHeader() {
 function HeroSection() {
   return (
     <section className="relative overflow-hidden">
-      <div className="relative h-[620px] w-full bg-[var(--hk-navy-panel)]">
+      <div className="relative h-[540px] w-full bg-[var(--hk-navy-panel)] lg:h-[580px]">
         <Image
           src="https://lh3.googleusercontent.com/aida-public/AB6AXuAn6KL5v1NYV9J9S3mFScL2n-4j6_0NXIQRndJn8zT6QNUqzxNj_lq4yFJqNwA60_2tVQJl6fYTD4s0CKxZtSOicR2hN0logWowiWq2WUwNRaPwVbKL2-0whbMadZZN2cQgoMW5JicZQTVqGkHYCLH_xSOaFFM87QfU1aoCVoxfh23o2vGe-LstLXMfK4yXGStbfRFoUih085duSxL5CuJ4lOGeRJtezdyZUV5ekNd_PqW796XinpY99A"
           alt="Luxury hotel suite overlooking a city skyline at dusk"
@@ -183,10 +183,10 @@ function HeroSection() {
             <p className="mb-6 text-[14px] font-semibold uppercase tracking-[0.16em] text-[var(--hk-gold)]">
               Business travel, made easy
             </p>
-            <h1 className="max-w-[500px] text-[48px] leading-[1.08] font-extrabold tracking-[-0.04em] text-white sm:text-[64px]">
+            <h1 className="max-w-[500px] text-[40px] leading-[1.08] font-extrabold tracking-[-0.04em] text-white sm:text-[52px] lg:text-[58px]">
               Find your perfect business stay
             </h1>
-            <p className="mt-8 text-[20px] leading-[1.6] text-[#e2e7f2]">
+            <p className="mt-6 text-[18px] leading-[1.6] text-[#e2e7f2]">
               Premium hotels. Smart choices. Seamless stays.
             </p>
           </div>
@@ -215,8 +215,8 @@ function SearchPanel() {
   ];
 
   return (
-    <section className="relative z-10 mx-auto -mt-[94px] max-w-[1280px] px-4 sm:px-6 lg:px-10">
-      <div className="rounded-[18px] border border-[rgba(188,195,209,0.7)] bg-[rgba(255,255,255,0.9)] p-6 shadow-[0_4px_20px_rgba(11,31,58,0.04)] backdrop-blur-md">
+    <section className="relative z-10 mx-auto -mt-[78px] max-w-[1280px] px-4 sm:px-6 lg:px-10">
+      <div className="rounded-[18px] border border-[rgba(188,195,209,0.7)] bg-[rgba(255,255,255,0.9)] p-5 shadow-[0_4px_20px_rgba(11,31,58,0.04)] backdrop-blur-md sm:p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {fields.map((field) => {
             const Icon = field.icon;
@@ -224,10 +224,10 @@ function SearchPanel() {
             return (
               <button
                 key={field.label}
-                className="flex min-h-[92px] flex-col rounded-[10px] border border-[var(--hk-border-strong)] bg-white px-4 py-3 text-left shadow-sm hover:border-[var(--hk-navy)]"
+                className="flex min-h-[84px] flex-col rounded-[10px] border border-[var(--hk-border-strong)] bg-white px-4 py-3 text-left shadow-sm hover:border-[var(--hk-navy)]"
               >
                 <span className="text-[14px] text-[var(--hk-muted)]">{field.label}</span>
-                <span className="mt-2 flex items-center gap-3 text-[17px] font-medium text-[var(--hk-ink)]">
+                <span className="mt-2 flex items-center gap-3 text-[16px] font-medium text-[var(--hk-ink)]">
                   <Icon className="h-[22px] w-[22px] text-[var(--hk-navy)]" />
                   <span>{field.value}</span>
                   {field.chevron ? (
@@ -239,7 +239,7 @@ function SearchPanel() {
           })}
         </div>
 
-        <div className="mt-6 flex flex-col gap-6 border-t border-[var(--hk-border)] pt-6 xl:flex-row xl:items-center xl:justify-between">
+        <div className="mt-5 flex flex-col gap-5 border-t border-[var(--hk-border)] pt-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-3">
             {filters.map((filter) => {
               const Icon = filter.icon;
@@ -247,7 +247,7 @@ function SearchPanel() {
               return (
                 <button
                   key={filter.label}
-                  className={`flex items-center gap-2 rounded-full border px-4 py-2.5 text-[15px] font-medium ${
+                  className={`flex items-center gap-2 rounded-full border px-4 py-2 text-[14px] font-medium ${
                     filter.active
                       ? "border-[var(--hk-navy)] bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]"
                       : "border-[var(--hk-border-strong)] bg-white text-[var(--hk-ink)] hover:border-[var(--hk-navy)]"
@@ -260,7 +260,7 @@ function SearchPanel() {
             })}
           </div>
 
-          <Link href="/search" className="rounded-[10px] bg-[var(--hk-navy-strong)] px-8 py-4 text-[17px] font-semibold text-white shadow-[0_8px_18px_rgba(8,20,44,0.18)] hover:bg-[var(--hk-navy)]">
+          <Link href="/search" className="rounded-[10px] bg-[var(--hk-navy-strong)] px-7 py-3.5 text-[16px] font-semibold text-white shadow-[0_8px_18px_rgba(8,20,44,0.18)] hover:bg-[var(--hk-navy)]">
             Search Hotels
           </Link>
         </div>
@@ -273,7 +273,7 @@ function RecommendedSection() {
   return (
     <section className="mx-auto max-w-[1280px] px-4 pb-20 pt-18 sm:px-6 lg:px-10">
       <div className="mb-8 flex items-end justify-between gap-4">
-        <h2 className="text-[34px] font-extrabold tracking-[-0.03em] text-[var(--hk-ink)]">
+        <h2 className="text-[28px] font-extrabold tracking-[-0.03em] text-[var(--hk-ink)] sm:text-[32px]">
           Recommended stays
         </h2>
         <Link
@@ -309,7 +309,7 @@ function RecommendedSection() {
 
             <div className="flex flex-1 flex-col justify-between p-6">
               <div>
-                <h3 className="text-[24px] font-semibold tracking-[-0.02em] text-black">
+                <h3 className="text-[20px] font-semibold tracking-[-0.02em] text-black sm:text-[22px]">
                   {stay.name}
                 </h3>
                 <p className="mt-2 flex items-center gap-1 text-[15px] text-[var(--hk-muted)]">
@@ -338,7 +338,7 @@ function RecommendedSection() {
 
               <div className="mt-7 flex items-end justify-between gap-4">
                 <p className="text-black">
-                  <span className="text-[31px] font-extrabold tracking-[-0.03em]">
+                  <span className="text-[26px] font-extrabold tracking-[-0.03em] sm:text-[28px]">
                     {stay.price}
                   </span>
                   <span className="ml-1 text-[16px] text-[var(--hk-muted)]">/night</span>
@@ -389,7 +389,7 @@ function TrustSection() {
 function SiteFooter() {
   return (
     <footer className="mt-2 border-t border-[var(--hk-border)] bg-[var(--hk-surface)]">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-16 sm:px-6 md:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
         <div>
           <Link href="/" className="flex items-center gap-2 text-[24px] font-bold text-black">
             <KeyIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />

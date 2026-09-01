@@ -89,7 +89,7 @@ export function SearchResultsPage() {
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
       <SearchHeader />
       <SearchSummaryBar />
-      <main className="mx-auto grid max-w-[1480px] grid-cols-1 gap-8 px-4 py-8 sm:px-6 lg:grid-cols-8 lg:px-10 2xl:grid-cols-12">
+      <main className="mx-auto grid max-w-[1480px] grid-cols-1 gap-8 px-4 py-7 sm:px-6 lg:grid-cols-8 lg:px-10 2xl:grid-cols-12">
         <FiltersSidebar />
         <ResultsColumn />
         <SelectedHotelPanel />
@@ -204,7 +204,7 @@ function FiltersSidebar() {
     <aside className="order-2 col-span-1 lg:order-1 lg:col-span-2 2xl:col-span-3">
       <div className="space-y-8 lg:pr-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-[36px] font-semibold tracking-[-0.04em] text-black lg:text-[26px]">Filters</h1>
+          <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-black lg:text-[24px]">Filters</h1>
           <button className="flex items-center gap-2 text-[14px] font-medium text-black">
             <RefreshIcon className="h-4 w-4" />
             Reset
@@ -266,7 +266,7 @@ function ResultsColumn() {
   return (
     <section className="order-1 col-span-1 lg:order-2 lg:col-span-6 2xl:col-span-5">
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-[44px] font-semibold tracking-[-0.05em] text-black lg:text-[28px]">
+        <h2 className="text-[32px] font-semibold tracking-[-0.05em] text-black lg:text-[28px]">
           Recommended
         </h2>
         <button className="flex items-center gap-2 text-[16px] text-black">
@@ -312,7 +312,7 @@ function ResultsColumn() {
 
             <div className="flex flex-1 flex-col justify-between p-6">
               <div>
-                <h3 className="text-[24px] font-semibold tracking-[-0.03em] text-black lg:text-[22px] 2xl:text-[26px]">
+                <h3 className="text-[20px] font-semibold tracking-[-0.03em] text-black lg:text-[21px] 2xl:text-[22px]">
                   {hotel.name}
                 </h3>
                 <p className="mt-2 flex items-center gap-1 text-[15px] text-black">
@@ -338,7 +338,7 @@ function ResultsColumn() {
                   <p className="text-[15px] text-[var(--hk-muted)]">Free cancellation</p>
                 </div>
                 <div className="text-right">
-                  <div className="text-[28px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)] 2xl:text-[30px]">
+                  <div className="text-[24px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)] 2xl:text-[26px]">
                     {hotel.price}
                   </div>
                   <div className="mt-1 text-[14px] text-[var(--hk-muted)]">/ night</div>
@@ -383,7 +383,7 @@ function SelectedHotelPanel() {
                 className="object-cover"
               />
               {index === 3 ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-[rgba(8,20,44,0.68)] text-[32px] font-semibold text-white">
+                <div className="absolute inset-0 flex items-center justify-center bg-[rgba(8,20,44,0.68)] text-[28px] font-semibold text-white">
                   +24
                 </div>
               ) : null}
@@ -392,7 +392,7 @@ function SelectedHotelPanel() {
         </div>
 
         <div className="p-6">
-          <h3 className="text-[34px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
+          <h3 className="text-[28px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
             The Balmoral Hotel
           </h3>
 
@@ -444,7 +444,7 @@ function SelectedHotelPanel() {
             <div className="flex items-end justify-between gap-4">
               <div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
+                  <span className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
                     $495
                   </span>
                   <span className="text-[16px] text-[var(--hk-muted)]">/ night</span>
@@ -457,7 +457,7 @@ function SelectedHotelPanel() {
               </div>
             </div>
 
-            <button className="mt-6 w-full rounded-[16px] bg-[var(--hk-navy-strong)] py-5 text-[24px] font-semibold text-white shadow-[0_4px_12px_rgba(11,31,58,0.2)]">
+            <button className="mt-6 w-full rounded-[16px] bg-[var(--hk-navy-strong)] py-4 text-[20px] font-semibold text-white shadow-[0_4px_12px_rgba(11,31,58,0.2)]">
               Book Now
             </button>
           </div>

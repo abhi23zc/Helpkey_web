@@ -50,13 +50,13 @@ export function WishlistPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
       <WishlistHeader />
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-16 sm:px-6 lg:px-10 lg:py-20">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-12 sm:px-6 lg:px-10 lg:py-14">
         <section className="mb-12 flex flex-col gap-6 md:mb-10 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-[48px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[64px]">
+            <h1 className="text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[52px]">
               My Favorites
             </h1>
-            <p className="mt-3 max-w-[640px] text-[18px] leading-8 text-[var(--hk-muted)]">
+            <p className="mt-3 max-w-[640px] text-[17px] leading-7 text-[var(--hk-muted)]">
               Manage and compare your saved stays across all your lists.
             </p>
           </div>
@@ -111,7 +111,7 @@ export function WishlistPage() {
 
               <div className="flex flex-1 flex-col p-6">
                 <div className="mb-2 flex items-start justify-between gap-4">
-                  <h2 className="line-clamp-1 text-[24px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)]">
+                  <h2 className="line-clamp-1 text-[20px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)] sm:text-[22px]">
                     {stay.name}
                   </h2>
                   <div className="flex items-center gap-1 rounded-md bg-[var(--hk-surface-soft)] px-2 py-1">
@@ -140,7 +140,7 @@ export function WishlistPage() {
 
                 <div className="mt-auto flex items-end justify-between gap-4">
                   <p className="text-[var(--hk-navy-strong)]">
-                    <span className="text-[30px] font-extrabold tracking-[-0.04em]">
+                    <span className="text-[26px] font-extrabold tracking-[-0.04em]">
                       {stay.price}
                     </span>
                     <span className="ml-1 text-[15px] text-[var(--hk-muted)]">/ night</span>
@@ -223,7 +223,7 @@ function WishlistFooter() {
 
   return (
     <footer className="mt-auto border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto max-w-[1280px] px-4 py-16 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6 lg:px-10">
         <div className="mb-8 flex flex-col items-center justify-between gap-6 border-b border-[var(--hk-border)] pb-8 md:flex-row">
           <Link href="/" className="flex items-center gap-3 text-[18px] font-bold text-black sm:text-[22px]">
             <KeyIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />

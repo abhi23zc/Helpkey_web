@@ -37,6 +37,11 @@ html {
 
 body {
   font-family: var(--hk-font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--hk-ivory);
+  color: var(--hk-ink);
+  text-rendering: optimizeLegibility;
 }
 
 a,

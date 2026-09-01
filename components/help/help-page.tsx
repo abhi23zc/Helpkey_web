@@ -64,7 +64,7 @@ export function HelpPage() {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
       <HelpHeader />
-      <main className="mx-auto max-w-[1280px] px-4 py-16 sm:px-6 lg:px-10">
+      <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6 lg:px-10">
         <HeroSection />
         <TopicsSection />
         <FaqSection />
@@ -134,8 +134,8 @@ function HelpHeader() {
 
 function HeroSection() {
   return (
-    <section className="mx-auto mb-16 max-w-[780px] text-center">
-      <h1 className="mb-8 text-[48px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[68px]">
+    <section className="mx-auto mb-14 max-w-[780px] text-center">
+      <h1 className="mb-6 text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[56px]">
         How can we help?
       </h1>
       <div className="flex items-center gap-3 rounded-[16px] border border-[rgba(196,198,206,0.35)] bg-white p-2 shadow-[0_12px_32px_rgba(11,31,58,0.08)]">
@@ -143,7 +143,7 @@ function HeroSection() {
         <input
           type="text"
           placeholder="Search for answers..."
-          className="w-full border-none bg-transparent px-1 py-4 text-[18px] text-[var(--hk-ink)] outline-none placeholder:text-[rgba(68,71,77,0.7)]"
+          className="w-full border-none bg-transparent px-1 py-3 text-[16px] text-[var(--hk-ink)] outline-none placeholder:text-[rgba(68,71,77,0.7)]"
         />
         <button className="shrink-0 rounded-[12px] bg-[var(--hk-navy-strong)] px-6 py-3 text-[14px] font-semibold text-white">
           Search
@@ -174,7 +174,7 @@ function TopicsSection() {
               <h3 className="mb-2 text-[18px] font-semibold text-[var(--hk-navy-strong)]">
                 {topic.title}
               </h3>
-              <p className="text-[16px] leading-8 text-[var(--hk-muted)]">
+              <p className="text-[15px] leading-7 text-[var(--hk-muted)]">
                 {topic.description}
               </p>
             </Link>
@@ -204,11 +204,11 @@ function FaqSection() {
             open={faq.open}
             className="group rounded-[16px] border border-white/50 bg-white/70 shadow-[var(--hk-shadow-soft)] backdrop-blur-[12px]"
           >
-            <summary className="flex cursor-pointer list-none items-center justify-between p-6 text-[18px] font-semibold text-[var(--hk-navy-strong)]">
+            <summary className="flex cursor-pointer list-none items-center justify-between p-6 text-[17px] font-semibold text-[var(--hk-navy-strong)]">
               {faq.question}
               <ChevronDownIcon className="h-5 w-5 text-[var(--hk-muted)] transition-transform group-open:rotate-180" />
             </summary>
-            <div className="border-t border-[rgba(196,198,206,0.35)] px-6 pb-6 pt-4 text-[16px] leading-8 text-[var(--hk-muted)]">
+            <div className="border-t border-[rgba(196,198,206,0.35)] px-6 pb-6 pt-4 text-[15px] leading-7 text-[var(--hk-muted)]">
               {faq.answer}
             </div>
           </details>
@@ -256,7 +256,7 @@ function HelpFooter() {
 
   return (
     <footer className="mt-16 border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-16 sm:px-6 md:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
         <div>
           <div className="mb-4 flex items-center gap-3 text-[18px] font-bold text-[var(--hk-navy-strong)] sm:text-[22px]">
             <StarBadgeIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />

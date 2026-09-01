@@ -185,7 +185,7 @@ function HotelHero() {
     <section className="mb-8">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[44px] lg:text-[56px]">
+          <h1 className="text-[28px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[38px] lg:text-[48px]">
             The Balmoral Hotel
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-4 text-[14px]">
@@ -341,7 +341,7 @@ function RoomsSection({ hotelId }: { hotelId: string }) {
             <div className="flex flex-1 flex-col justify-between">
               <div>
                 <div className="mb-2 flex items-start justify-between gap-4">
-                  <h3 className="text-[28px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)] sm:text-[24px]">
+                  <h3 className="text-[22px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)]">
                     {room.name}
                   </h3>
                   <span className="flex items-center gap-1 text-[12px] text-[var(--hk-muted)]">
@@ -368,7 +368,7 @@ function RoomsSection({ hotelId }: { hotelId: string }) {
 
               <div className="mt-4 flex items-end justify-between gap-4 border-t border-[var(--hk-border)] pt-4">
                 <div>
-                  <div className="text-[34px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)]">
+                  <div className="text-[28px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)]">
                     {room.price}
                     <span className="ml-1 text-[16px] font-normal text-[var(--hk-muted)]">
                       / night
@@ -424,7 +424,7 @@ function ReviewsSection() {
 
       <div className="mb-6 flex flex-col gap-8 rounded-[20px] border border-[var(--hk-border)] bg-white p-8 shadow-[var(--hk-shadow-soft)] md:flex-row md:items-center">
         <div className="text-center md:border-r md:border-[var(--hk-border)] md:pr-8">
-          <div className="text-[56px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
+          <div className="text-[44px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
             4.9
           </div>
           <div className="mb-2 flex items-center justify-center gap-0.5 text-[var(--hk-gold-strong)]">
@@ -484,7 +484,7 @@ function BookingSidebar() {
       <div className="rounded-[20px] border border-[var(--hk-border)] bg-white p-6 shadow-[var(--hk-shadow-card)] lg:sticky lg:top-24">
         <div className="mb-6 flex items-end justify-between border-b border-[var(--hk-border)] pb-6">
           <div>
-            <span className="text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
+            <span className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
               $495
             </span>
             <span className="text-[16px] text-[var(--hk-muted)]">/ night</span>
@@ -571,7 +571,7 @@ function DetailFooter() {
 
   return (
     <footer className="border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-16 sm:px-6 md:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
         <div>
           <Link href="/" className="flex items-center gap-2 text-[16px] font-bold text-[var(--hk-navy-strong)]">
             <HotelIcon className="h-4 w-4 text-[var(--hk-gold-strong)]" />

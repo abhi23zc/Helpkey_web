@@ -62,12 +62,12 @@ export function MyBookingsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
       <BookingsHeader />
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-16 sm:px-6 lg:px-10">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-12 sm:px-6 lg:px-10">
         <section className="mb-12">
-          <h1 className="text-[48px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[64px]">
+          <h1 className="text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[52px]">
             My Bookings
           </h1>
-          <p className="mt-3 text-[18px] leading-8 text-[var(--hk-muted)]">
+          <p className="mt-3 text-[17px] leading-7 text-[var(--hk-muted)]">
             Manage your upcoming stays and review past trips.
           </p>
         </section>
@@ -116,7 +116,7 @@ export function MyBookingsPage() {
                   <div>
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <h2 className="text-[24px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)] sm:text-[28px]">
+                        <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)] sm:text-[24px]">
                           {booking.hotel}
                         </h2>
                         <p className="mt-1 flex items-center gap-1 text-[16px] text-[var(--hk-muted)]">
@@ -126,7 +126,7 @@ export function MyBookingsPage() {
                       </div>
 
                       <div className="text-left lg:text-right">
-                        <div className="text-[32px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)]">
+                        <div className="text-[28px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)]">
                           {booking.total}
                         </div>
                         <div className="text-[13px] text-[var(--hk-muted)]">
@@ -277,7 +277,7 @@ function BookingsFooter() {
 
   return (
     <footer className="mt-auto border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-16 sm:px-6 md:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
         <div className="md:col-span-1">
           <Link
             href="/"

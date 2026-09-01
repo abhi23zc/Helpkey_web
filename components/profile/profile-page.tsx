@@ -37,7 +37,7 @@ export function ProfilePage() {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
       <ProfileHeader />
-      <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-16 sm:px-6 md:grid-cols-12 lg:px-10">
+      <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-12 sm:px-6 md:grid-cols-12 lg:px-10">
         <AccountSidebar />
         <section className="space-y-6 md:col-span-9">
           <ProfileHero />
@@ -183,10 +183,10 @@ function ProfileHero() {
           </div>
 
           <div>
-            <h2 className="text-[38px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[64px]">
+            <h2 className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[48px]">
               Alex Mercer
             </h2>
-            <p className="mt-2 flex items-center gap-2 text-[18px] text-[var(--hk-muted)]">
+            <p className="mt-2 flex items-center gap-2 text-[16px] text-[var(--hk-muted)]">
               <BriefcaseIcon className="h-5 w-5" />
               Global Corp Ltd. Executive
             </p>
@@ -423,7 +423,7 @@ function ProfileFooter() {
 
   return (
     <footer className="mt-12 border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-16 sm:px-6 md:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
         <div>
           <Link
             href="/"
