@@ -57,7 +57,7 @@ type Collection = {
 const navItems: NavItem[] = [
   { label: "Find Stays", href: "/search", active: true },
   { label: "Deals", href: "/search" },
-  { label: "For Business", href: "/profile" },
+  { label: "For Business", href: "/join" },
   { label: "Help", href: "/help" },
 ];
 
