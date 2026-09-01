@@ -103,7 +103,7 @@ export function WishlistPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[rgba(8,20,44,0.38)] to-transparent" />
                 <button
                   aria-label={`Remove ${stay.name} from favorites`}
-                  className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/92 text-[#d82338] shadow-sm backdrop-blur"
+                  className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/92 text-[var(--hk-favorite)] shadow-sm backdrop-blur"
                 >
                   <HeartIcon className="h-7 w-7 fill-current" />
                 </button>

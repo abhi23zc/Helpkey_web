@@ -2,23 +2,36 @@
 @import "tailwindcss";
 
 :root {
-  --hk-ivory: #f8f7f3;
+  --hk-primary: #0b1f3a;
+  --hk-primary-dark: #07172b;
+  --hk-primary-soft: #f1f3ff;
+  --hk-background-warm: #f8f7f3;
   --hk-surface: #ffffff;
   --hk-surface-soft: #f3f4fb;
   --hk-surface-muted: #eef1fb;
-  --hk-navy: #08142c;
-  --hk-navy-strong: #071327;
-  --hk-navy-panel: #0b1f3a;
-  --hk-ink: #141b2b;
-  --hk-muted: #5f6675;
-  --hk-border: #cfd4df;
-  --hk-border-strong: #bcc3d1;
-  --hk-gold: #f4cf86;
-  --hk-gold-strong: #d5ab54;
+  --hk-ink: #111827;
+  --hk-muted: #6b7280;
+  --hk-border: #e5e1d8;
+  --hk-border-strong: #e5e1d8;
+  --hk-gold: #d6b36a;
+  --hk-gold-strong: #d6b36a;
+  --hk-rating: #d6b36a;
   --hk-success: #2f7d5c;
+  --hk-favorite: #ef4444;
   --hk-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --hk-shadow-soft: 0 4px 20px rgba(11, 31, 58, 0.04);
   --hk-shadow-card: 0 12px 32px rgba(11, 31, 58, 0.08);
+  --hk-hero-overlay-solid: rgba(15, 32, 64, 0.6);
+  --hk-hero-overlay-gradient: linear-gradient(
+    90deg,
+    rgba(15, 32, 64, 0.9) 0%,
+    rgba(15, 32, 64, 0.5) 55%,
+    rgba(15, 32, 64, 0) 100%
+  );
+  --hk-ivory: var(--hk-background-warm);
+  --hk-navy: var(--hk-primary);
+  --hk-navy-strong: var(--hk-primary-dark);
+  --hk-navy-panel: var(--hk-primary);
 }
 
 @theme inline {
@@ -90,4 +103,14 @@ input {
 .hk-range::-moz-range-track {
   height: 4px;
   background: transparent;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
 }

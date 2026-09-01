@@ -112,15 +112,17 @@ function SearchHeader() {
             <KeyIcon className="h-5 w-5 text-[var(--hk-gold)]" />
             Helpkey
           </Link>
-          <div className="hidden shrink-0 rounded-full border border-[var(--hk-border-strong)] bg-[var(--hk-surface-soft)] p-1 md:flex">
-            <button className="flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-5 py-3 text-[15px] font-semibold whitespace-nowrap text-white">
-              <BriefcaseIcon className="h-4 w-4" />
-              Business &amp; Traveler
-            </button>
-            <button className="flex items-center gap-2 rounded-full px-5 py-3 text-[15px] font-medium whitespace-nowrap text-black">
-              <UsersIcon className="h-4 w-4" />
-              Family &amp; Couples
-            </button>
+          <div className="hidden shrink-0 md:flex">
+            <div className="flex items-center rounded-full border border-[var(--hk-border-strong)] bg-[var(--hk-surface-soft)] p-1">
+              <div className="flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-4 py-2 text-[13px] text-white shadow-sm">
+                <BriefcaseIcon className="h-4 w-4" />
+                <span className="font-medium">Business &amp; Traveler</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-full px-4 py-2 text-[13px] text-[var(--hk-ink)]">
+                <UsersIcon className="h-4 w-4" />
+                <span className="font-medium">Family &amp; Couples</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -302,7 +304,7 @@ function ResultsColumn() {
                 aria-label={`Save ${hotel.name}`}
                 className={`absolute right-4 top-4 flex h-13 w-13 items-center justify-center rounded-full backdrop-blur ${
                   hotel.saved
-                    ? "bg-white text-[#d82338]"
+                    ? "bg-white text-[var(--hk-favorite)]"
                     : "bg-white/85 text-black"
                 }`}
               >

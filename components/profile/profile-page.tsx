@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import type { AppUser } from "@/types/auth";
 
 type IconProps = {
   className?: string;
@@ -33,16 +33,16 @@ const paymentMethods: PaymentMethod[] = [
   { brand: "VISA", last4: "4242", label: "Personal (Exp 09/26)" },
 ];
 
-export function ProfilePage() {
+export function ProfilePage({ user }: { user: AppUser }) {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <ProfileHeader />
+      <ProfileHeader user={user} />
       <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-12 sm:px-6 md:grid-cols-12 lg:px-10">
         <AccountSidebar />
         <section className="space-y-6 md:col-span-9">
-          <ProfileHero />
+          <ProfileHero user={user} />
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <PersonalDetailsCard />
+            <PersonalDetailsCard user={user} />
             <PreferencesCard />
             <SecurityCard />
             <PaymentMethodsCard />
@@ -54,8 +54,9 @@ export function ProfilePage() {
   );
 }
 
-function ProfileHeader() {
+function ProfileHeader({ user }: { user: AppUser }) {
   const navItems = ["Find Stays", "Deals", "For Business", "Help"];
+  const userInitials = getInitials(user.fullName);
 
   return (
     <header className="border-b border-[var(--hk-border)] bg-white/95 backdrop-blur">
@@ -103,19 +104,13 @@ function ProfileHeader() {
 
           <button className="flex items-center gap-3">
             <div className="h-10 w-10 overflow-hidden rounded-full bg-[var(--hk-surface-soft)]">
-              <Image
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_yVWzsRQvlUe6b8OvLGvnD3WlJNygcNg_qlKUca5nlBSgg7rnFT0jXEZ8TrKsHJ6TBrgP8-kWZ8WYpiNZ-K87m-zyQabpuctq-JoLjgqT4eLWLyfCCoT9pyAOQt1DEfgq1BysJQ3mpUXZy6hyTZ3nu88Tp52_MdBbpwCPJvXbOBN1UOMOJ__k6wNsN0V16EZ3osW0q9TtLSdSqaIFDMDz0PnnTGAcC94M5SbaZmO0HvxeSQEGiRq_6w"
-                alt="Alex Mercer"
-                width={40}
-                height={40}
-                className="h-full w-full object-cover"
-              />
+              <Avatar user={user} size={40} fallback={userInitials} />
             </div>
             <div className="hidden text-left md:block">
               <div className="text-[15px] font-bold text-[var(--hk-navy-strong)]">
-                Alex Mercer
+                {user.fullName}
               </div>
-              <div className="text-[12px] text-[var(--hk-muted)]">Global Corp Ltd.</div>
+              <div className="text-[12px] text-[var(--hk-muted)]">Helpkey customer</div>
             </div>
             <ChevronDownIcon className="h-4 w-4 text-[var(--hk-muted)]" />
           </button>
@@ -147,7 +142,7 @@ function AccountSidebar() {
                 }
                 className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[15px] ${
                   item.active
-                    ? "bg-[#dfe4fb] font-bold text-[var(--hk-navy-strong)]"
+                    ? "bg-[var(--hk-surface-muted)] font-bold text-[var(--hk-navy-strong)]"
                     : "font-medium text-[var(--hk-ink)] hover:bg-white"
                 }`}
               >
@@ -162,20 +157,16 @@ function AccountSidebar() {
   );
 }
 
-function ProfileHero() {
+function ProfileHero({ user }: { user: AppUser }) {
+  const userInitials = getInitials(user.fullName);
+
   return (
     <section className="rounded-[20px] bg-white p-8 shadow-[var(--hk-shadow-soft)]">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-6">
           <div className="relative">
             <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white shadow-sm">
-              <Image
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBaw4h5BzZuez8T8rw3iYzgX05OC0wlD0ZjAV8aBnTJTPt6LojuEwnWomRUn289ukjAWCqvSNKIgJydTOgF5lVDrKxyJnVa5DsilJ7kXX76tCqACBbw9RE8a68yemRgak38gnb5-qXVOakz6WwT2fzUVKNoJwNpHxPlX5jEqFG1i1omZ3SEUC15N0sYC25fCqHenf1GbqSKb2QHnvhmsY7w_jONu6V4-2mklrQr5xRFgbOhDoDiNA3Egw"
-                alt="Alex Mercer"
-                width={96}
-                height={96}
-                className="h-full w-full object-cover"
-              />
+              <Avatar user={user} size={96} fallback={userInitials} />
             </div>
             <button className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--hk-navy-strong)] text-white shadow-md">
               <EditIcon className="h-4 w-4" />
@@ -184,11 +175,11 @@ function ProfileHero() {
 
           <div>
             <h2 className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[48px]">
-              Alex Mercer
+              {user.fullName}
             </h2>
             <p className="mt-2 flex items-center gap-2 text-[16px] text-[var(--hk-muted)]">
               <BriefcaseIcon className="h-5 w-5" />
-              Global Corp Ltd. Executive
+              Business traveler
             </p>
           </div>
         </div>
@@ -207,14 +198,14 @@ function ProfileHero() {
   );
 }
 
-function PersonalDetailsCard() {
+function PersonalDetailsCard({ user }: { user: AppUser }) {
   return (
     <section className="rounded-[20px] bg-white p-6 shadow-[var(--hk-shadow-soft)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--hk-shadow-card)]">
       <CardHeader title="Personal Details" icon={BadgeIcon} action="Edit" />
       <div className="space-y-4">
-        <DetailRow label="Legal Name" value="Alexander J. Mercer" />
-        <DetailRow label="Email Address" value="a.mercer@globalcorp.com" />
-        <DetailRow label="Phone Number" value="+1 (555) 019-2834" />
+        <DetailRow label="Legal Name" value={user.fullName} />
+        <DetailRow label="Email Address" value={user.email || "Not added"} />
+        <DetailRow label="Phone Number" value={user.phoneNumber || "Not added"} />
         <div className="pt-2">
           <div className="flex items-start gap-3 rounded-[12px] border border-[var(--hk-border)] bg-[#eef2ff] p-3">
             <BusinessIcon className="mt-0.5 h-5 w-5 text-[var(--hk-navy-strong)]" />
@@ -231,6 +222,37 @@ function PersonalDetailsCard() {
       </div>
     </section>
   );
+}
+
+function Avatar({ user, size, fallback }: { user: AppUser; size: number; fallback: string }) {
+  if (user.photoURL) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.photoURL}
+        alt={user.fullName}
+        width={size}
+        height={size}
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[var(--hk-navy-strong)] text-[18px] font-bold text-white">
+      {fallback}
+    </div>
+  );
+}
+
+function getInitials(fullName: string) {
+  return fullName
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 function PreferencesCard() {
@@ -254,7 +276,7 @@ function PreferencesCard() {
           <label className="mb-2 block text-[12px] text-[var(--hk-muted)]">
             Accessibility Needs
           </label>
-          <span className="inline-flex rounded-full border border-[rgba(164,175,213,0.6)] bg-[#dfe4fb] px-4 py-2 text-[14px] text-[var(--hk-navy-strong)]">
+          <span className="inline-flex rounded-full border border-[var(--hk-border)] bg-[var(--hk-surface-muted)] px-4 py-2 text-[14px] text-[var(--hk-navy-strong)]">
             Ground floor requested
           </span>
         </div>
@@ -338,7 +360,7 @@ function PaymentMethodsCard() {
               <div className="absolute inset-y-0 left-0 w-1 rounded-l-[12px] bg-[var(--hk-navy-strong)]" />
             ) : null}
             <div className="flex items-center gap-4">
-              <div className="flex h-8 w-14 items-center justify-center rounded border border-[var(--hk-border)] bg-[#dce2f7] text-[12px] font-bold text-[var(--hk-navy-strong)]">
+              <div className="flex h-8 w-14 items-center justify-center rounded border border-[var(--hk-border)] bg-[var(--hk-surface-soft)] text-[12px] font-bold text-[var(--hk-navy-strong)]">
                 {method.brand}
               </div>
               <div>
@@ -350,7 +372,7 @@ function PaymentMethodsCard() {
             </div>
             <div className="flex items-center gap-3">
               {method.default ? (
-                <span className="rounded-md bg-[#dfe4fb] px-3 py-1 text-[12px] font-medium text-[var(--hk-navy-strong)]">
+                <span className="rounded-md bg-[var(--hk-surface-muted)] px-3 py-1 text-[12px] font-medium text-[var(--hk-navy-strong)]">
                   Default
                 </span>
               ) : null}

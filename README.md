@@ -2,6 +2,26 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create a local `.env.local` with the Firebase and WhatsApp credentials used by authentication:
+
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+
+FIREBASE_ADMIN_PROJECT_ID=
+FIREBASE_ADMIN_CLIENT_EMAIL=
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+WHATSAPP_OTP_API_KEY=
+WHATSAPP_OTP_API_URL=https://api2.dineezy.in/api/v1/dev/create-message
+OTP_HASH_SECRET=
+```
+
 First, run the development server:
 
 ```bash
