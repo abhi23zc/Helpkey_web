@@ -1,0 +1,8 @@
+import { FieldValue } from "firebase-admin/firestore";
+import { z } from "zod";
+import { getAuthenticatedUser } from "@/lib/auth/session";
+import { adminDb } from "@/lib/firebase/admin";
+import { propertyOwner } from "@/lib/partner/service";
+import { verifyR2Object } from "@/lib/r2";
+const schema = z.object({ uploadId: z.string().uuid() }).strict();
+export async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/kyc/finalize">) { const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 }); try { const { propertyId } = await params; await propertyOwner(user.uid, propertyId); const { uploadId } = schema.parse(await request.json()); const upload = await adminDb.collection("pendingUploads").doc(uploadId).get(); const data = upload.data(); if (!data || data.ownerId !== user.uid || data.propertyId !== propertyId || data.kind !== "kyc" || data.expiresAt < Date.now()) throw new Error("UPLOAD_EXPIRED"); await verifyR2Object(data.objectKey, data.sizeBytes, data.checksum); const doc = adminDb.collection("verificationDocuments").doc(); await doc.set({ propertyId, ownerId: user.uid, documentType: data.documentType, fileName: data.fileName, mimeType: data.mimeType, sizeBytes: data.sizeBytes, checksum: data.checksum, r2ObjectKey: data.objectKey, isPrivate: true, status: "pending", createdAt: FieldValue.serverTimestamp(), createdBy: user.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid }); await upload.ref.delete(); return Response.json({ documentId: doc.id }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to finalize document." }, { status: 422 }); } }

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { LoginModal } from "../auth/login-modal";
 
@@ -187,10 +187,29 @@ export function HomePage() {
 function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
   const { appUser, loading, logout } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setIsProfileMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsProfileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isProfileMenuOpen]);
 
   const showUser = mounted && Boolean(appUser);
   const showLoading = mounted && loading;
@@ -244,20 +263,38 @@ function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
             <ChevronDownIcon className="h-4 w-4" />
           </button>
           {showUser ? (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/profile"
-                className="flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-5 py-2.5 text-[14px] font-medium text-white shadow-sm hover:bg-[var(--hk-navy-panel)]"
+            <div ref={profileMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsProfileMenuOpen((current) => !current)}
+                aria-haspopup="menu"
+                aria-expanded={isProfileMenuOpen}
+                className="flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-4 py-2.5 text-[14px] font-medium text-white shadow-sm hover:bg-[var(--hk-navy-panel)]"
               >
                 <UserCircleIcon className="h-5 w-5" />
-                {userLabel}
-              </Link>
-              <button
-                onClick={() => void logout()}
-                className="hidden rounded-full border border-[var(--hk-border-strong)] px-4 py-2.5 text-[13px] font-semibold text-[var(--hk-navy-strong)] hover:bg-[var(--hk-surface-soft)] sm:block"
-              >
-                Log out
+                <span className="max-w-24 truncate sm:max-w-none">{userLabel}</span>
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${isProfileMenuOpen ? "rotate-180" : ""}`} />
               </button>
+              {isProfileMenuOpen && (
+                <div role="menu" aria-label="Profile menu" className="absolute right-0 top-[calc(100%+10px)] z-[60] w-72 overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white p-2 shadow-[0_18px_45px_rgba(15,31,56,0.18)]">
+                  <div className="border-b border-[var(--hk-border)] px-3 py-3">
+                    <p className="truncate text-sm font-bold text-[var(--hk-navy-strong)]">{appUser?.fullName || "Your account"}</p>
+                    <p className="mt-1 truncate text-xs text-[var(--hk-muted)]">{appUser?.email || appUser?.phoneNumber || "Helpkey traveler"}</p>
+                  </div>
+                  <div className="py-2">
+                    <ProfileMenuLink href="/profile" onSelect={() => setIsProfileMenuOpen(false)} label="My profile" description="Personal details and preferences" />
+                    <ProfileMenuLink href="/trips" onSelect={() => setIsProfileMenuOpen(false)} label="My bookings" description="Upcoming stays and past trips" />
+                    <ProfileMenuLink href="/wishlist" onSelect={() => setIsProfileMenuOpen(false)} label="Saved stays" description="Your favorite properties" />
+                    {appUser?.roles.includes("partner") && <ProfileMenuLink href="/partner/dashboard" onSelect={() => setIsProfileMenuOpen(false)} label="Partner dashboard" description="Manage your property listings" />}
+                    {appUser?.roles.includes("admin") && <ProfileMenuLink href="/admin" onSelect={() => setIsProfileMenuOpen(false)} label="Admin console" description="Platform operations" />}
+                  </div>
+                  <div className="border-t border-[var(--hk-border)] pt-2">
+                    <button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); void logout(); }} className="flex w-full items-center rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50">
+                      Log out
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <button
@@ -272,6 +309,15 @@ function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
         </div>
       </div>
     </header>
+  );
+}
+
+function ProfileMenuLink({ href, label, description, onSelect }: { href: string; label: string; description: string; onSelect: () => void }) {
+  return (
+    <Link href={href} role="menuitem" onClick={onSelect} className="block rounded-xl px-3 py-2.5 hover:bg-[var(--hk-surface-soft)]">
+      <span className="block text-sm font-semibold text-[var(--hk-navy-strong)]">{label}</span>
+      <span className="mt-0.5 block text-xs text-[var(--hk-muted)]">{description}</span>
+    </Link>
   );
 }
 

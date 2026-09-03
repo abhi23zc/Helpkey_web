@@ -1,0 +1,3 @@
+import { getAuthenticatedUser } from "@/lib/auth/session";
+import { submit } from "@/lib/partner/service";
+export async function POST(_: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/submit">) { const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 }); try { const { propertyId } = await params; await submit(user.uid, propertyId); return Response.json({ ok: true }); } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to submit." }, { status: 422 }); } }

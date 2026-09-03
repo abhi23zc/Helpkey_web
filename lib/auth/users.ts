@@ -3,85 +3,26 @@ import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
-import type { AppUser } from "@/types/auth";
+import type { AccountStatus, AppUser, UserRole } from "@/types/auth";
 
 export const USERS_COLLECTION = "users";
+type UpsertUserInput = { token: DecodedIdToken; fullName?: string };
 
-type UpsertUserInput = {
-  token: DecodedIdToken;
-  fullName?: string;
-};
-
-function timestampToIso(value: unknown): string | null {
-  if (value instanceof Timestamp) {
-    return value.toDate().toISOString();
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return null;
+function iso(value: unknown): string | null {
+  return value instanceof Timestamp ? value.toDate().toISOString() : typeof value === "string" ? value : null;
 }
-
+function roles(data: FirebaseFirestore.DocumentData): UserRole[] {
+  if (Array.isArray(data.roles)) return data.roles.filter((r): r is UserRole => r === "customer" || r === "partner" || r === "admin");
+  return data.role === "partner" || data.role === "admin" ? ["customer", data.role] : ["customer"];
+}
 export function serializeUser(uid: string, data: FirebaseFirestore.DocumentData): AppUser {
-  return {
-    uid,
-    fullName: typeof data.fullName === "string" ? data.fullName : "",
-    email: typeof data.email === "string" ? data.email : "",
-    phoneNumber: typeof data.phoneNumber === "string" ? data.phoneNumber : "",
-    photoURL: typeof data.photoURL === "string" ? data.photoURL : "",
-    role: "customer",
-    segmentPreference: "business-traveler",
-    isActive: data.isActive !== false,
-    createdAt: timestampToIso(data.createdAt),
-    updatedAt: timestampToIso(data.updatedAt),
-    lastLoginAt: timestampToIso(data.lastLoginAt),
-  };
+  const accountStatus: AccountStatus = ["suspended", "disabled", "deleted"].includes(data.accountStatus) ? data.accountStatus : "active";
+  return { uid, fullName: typeof data.fullName === "string" ? data.fullName : "", email: typeof data.email === "string" && data.email ? data.email : null, phoneNumber: typeof data.phoneNumber === "string" && data.phoneNumber ? data.phoneNumber : null, photoURL: typeof data.photoURL === "string" && data.photoURL ? data.photoURL : null, roles: roles(data), accountStatus, emailVerified: data.emailVerified === true, phoneVerified: data.phoneVerified === true, preferredLanguage: typeof data.preferredLanguage === "string" ? data.preferredLanguage : "en", isActive: accountStatus === "active" && data.isActive !== false, createdAt: iso(data.createdAt), updatedAt: iso(data.updatedAt), lastLoginAt: iso(data.lastLoginAt) };
 }
-
-export async function getUserByUid(uid: string) {
-  const snapshot = await adminDb.collection(USERS_COLLECTION).doc(uid).get();
-
-  if (!snapshot.exists) {
-    return null;
-  }
-
-  return serializeUser(snapshot.id, snapshot.data() ?? {});
-}
-
+export async function getUserByUid(uid: string) { const snap = await adminDb.collection(USERS_COLLECTION).doc(uid).get(); return snap.exists ? serializeUser(snap.id, snap.data() ?? {}) : null; }
 export async function upsertUserFromToken({ token, fullName }: UpsertUserInput) {
-  const authUser = await adminAuth.getUser(token.uid);
-  const userRef = adminDb.collection(USERS_COLLECTION).doc(token.uid);
-  const snapshot = await userRef.get();
-  const existing = snapshot.data();
-  const resolvedFullName =
-    fullName?.trim() || authUser.displayName || existing?.fullName || "";
-
-  if (!resolvedFullName) {
-    throw new Error("FULL_NAME_REQUIRED");
-  }
-
-  const nextUser = {
-    uid: token.uid,
-    fullName: resolvedFullName,
-    email: authUser.email ?? token.email ?? existing?.email ?? "",
-    phoneNumber: authUser.phoneNumber ?? token.phone_number ?? existing?.phoneNumber ?? "",
-    photoURL: authUser.photoURL ?? token.picture ?? existing?.photoURL ?? "",
-    role: existing?.role ?? "customer",
-    segmentPreference: existing?.segmentPreference ?? "business-traveler",
-    isActive: existing?.isActive ?? true,
-    updatedAt: FieldValue.serverTimestamp(),
-    lastLoginAt: FieldValue.serverTimestamp(),
-    ...(snapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
-  };
-
-  if (nextUser.isActive === false) {
-    throw new Error("USER_INACTIVE");
-  }
-
-  await userRef.set(nextUser, { merge: true });
-
-  const updated = await userRef.get();
-  return serializeUser(updated.id, updated.data() ?? {});
+  const authUser = await adminAuth.getUser(token.uid); const ref = adminDb.collection(USERS_COLLECTION).doc(token.uid); const snap = await ref.get(); const existing = snap.data() ?? {};
+  const name = fullName?.trim() || authUser.displayName || existing.fullName || ""; if (!name) throw new Error("FULL_NAME_REQUIRED");
+  const next = { uid: token.uid, fullName: name, email: (authUser.email ?? token.email ?? existing.email ?? "").toLowerCase() || null, phoneNumber: authUser.phoneNumber ?? token.phone_number ?? existing.phoneNumber ?? null, photoURL: authUser.photoURL ?? token.picture ?? existing.photoURL ?? null, roles: roles(existing), accountStatus: existing.accountStatus ?? "active", emailVerified: authUser.emailVerified === true, phoneVerified: Boolean(authUser.phoneNumber), preferredLanguage: existing.preferredLanguage ?? "en", isActive: existing.isActive ?? true, updatedAt: FieldValue.serverTimestamp(), updatedBy: token.uid, lastLoginAt: FieldValue.serverTimestamp(), ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp(), createdBy: token.uid, deletedAt: null }) };
+  if (next.accountStatus !== "active" || next.isActive === false) throw new Error("USER_INACTIVE"); await ref.set(next, { merge: true }); const updated = await ref.get(); return serializeUser(updated.id, updated.data() ?? {});
 }

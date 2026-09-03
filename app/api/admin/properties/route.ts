@@ -1,0 +1,5 @@
+import { getAuthenticatedUser } from "@/lib/auth/session";
+import { adminDb } from "@/lib/firebase/admin";
+import { propertySummary, requireAdmin } from "@/lib/admin/data";
+
+export async function GET(request: Request) { const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 }); try { await requireAdmin(user.uid); const url = new URL(request.url); const status = url.searchParams.get("status"); const approval = url.searchParams.get("approval"); const search = (url.searchParams.get("search") ?? "").toLowerCase(); const properties = (await adminDb.collection("properties").limit(500).get()).docs.map((doc) => propertySummary(doc.id, doc.data())).filter((item) => (!status || item.status === status) && (!approval || item.approvalStatus === approval) && (!search || `${item.name} ${(item.address as { city?: string }).city ?? ""} ${item.propertyType}`.toLowerCase().includes(search))); return Response.json({ properties }); } catch { return Response.json({ error: "Admin access required." }, { status: 403 }); } }

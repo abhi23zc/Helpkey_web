@@ -271,7 +271,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             resendTimer={resendTimer}
             isOtpError={isOtpError}
             shakeKey={shakeKey}
-            submittingAction={submittingAction}
+            submitting={submittingAction === "verify"}
             onOtpChange={handleOtpChange}
             onOtpKeyDown={handleOtpKeyDown}
             onOtpPaste={handleOtpPaste}
@@ -289,7 +289,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
           <NameStep
             fullName={fullName}
             error={error}
-            submittingAction={submittingAction}
+            submitting={submittingAction === "name"}
             onFullNameChange={setFullName}
             onContinue={handleCompleteName}
             onClose={closeModal}

@@ -1,0 +1,9 @@
+{
+  "indexes": [
+    { "collectionGroup": "properties", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "isBookable", "order": "ASCENDING" }, { "fieldPath": "address.city", "order": "ASCENDING" }, { "fieldPath": "minimumDisplayPricePaise", "order": "ASCENDING" }] },
+    { "collectionGroup": "properties", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "approvalStatus", "order": "ASCENDING" }] },
+    { "collectionGroup": "roomTypes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] },
+    { "collectionGroup": "ratePlans", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] }
+  ],
+  "fieldOverrides": []
+}

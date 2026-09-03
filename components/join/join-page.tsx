@@ -2,12 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { LoginModal } from "@/components/auth/login-modal";
 import { WorldMapGraphic } from "./world-map";
 
 export function JoinPage() {
+  const router = useRouter();
+  const { appUser } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [propertyType, setPropertyType] = useState("Hotel");
   const [location, setLocation] = useState("");
@@ -19,6 +22,12 @@ export function JoinPage() {
     setFormSubmitted(true);
     setIsLoginOpen(true);
   };
+
+  useEffect(() => {
+    if (formSubmitted && appUser) {
+      router.push("/partner/onboarding");
+    }
+  }, [appUser, formSubmitted, router]);
 
   return (
     <div className="min-h-screen bg-[var(--hk-background-warm)] text-[var(--hk-ink)]">
@@ -53,6 +62,24 @@ export function JoinPage() {
 
 function Navbar({ onLoginClick }: { onLoginClick: () => void }) {
   const { appUser, logout } = useAuth();
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setIsProfileMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsProfileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isProfileMenuOpen]);
 
   return (
     <nav className="sticky top-0 z-50 border-b border-[rgba(196,198,206,0.7)] bg-white">
@@ -105,16 +132,17 @@ function Navbar({ onLoginClick }: { onLoginClick: () => void }) {
           </div>
 
           {appUser ? (
-            <div className="flex items-center gap-3">
-              <span className="text-[14px] font-bold text-[var(--hk-primary-dark)]">
-                Hi, {appUser.fullName.split(" ")[0]}
-              </span>
-              <button
-                onClick={() => void logout()}
-                className="rounded-lg border border-[var(--hk-border)] px-4 py-2 text-[13px] font-semibold text-[var(--hk-ink)] hover:bg-gray-50"
-              >
-                Log out
+            <div ref={profileMenuRef} className="relative">
+              <button type="button" onClick={() => setIsProfileMenuOpen((current) => !current)} aria-haspopup="menu" aria-expanded={isProfileMenuOpen} className="flex items-center gap-2 rounded-full bg-[var(--hk-primary-dark)] px-4 py-2.5 text-[14px] font-bold text-white shadow-sm hover:bg-[var(--hk-primary)]">
+                <UserAvatarIcon className="h-4 w-4" />
+                <span className="max-w-24 truncate sm:max-w-none">{appUser.fullName.split(" ")[0] || "Account"}</span>
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${isProfileMenuOpen ? "rotate-180" : ""}`} />
               </button>
+              {isProfileMenuOpen && <div role="menu" aria-label="Profile menu" className="absolute right-0 top-[calc(100%+10px)] z-[60] w-72 overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white p-2 shadow-[0_18px_45px_rgba(15,31,56,0.18)]">
+                <div className="border-b border-[var(--hk-border)] px-3 py-3"><p className="truncate text-sm font-bold text-[var(--hk-primary-dark)]">{appUser.fullName || "Your account"}</p><p className="mt-1 truncate text-xs text-[var(--hk-muted)]">{appUser.email || appUser.phoneNumber || "Helpkey traveler"}</p></div>
+                <div className="py-2"><ProfileMenuLink href="/profile" label="My profile" description="Personal details and preferences" onSelect={() => setIsProfileMenuOpen(false)} /><ProfileMenuLink href="/trips" label="My bookings" description="Upcoming stays and past trips" onSelect={() => setIsProfileMenuOpen(false)} /><ProfileMenuLink href="/wishlist" label="Saved stays" description="Your favorite properties" onSelect={() => setIsProfileMenuOpen(false)} />{appUser.roles.includes("partner") && <ProfileMenuLink href="/partner/dashboard" label="Partner dashboard" description="Manage your property listings" onSelect={() => setIsProfileMenuOpen(false)} />}{appUser.roles.includes("admin") && <ProfileMenuLink href="/admin" label="Admin console" description="Platform operations" onSelect={() => setIsProfileMenuOpen(false)} />}</div>
+                <div className="border-t border-[var(--hk-border)] pt-2"><button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); void logout(); }} className="flex w-full items-center rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50">Log out</button></div>
+              </div>}
             </div>
           ) : (
             <>
@@ -136,6 +164,10 @@ function Navbar({ onLoginClick }: { onLoginClick: () => void }) {
       </div>
     </nav>
   );
+}
+
+function ProfileMenuLink({ href, label, description, onSelect }: { href: string; label: string; description: string; onSelect: () => void }) {
+  return <Link href={href} role="menuitem" onClick={onSelect} className="block rounded-xl px-3 py-2.5 hover:bg-[var(--hk-surface-soft)]"><span className="block text-sm font-semibold text-[var(--hk-primary-dark)]">{label}</span><span className="mt-0.5 block text-xs text-[var(--hk-muted)]">{description}</span></Link>;
 }
 
 /* ─────────────────────────────────── HERO SECTION ─────────────────────────────────── */
@@ -698,6 +730,10 @@ function HeartIcon({ className }: { className?: string }) {
       />
     </svg>
   );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true"><path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function CheckCircleIcon({ className }: { className?: string }) {
