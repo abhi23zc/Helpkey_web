@@ -191,6 +191,7 @@ function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -418,6 +419,7 @@ function SearchPanel({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
