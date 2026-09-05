@@ -22,6 +22,7 @@ export type ListingRatePlan = {
   roomTypeId: string;
   cancellationPolicyId: string;
   paymentMode?: string;
+  status: "active" | "paused";
 };
 
 export type ListingRoomType = {
@@ -30,7 +31,15 @@ export type ListingRoomType = {
   description: string;
   inventory: number;
   maxAdults: number;
+  maxChildren: number;
+  maxInfants: number;
+  bedConfigurations: Array<{ bedType: string; count: number }>;
+  roomSizeSqFt: number | null;
+  bathroomType: "private" | "shared";
   amenityIds: string[];
+  mediaIds: string[];
+  coverMediaId: string | null;
+  status: "active" | "paused";
 };
 
 export type ListingProperty = {
@@ -342,6 +351,7 @@ export function usePropertyListing(propertyId: string | undefined) {
   const startingPricePaise = useMemo(() => {
     if (!data?.ratePlans.length) return null;
     const prices = data.ratePlans
+      .filter((rate) => rate.status === "active")
       .map((rate) => rate.basePricePaise)
       .filter((value): value is number => typeof value === "number" && value > 0);
     return prices.length ? Math.min(...prices) : null;
@@ -351,7 +361,7 @@ export function usePropertyListing(propertyId: string | undefined) {
   const roomsWithPricing = useMemo<RoomWithPrice[]>(() => {
     if (!data) return [];
     return data.roomTypes.map((room) => {
-      const rates = data.ratePlans.filter((rate) => rate.roomTypeId === room.id && rate.basePricePaise > 0);
+      const rates = data.ratePlans.filter((rate) => rate.roomTypeId === room.id && rate.status === "active" && rate.basePricePaise > 0);
       const cheapest = rates.reduce<ListingRatePlan | null>(
         (min, rate) => (!min || rate.basePricePaise < min.basePricePaise ? rate : min),
         null,

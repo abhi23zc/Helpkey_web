@@ -32,11 +32,12 @@ export async function PATCH(
       ratePlan: {
         id: ratePlanId,
         name: input.name ?? data?.name,
-        code: data?.code,
+        code: input.code ?? data?.code,
         basePricePaise: input.basePricePaise ?? data?.basePricePaise,
         roomTypeId: data?.roomTypeId,
         cancellationPolicyId: input.cancellationPolicyId ?? data?.cancellationPolicyId,
         paymentMode: input.paymentMode ?? data?.paymentMode ?? "full",
+        status: input.status ?? data?.status ?? "active",
       },
     });
   } catch (error) {

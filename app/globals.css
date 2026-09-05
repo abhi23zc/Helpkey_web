@@ -160,9 +160,9 @@ input {
   }
 }
 
-/* Desktop: fade/scale in as a centered modal. */
+/* Desktop: keep the same right-side drawer behaviour. */
 @media (min-width: 640px) {
   .hk-drawer-panel {
-    animation: hkModalIn 0.18s ease-out;
+    animation: hkDrawerIn 0.2s ease-out;
   }
 }

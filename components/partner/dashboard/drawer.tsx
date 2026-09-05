@@ -4,13 +4,13 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 
 /**
- * Responsive editing surface.
- * - Mobile (< sm): full-height slide-over drawer anchored to the right.
- * - Desktop (>= sm): centered modal dialog.
+ * Responsive right-side editing drawer.
+ * - Mobile: full-width slide-over.
+ * - Desktop: a fixed-width slide-over that keeps the underlying page visible.
  *
  * Handles backdrop click, Escape to close, and body scroll lock. The public
  * name stays `Drawer` so existing call sites are unaffected. Animations live in
- * globals.css (hk-drawer-panel / hk-modal-panel / hk-overlay-fade).
+ * globals.css (hk-drawer-panel / hk-overlay-fade).
  */
 export function Drawer({
   open,
@@ -45,11 +45,11 @@ export function Drawer({
 
   const panelClass =
     "relative flex h-full w-full max-w-full flex-col bg-white shadow-2xl hk-drawer-panel " +
-    "sm:h-auto sm:max-h-[85vh] sm:w-[560px] sm:max-w-[92vw] sm:rounded-2xl";
+    "sm:w-[560px] sm:max-w-[92vw] sm:border-l sm:border-slate-200";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end sm:items-center sm:justify-center sm:p-6"
+      className="fixed inset-0 z-50 flex justify-end"
       role="dialog"
       aria-modal="true"
       aria-label={title}

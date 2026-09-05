@@ -714,21 +714,6 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
 
   return (
     <div className="space-y-6">
-      {listing.roomTypes.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Existing rooms</p>
-          {listing.roomTypes.map((rt) => {
-            const cheapest = listing.ratePlans.filter((r) => r.roomTypeId === rt.id).sort((a, b) => a.basePricePaise - b.basePricePaise)[0];
-            return (
-              <div key={rt.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs">
-                <span className="font-bold text-[#061224]">{rt.name} <span className="font-medium text-slate-500">· {rt.inventory} rooms</span></span>
-                <span className="font-bold text-[#c89b3c]">{cheapest ? formatPaise(cheapest.basePricePaise) : "No rate"}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <form action={submitRoom} className="space-y-4 rounded-2xl border border-slate-200 p-4">
         <p className="text-xs font-bold text-[#061224]">1. Add a room type</p>
         <Field name="name" label="Room name" placeholder="Deluxe Double" minLength={2} />
