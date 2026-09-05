@@ -220,9 +220,27 @@ export function usePropertyListing(propertyId: string | undefined) {
     [applyPatch],
   );
 
+  const updateRoomType = useCallback(
+    (roomTypeId: string, fields: Partial<ListingRoomType>) =>
+      applyPatch((current) => ({
+        ...current,
+        roomTypes: current.roomTypes.map((room) => (room.id === roomTypeId ? { ...room, ...fields } : room)),
+      })),
+    [applyPatch],
+  );
+
   const addRatePlan = useCallback(
     (rate: ListingRatePlan) =>
       applyPatch((current) => ({ ...current, ratePlans: [...current.ratePlans, rate] })),
+    [applyPatch],
+  );
+
+  const updateRatePlan = useCallback(
+    (ratePlanId: string, fields: Partial<ListingRatePlan>) =>
+      applyPatch((current) => ({
+        ...current,
+        ratePlans: current.ratePlans.map((rate) => (rate.id === ratePlanId ? { ...rate, ...fields } : rate)),
+      })),
     [applyPatch],
   );
 
@@ -363,7 +381,9 @@ export function usePropertyListing(propertyId: string | undefined) {
     reload,
     patchProperty,
     addRoomType,
+    updateRoomType,
     addRatePlan,
+    updateRatePlan,
     addPolicy,
     addMedia,
     setCoverMedia,
@@ -376,5 +396,5 @@ export type PropertyListingData = ReturnType<typeof usePropertyListing>;
 /** Local-mutation callbacks editors use to update the snapshot without a refetch. */
 export type ListingMutations = Pick<
   PropertyListingData,
-  "patchProperty" | "addRoomType" | "addRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "addDocument" | "reload"
+  "patchProperty" | "addRoomType" | "updateRoomType" | "addRatePlan" | "updateRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "addDocument" | "reload"
 >;

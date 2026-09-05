@@ -8,6 +8,7 @@ export function PartnerRoomsRatesPage() {
     <PartnerShell>
       {({ selectedProperty }) => (
         <PartnerRoomsRatesView
+          propertyId={selectedProperty?.id}
           propertyName={selectedProperty?.name ?? "The Balmoral Hotel"}
         />
       )}
