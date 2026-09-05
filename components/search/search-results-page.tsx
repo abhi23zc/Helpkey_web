@@ -27,14 +27,14 @@ const results: ResultCard[] = [
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuD3RfipC3H7aHSdFi5cvzJ3y6-EBdrfXPGgNlK88vrDzXp3VH5bfQscCEXV53f7Cc4msWZZLu2WQ2vwpMvb2bdDuW9kXhLYlGN6TL8BWrR8ymuCjnaxBLUshs_Zhr2K9dIh_HHu2SrFs0d_ArVJFJ4nYC0ZMRL3VcCiNlnlgtQcuEAACWsJqsefOJHxe67l0OiNZ_rizfl_JcLjYlpxQpyzkAzLYYto-HntqhpGBBpqK2TAMulV6_8nTA",
-    price: "$545",
+    price: "₹545",
   },
   {
     name: "The Balmoral Hotel",
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuDRzAvjEAtd0n_1tQSusTPbQvL43lOtz86zakyY-Ojij22aDVynv0OAPgRUdQTJSJsluARomCDPCGV_90WoHa2DpIcsHH32F9GvOWJfKrducxyN0uIU-jaQPIKY9JCZKX9msyIwHgOd0NdnPhjRWdBAqi4hANGn1GOeyr1WI-aMYg6WMIyC07gRLMeP7jWmsZsbhzmU9UtzQnN42roOgQIv0bZnmMbkEjCGzKTZz_c2lrQLtWmhW92dEA",
-    price: "$495",
+    price: "₹495",
     saved: true,
     selected: true,
   },
@@ -43,7 +43,7 @@ const results: ResultCard[] = [
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuDfLTIEgEw89Hf7EF_6hs4TR7M-cWk48cG8IV2r9fmmWUIgLRP_OP9sa7my2fjeIyiJcyBI8EyvNRIbBKk_IqNswfATvE6J30NiL8SdWmZIRKEjAUQFt4rgqyXNQDhGkZ5IYTwBGBcOVjSRCEv22CHEg-lv3Zpyz4k6aoDVmZliX_7jyPPDmF2XiHbO4ooj7dD1xD3MosapGQOc3DgqYRENxVIo146Phscxy5txKJyR7EPZbgsZmIE0Wg",
-    price: "$445",
+    price: "₹445",
   },
 ];
 
@@ -215,7 +215,7 @@ function FiltersSidebar() {
 
         <section className="border-t border-[rgba(207,212,223,0.8)] pt-6">
           <h2 className="text-[18px] font-semibold text-black">Price</h2>
-          <p className="mt-4 text-[16px] text-[var(--hk-muted)]">$100 - $1,000+</p>
+          <p className="mt-4 text-[16px] text-[var(--hk-muted)]">₹100 - ₹1,000+</p>
           <div className="relative mt-6 h-8">
             <div className="absolute top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-[rgba(207,212,223,0.9)]" />
             <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-[var(--hk-navy-strong)]" />
@@ -447,12 +447,12 @@ function SelectedHotelPanel() {
               <div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
-                    $495
+                    ₹495
                   </span>
                   <span className="text-[16px] text-[var(--hk-muted)]">/ night</span>
                 </div>
                 <p className="mt-2 text-[14px] leading-6 text-[var(--hk-muted)]">
-                  $990 for 2 nights
+                  ₹990 for 2 nights
                   <br />
                   Taxes and fees included
                 </p>

@@ -83,7 +83,7 @@ const recommendedStays: RecommendedStay[] = [
     city: "Edinburgh",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuDgPzK8J7VSquBgNArdb8Wk3CcUKrlZjhJqxPYwv-g5-tOQRipif1bDXufrbSx236G6HTTPguGQ0joErhVQPkU5C8hMkUtjfxOchXFLQfeX4EZHVQ2QBNd-SqTTCtr18yy6nUN6NXqTiJA5B8d0crzOtmBjkRkiYWc4aMlRIaCm2PeGemR3fM9RvHh3ZI0bZsenaLuiRb42iAQN2Its28VdRddym7mRYx0Kvf2U8ZRHe4iZEBH9KfmIBg",
-    price: "$495",
+    price: "₹495",
     href: "/hotels/the-balmoral-hotel",
     urgency: "Only 2 rooms left on our site",
     freeCancellation: true,
@@ -93,7 +93,7 @@ const recommendedStays: RecommendedStay[] = [
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuBxFbje4bkps4lvdaP89BIMAMjw4Ka3cwkhvIU8zCShu4zz1IqE2M5oTm8tgJfzw9um1nFMfS_V2l1TxGBUd7cGyZ8FHiJXBz7Gdb9XOPIx3yN6uzKE9Qbzf1k9L3iHQJEGaqEOtJLWX6hRW_yg9us06Zfz4fdZAu6YKIZlwaa-vEQLLoFohGHUABvhG4WLIBofK7GdtYD8uzzkBM6ZFNLUPbfZuKnWL1MoRSsiPVVbITifSyA1Ei6prA",
-    price: "$545",
+    price: "₹545",
     href: "/hotels/the-ritz-london",
     urgency: "In High Demand",
     freeCancellation: true,
@@ -260,7 +260,7 @@ function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
         <div className="flex items-center gap-3">
           <button className="hidden items-center gap-1 text-[14px] font-medium text-[var(--hk-ink)] sm:flex">
             <GlobeIcon className="h-5 w-5" />
-            USD
+            INR
             <ChevronDownIcon className="h-4 w-4" />
           </button>
           {showUser ? (
@@ -640,7 +640,7 @@ function RecommendedSection() {
                   <span className="text-[24px] font-extrabold tracking-tight text-[var(--hk-ink)]">
                     {stay.price}
                   </span>
-                  <span className="text-[11px] text-[var(--hk-muted)]">+US$52 taxes</span>
+                  <span className="text-[11px] text-[var(--hk-muted)]">+₹52 taxes</span>
                 </div>
                 <Link
                   href={stay.href}

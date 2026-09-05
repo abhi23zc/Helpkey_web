@@ -114,7 +114,7 @@ function HelpHeader() {
         <div className="flex items-center gap-4">
           <button className="hidden items-center gap-1 text-[14px] text-[var(--hk-muted)] md:flex">
             <GlobeIcon className="h-5 w-5" />
-            USD
+            INR
           </button>
           <Link
             href="/wishlist"

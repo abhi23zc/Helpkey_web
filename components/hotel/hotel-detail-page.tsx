@@ -62,7 +62,7 @@ const rooms: Room[] = [
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuBmdXjgGGlADUsIJvj18XQQ27M5xT5MoOox4vH2ypobHpj4vbuypgSx9Pthy3D3slK3o2jCsgS_UqjvMQlCq-eJ5us-nOhAQUsKAWo5vNGPsFcjMmilKt4tVVPIPagIei5qnraeht8Qa9jM40D5k-EUcqMCxX2IOlC6zz8P9tCaX8ClzROgF3QdnaHAEOsxWEwyE4siBuRPG4l70tJ0GObAK7C-Fr1WSmn-cNH2dEtuSP1GJhPEW0E2lw",
     guests: "2 Guests",
-    price: "$495",
+    price: "₹495",
     tags: ["35 sq m", "City View", "Bathtub"],
     note: "Free cancellation",
   },
@@ -73,7 +73,7 @@ const rooms: Room[] = [
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuD3OGKy5rHP8pAIwRHZaMQ-k4mPHrvtzxYql7j8PQRneokbmY8rhzeKAFmffRcGJwj6dTWwMtvBfQa7nZhGI0BlkQwQMtkx9fLkPBR21gaanReo83mzjZ3CWUPYLR72-R7aZW4Adva2j5FaIQ32hEkRmZF1NEZ-BbgvX4jia5YQRW_-Q4mEvWr8zZxcJaZJThIcLykOOVyhhxWlev2gruTDfYcFGQ_y8J-QNVKZjJBcKddRi5QoF4Q0KQ",
     guests: "2 Guests",
-    price: "$850",
+    price: "₹850",
     tags: ["65 sq m", "Castle View", "Lounge Access"],
     note: "Non-refundable",
     featured: true,
@@ -147,7 +147,7 @@ function DetailHeader() {
             <button className="text-[var(--hk-muted)] hover:text-black">
               <GlobeIcon className="h-5 w-5" />
             </button>
-            <span className="text-[13px] text-[var(--hk-muted)]">USD</span>
+            <span className="text-[13px] text-[var(--hk-muted)]">INR</span>
             <button className="text-[var(--hk-muted)] hover:text-black">
               <HeartIcon className="h-5 w-5" />
             </button>
@@ -485,7 +485,7 @@ function BookingSidebar() {
         <div className="mb-6 flex items-end justify-between border-b border-[var(--hk-border)] pb-6">
           <div>
             <span className="text-[32px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)]">
-              $495
+              ₹495
             </span>
             <span className="text-[16px] text-[var(--hk-muted)]">/ night</span>
           </div>
@@ -515,16 +515,16 @@ function BookingSidebar() {
 
         <div className="mb-6 space-y-3 text-[15px] text-[var(--hk-muted)]">
           <div className="flex justify-between">
-            <span>$495 x 2 nights</span>
-            <span>$990</span>
+            <span>₹495 x 2 nights</span>
+            <span>₹990</span>
           </div>
           <div className="flex justify-between">
             <span>Taxes &amp; Fees</span>
-            <span>$115</span>
+            <span>₹115</span>
           </div>
           <div className="flex justify-between border-t border-[var(--hk-border)] pt-3 text-[18px] font-semibold text-[var(--hk-navy-strong)]">
             <span>Total</span>
-            <span>$1,105</span>
+            <span>₹1,105</span>
           </div>
         </div>
 

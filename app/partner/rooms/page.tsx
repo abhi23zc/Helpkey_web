@@ -1,7 +1,7 @@
-import { PartnerDashboard } from "@/components/partner/partner-dashboard";
+import { PartnerRoomsRatesPage } from "@/components/partner/dashboard/partner-rooms-rates-page";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 
 export default async function Page() {
   await requireAuthenticatedUser();
-  return <PartnerDashboard initialTab="Rooms & Rates" />;
+  return <PartnerRoomsRatesPage />;
 }

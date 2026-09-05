@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const steps = ["Property type", "Location", "Property details", "Rooms & rates", "Facilities", "Photos", "Verification", "Review"];
 const input = "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-100";
@@ -24,6 +24,7 @@ type Listing = { property: any; roomTypes: any[]; ratePlans: any[]; policies: an
 
 export function PropertySetup({ propertyId }: { propertyId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [listing, setListing] = useState<Listing | null>(null);
   const [step, setStep] = useState(1);
   const [note, setNote] = useState("");
@@ -45,12 +46,15 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     const json = await response.json();
     if (!response.ok) throw new Error(json.error);
     setListing(json);
-    setStep(json.property.onboarding?.currentStep ?? 1);
+    // Deep-link support: /partner/properties/{id}?step=N jumps straight to a step.
+    const requested = Number(searchParams.get("step"));
+    const target = Number.isInteger(requested) && requested >= 1 && requested <= 8 ? requested : json.property.onboarding?.currentStep ?? 1;
+    setStep(target);
   };
 
   useEffect(() => {
     void load().catch((error) => setNote(error.message));
-  }, [propertyId]);
+  }, [propertyId, searchParams]);
 
   const saveStep = async (patch: any) => {
     setSaving(true);

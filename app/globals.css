@@ -124,3 +124,35 @@ input {
 .animate-shake {
   animation: shake 0.4s ease-in-out;
 }
+
+/* ---- Responsive editing panel (Drawer component) ---- */
+@keyframes hkDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes hkModalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes hkOverlayFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.hk-overlay-fade {
+  animation: hkOverlayFade 0.15s ease-out;
+}
+
+/* Mobile: slide in from the right as a drawer. */
+@media (max-width: 639.98px) {
+  .hk-drawer-panel {
+    animation: hkDrawerIn 0.2s ease-out;
+  }
+}
+
+/* Desktop: fade/scale in as a centered modal. */
+@media (min-width: 640px) {
+  .hk-drawer-panel {
+    animation: hkModalIn 0.18s ease-out;
+  }
+}

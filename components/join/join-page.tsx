@@ -128,7 +128,7 @@ function Navbar({ onLoginClick }: { onLoginClick: () => void }) {
             <button className="transition-colors hover:text-[var(--hk-ink)]" aria-label="Favorites">
               <HeartIcon className="h-5 w-5" />
             </button>
-            <span className="text-[14px] font-semibold">USD</span>
+            <span className="text-[14px] font-semibold">INR</span>
           </div>
 
           {appUser ? (

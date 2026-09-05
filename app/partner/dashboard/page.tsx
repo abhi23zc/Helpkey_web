@@ -1,3 +1,7 @@
-import { PartnerDashboard } from "@/components/partner/partner-dashboard";
+import { PartnerOverviewPage } from "@/components/partner/dashboard/partner-overview-page";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
-export default async function Page() { await requireAuthenticatedUser(); return <PartnerDashboard />; }
+
+export default async function Page() {
+  await requireAuthenticatedUser();
+  return <PartnerOverviewPage />;
+}

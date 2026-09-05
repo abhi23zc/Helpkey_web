@@ -93,7 +93,7 @@ function ProfileHeader({ user }: { user: AppUser }) {
             <button className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]">
               <GlobeIcon className="h-6 w-6" />
             </button>
-            <span className="text-[14px] font-medium text-[var(--hk-ink)]">USD</span>
+            <span className="text-[14px] font-medium text-[var(--hk-ink)]">INR</span>
             <Link
               href="/wishlist"
               className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"

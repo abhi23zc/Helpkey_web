@@ -29,7 +29,7 @@ const bookings: Booking[] = [
     city: "Edinburgh, UK",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuDMERPdoJNhOoeHHG-vVfy4W5jCM-Og6XvqBOatXFFn8SjNy_9dNlTuV4WD0Fg7lt0vX0Fm5q0cGXbE4JrDJdROTKbPZ32Tjm45aDyNa2v6Tw3uGDN8VPv0vwufo4HCv20J568YXKPlZosDROKlyARCy-FqA8qBD6NL5YPEhASC_R3rhcog9CPF-AT2nLD-G5ls3j3yhu6odFX55JnV76G0q4Ze7BI52uhWdQijltmIT1bKP7hHuaORnw",
-    total: "$1,485",
+    total: "₹1,485",
     totalLabel: "Total for 3 nights",
     checkIn: "Oct 12, 2024",
     checkInTime: "3:00 PM",
@@ -45,7 +45,7 @@ const bookings: Booking[] = [
     city: "London, UK",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuAT5dxFsMqmozjD2fbybzad3gBdj8-CW4lCW6g-jU0M43xChj_RVxmd4WsifrO0DYHYxbsgshCZKYiDBrFggPVBCpSoQjOwgOJc_fR5Esi_Y8gc8R_4TwdbutTrqMunni_9fJf5NrLejZUuZdHIc_saLO79eHOL5nquhTUA8VvWzxDUgW79uTHF9-hPiDlbCXOf7fnhlrPk_1oboWrS8BQfsUxvwKYh_OU6UVne0Qarq3y9tG63duOXyQ",
-    total: "$1,090",
+    total: "₹1,090",
     totalLabel: "Total for 2 nights",
     checkIn: "Nov 05, 2024",
     checkInTime: "3:00 PM",
@@ -252,7 +252,7 @@ function BookingsHeader() {
             </Link>
           </div>
           <button className="hidden items-center gap-1 text-[14px] text-[var(--hk-muted)] md:flex">
-            USD
+            INR
             <ChevronDownIcon className="h-4 w-4" />
           </button>
           <button className="flex items-center gap-2 rounded-[12px] bg-[var(--hk-navy-strong)] px-4 py-3 text-[15px] font-semibold text-white">

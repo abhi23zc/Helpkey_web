@@ -25,7 +25,7 @@ const stays: FavoriteStay[] = [
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuD_hCkISEb2kvWg58Swoso4ZrgcbsamGX9XN9MLz1VM-nu6Hm7G2v_jGMsATKI1H5l2XXLLY2NiwAG3kfNZvaYyEOwlD0zjEXsmyBWZ0Os2GrgaE27LT-OV8nSB4uBlo6qbOB7Jl4lXX9WvxdOXVsWebR0yrbxukk7Oh-e200vjIICDuUIsR01RJ9Xv8K8TXlXwgoy56wT8bq_1PxLgaOvfQrdudNnJL1H0usaZs8FjGhblzcMWTMFZCA",
-    price: "$545",
+    price: "₹545",
     href: "/hotels/the-balmoral-hotel",
   },
   {
@@ -33,7 +33,7 @@ const stays: FavoriteStay[] = [
     city: "Edinburgh",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuBC2Afi0OUfTMMPcvfJ4Dbr121g6LX--XQmidcvohOQYQSnBrpvihecleCTisGAb7eUxZ7Mw6mzuG9fH87mSU0Ug1l2PUqRHM5u4niO1Si3SyVl-9r_IXOGDwTqNDe2o_R5gmep41zLHw6CCdqIHuQ82qsJqwiElKkRK6PskscGK56iBQagpJwRttC2t0ZF2jidlMi9r-y9Hqk-7EgqUWg13NcHar0noy-cE0oXBYbLtC_dgtZ0JtYC1g",
-    price: "$495",
+    price: "₹495",
     href: "/hotels/the-balmoral-hotel",
   },
   {
@@ -41,7 +41,7 @@ const stays: FavoriteStay[] = [
     city: "London",
     image:
       "https://lh3.googleusercontent.com/aida-public/AB6AXuAzNf4GjqcQ1_FCQ8F1IMHTUg-w9x5OKanAfjLNqLDu-z3QPg2I3_eHkNs6HZsCXsNtaD4_6lad6cMUQPmkM3jQuT3LOl7fb-T9z6S9zRKhOhIBtiV2spltmPsFWfzJThckEqgOKC0mcBC28Do-7MZdE0ATf3NzdGksYsnBXhBgeDYe8YSojP1QfEsky43zMDaBMHUMFEyNWox-OiuwfxnaeLcJcmv5wjcQwRk0pSgauIH6Tc0u8jHmZQ",
-    price: "$445",
+    price: "₹445",
     href: "/hotels/the-balmoral-hotel",
   },
 ];
@@ -194,7 +194,7 @@ function WishlistHeader() {
         <div className="flex items-center gap-4">
           <button className="hidden items-center gap-1 text-[var(--hk-muted)] md:flex">
             <GlobeIcon className="h-5 w-5" />
-            <span className="text-[14px] font-medium">USD</span>
+            <span className="text-[14px] font-medium">INR</span>
           </button>
           <Link href="/wishlist" className="text-[var(--hk-navy-strong)]">
             <HeartIcon className="h-6 w-6" />
