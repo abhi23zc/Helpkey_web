@@ -21,6 +21,31 @@ const clean = (value: unknown): unknown => {
 
 export async function requireAdmin(uid: string) { return requireRole(uid, "admin"); }
 
+/* ---------- Property review audit trail (propertyReviewEvents) ---------- */
+
+export { recordReviewEvent } from "@/lib/partner/review-events";
+export type { ReviewAction, ReviewEventInput } from "@/lib/partner/review-events";
+
+/** Ordered (newest-first) audit timeline for a property. */
+export async function listReviewEvents(propertyId: string, max = 50) {
+  // Fetch by propertyId only (single-field index) and sort in memory to avoid a
+  // composite (propertyId + createdAt) index requirement. Per-property event
+  // counts are small.
+  const snap = await adminDb
+    .collection("propertyReviewEvents")
+    .where("propertyId", "==", propertyId)
+    .limit(200)
+    .get();
+  return snap.docs
+    .map((doc) => ({
+      doc,
+      createdAtMs: (doc.data().createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0,
+    }))
+    .sort((a, b) => b.createdAtMs - a.createdAtMs)
+    .slice(0, max)
+    .map(({ doc }) => clean({ id: doc.id, ...doc.data() }));
+}
+
 export function propertySummary(id: string, raw: FirebaseFirestore.DocumentData) {
   return { id, name: raw.name ?? "Untitled property", propertyType: raw.propertyType ?? "hotel", status: raw.status ?? "draft", approvalStatus: raw.approvalStatus ?? "not_submitted", address: clean(raw.address ?? {}), partnerId: raw.partnerId ?? raw.ownerId ?? null, submittedAt: iso(raw.submittedAt), updatedAt: iso(raw.updatedAt), rejectionReason: raw.rejectionReason ?? null, onboarding: clean(raw.onboarding ?? {}) };
 }
@@ -48,15 +73,54 @@ export async function listingDetail(propertyId: string) {
 }
 
 export async function overview() {
-  const [properties, users, media, documents] = await Promise.all([
-    adminDb.collection("properties").limit(500).get(), adminDb.collection("users").limit(500).get(), adminDb.collection("mediaAssets").limit(1000).get(), adminDb.collection("verificationDocuments").limit(1000).get(),
+  const properties = adminDb.collection("properties");
+  const media = adminDb.collection("mediaAssets");
+  const documents = adminDb.collection("verificationDocuments");
+  const users = adminDb.collection("users");
+
+  // Use count() aggregations and targeted queries instead of loading whole
+  // collections into memory.
+  const [
+    pendingCount,
+    activeCount,
+    pausedCount,
+    partnerCount,
+    suspendedCount,
+    pendingPhotos,
+    pendingDocuments,
+    usersSnap,
+    urgentSnap,
+  ] = await Promise.all([
+    properties.where("approvalStatus", "==", "pending").count().get(),
+    properties.where("status", "==", "active").count().get(),
+    properties.where("status", "==", "paused").count().get(),
+    users.where("roles", "array-contains", "partner").count().get(),
+    users.where("accountStatus", "==", "suspended").count().get(),
+    media.where("moderationStatus", "==", "pending").count().get(),
+    documents.where("status", "==", "pending").count().get(),
+    users.count().get(),
+    properties.where("approvalStatus", "==", "pending").limit(50).get(),
   ]);
-  const count = (items: FirebaseFirestore.QueryDocumentSnapshot[], predicate: (data: FirebaseFirestore.DocumentData) => boolean) => items.filter((item) => predicate(item.data())).length;
+
+  const totalUsers = usersSnap.data().count;
+  const partners = partnerCount.data().count;
+
   return {
     metrics: {
-      pendingListings: count(properties.docs, (p) => p.approvalStatus === "pending"), activeListings: count(properties.docs, (p) => p.status === "active"), pausedListings: count(properties.docs, (p) => p.status === "paused"), partners: count(users.docs, (u) => Array.isArray(u.roles) && u.roles.includes("partner")), customers: count(users.docs, (u) => !Array.isArray(u.roles) || !u.roles.includes("partner")), suspendedAccounts: count(users.docs, (u) => u.accountStatus === "suspended"), pendingPhotos: count(media.docs, (m) => (m.moderationStatus ?? m.status) === "pending"), pendingDocuments: count(documents.docs, (d) => d.status === "pending"),
+      pendingListings: pendingCount.data().count,
+      activeListings: activeCount.data().count,
+      pausedListings: pausedCount.data().count,
+      partners,
+      customers: Math.max(0, totalUsers - partners),
+      suspendedAccounts: suspendedCount.data().count,
+      pendingPhotos: pendingPhotos.data().count,
+      pendingDocuments: pendingDocuments.data().count,
     },
-    urgentProperties: properties.docs.filter((doc) => doc.data().approvalStatus === "pending").slice(0, 6).map((doc) => propertySummary(doc.id, doc.data())),
+    urgentProperties: urgentSnap.docs
+      .map((doc) => ({ doc, ms: (doc.data().submittedAt as { toMillis?: () => number })?.toMillis?.() ?? 0 }))
+      .sort((a, b) => b.ms - a.ms)
+      .slice(0, 6)
+      .map(({ doc }) => propertySummary(doc.id, doc.data())),
   };
 }
 

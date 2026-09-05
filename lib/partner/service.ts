@@ -3,6 +3,7 @@ import "server-only";
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
+import { recordReviewEvent } from "@/lib/partner/review-events";
 import { getUserByUid } from "@/lib/auth/users";
 
 const propertyTypes = ["hotel", "apartment", "villa", "resort", "hostel", "guest_house", "homestay", "other"] as const;
@@ -46,4 +47,54 @@ export async function submit(uid: string, propertyId: string) { const ref = awai
   ].filter(Boolean);
   if (data?.status === "active") throw new Error("This property is already listed.");
   if (missing.length) throw new Error(`Before submitting, complete: ${missing.join(", ")}.`);
-  if (data?.approvalStatus === "pending") return; await ref.update({ status: "pending_review", approvalStatus: "pending", submittedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), updatedBy: uid }); await adminDb.collection("partnerProfiles").doc(uid).set({ onboardingStatus: "submitted", updatedAt: FieldValue.serverTimestamp(), updatedBy: uid }, { merge: true }); }
+  if (data?.approvalStatus === "pending") return;
+
+  // Atomic transition: re-read the property inside the transaction to guard
+  // against races, then update the property + partner profile and write the
+  // audit event in a single commit.
+  const partnerRef = adminDb.collection("partnerProfiles").doc(uid);
+  await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.data();
+    if (!current) throw new Error("PROPERTY_NOT_FOUND");
+    if (current.status === "active") throw new Error("This property is already listed.");
+    if (current.approvalStatus === "pending") return;
+
+    const fromApprovalStatus = String(current.approvalStatus ?? "not_submitted");
+    const fromStatus = String(current.status ?? "draft");
+    const submissionCount = (typeof current.submissionCount === "number" ? current.submissionCount : 0) + 1;
+    const now = FieldValue.serverTimestamp();
+
+    tx.update(ref, {
+      status: "pending_review",
+      approvalStatus: "pending",
+      rejectionReason: null,
+      // First submission stamps `submittedAt`; every submission bumps the rest.
+      ...(current.submittedAt ? {} : { submittedAt: now }),
+      lastSubmittedAt: now,
+      submissionCount,
+      updatedAt: now,
+      updatedBy: uid,
+    });
+
+    tx.set(
+      partnerRef,
+      { onboardingStatus: "submitted", updatedAt: now, updatedBy: uid },
+      { merge: true },
+    );
+
+    recordReviewEvent(tx, {
+      propertyId,
+      actorId: uid,
+      actorRole: "partner",
+      action: "submitted",
+      fromApprovalStatus,
+      toApprovalStatus: "pending",
+      fromStatus,
+      toStatus: "pending_review",
+      submissionAttempt: submissionCount,
+    });
+  });
+
+  return { propertyId, propertyName: typeof data?.name === "string" ? data.name : "Your property" };
+}

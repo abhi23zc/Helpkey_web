@@ -22,6 +22,32 @@ export async function putFile(url: string, headers: Record<string, string>, file
   if (!response.ok) throw new Error("UPLOAD_FAILED");
 }
 
+/** Uploads a file with browser-native progress events. */
+export function putFileWithProgress(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value));
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(100);
+        resolve();
+      } else reject(new Error("UPLOAD_FAILED"));
+    };
+    request.onerror = () => reject(new TypeError("UPLOAD_NETWORK_ERROR"));
+    request.onabort = () => reject(new Error("UPLOAD_ABORTED"));
+    request.send(file);
+  });
+}
+
 export async function sha256Hex(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buffer);

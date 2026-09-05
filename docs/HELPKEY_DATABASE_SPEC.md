@@ -149,6 +149,7 @@ reviews
 notifications
 notificationDeliveries
 notificationTemplates
+propertyReviewEvents
 conversations
 messages
 supportTickets
@@ -1020,6 +1021,37 @@ interface NotificationTemplateDocument extends CommonMutableFields {
 ```
 
 Core events include booking requested, accepted, rejected, payment succeeded/failed, confirmed, upcoming check-in, cancellation, refund, and review invitation.
+
+Property lifecycle event types: `property.submitted`, `property.approved`,
+`property.changes_requested`, `property.rejected`.
+
+### `propertyReviewEvents/{eventId}`
+
+Immutable audit trail of property state transitions (submit, approve, reject,
+request changes, pause/resume/archive/restore). Written atomically in the same
+transaction as the property mutation. Query per-property newest-first via the
+`(propertyId ASC, createdAt DESC)` index.
+
+```ts
+interface PropertyReviewEventDocument extends CommonMutableFields {
+  propertyId: string;
+  actorId: string;               // uid or "system"
+  actorRole: "partner" | "admin" | "system";
+  action:
+    | "submitted" | "approved" | "rejected" | "changes_requested"
+    | "paused" | "resumed" | "archived" | "restored";
+  fromApprovalStatus: string;
+  toApprovalStatus: string;
+  fromStatus: string;
+  toStatus: string;
+  reason: string | null;         // required for rejected / changes_requested
+  submissionAttempt: number;     // increments per partner submit
+}
+```
+
+Related `properties` fields for submission tracking:
+`submittedAt` (first submission), `lastSubmittedAt` (most recent),
+`submissionCount` (total submissions).
 
 ### `conversations/{conversationId}`
 

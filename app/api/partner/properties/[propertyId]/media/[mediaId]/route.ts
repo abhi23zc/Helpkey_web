@@ -42,7 +42,7 @@ export async function PATCH(
       await propertyRef.update({ coverMediaId: mediaId, updatedAt: now, updatedBy: user.uid });
     }
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, mediaId, ...(input.makeCover ? { coverMediaId: mediaId } : {}), ...(input.altText !== undefined ? { altText: input.altText } : {}) });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Unable to update photo." },

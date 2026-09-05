@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Eye,
   FileText,
   Image as ImageIcon,
@@ -30,7 +29,7 @@ import {
   RoomsEditor,
   SafetyEditor,
 } from "./listing-editors";
-import { type ChecklistItem, type ListingResponse, usePropertyListing } from "./use-property-listing";
+import { type ChecklistItem, type ListingMutations, type ListingResponse, usePropertyListing } from "./use-property-listing";
 
 type SectionKey = "basicInfo" | "location" | "photos" | "rooms" | "amenities" | "policies" | "safety";
 
@@ -57,7 +56,7 @@ const SECTIONS: SectionConfig[] = [
     title: "Location",
     shortTitle: "Location",
     description: "Address, map location and timezone.",
-    checklistId: "basicInfo",
+    checklistId: "location",
     icon: MapPin,
   },
   {
@@ -119,11 +118,16 @@ const STATUS_LABELS: Record<string, string> = {
   active: "Live",
   pending: "In review",
   not_submitted: "Draft",
-  rejected: "Changes requested",
+  changes_requested: "Changes requested",
+  rejected: "Rejected",
 };
+
+/** Approval states where the partner may (re)submit the listing for review. */
+const RESUBMITTABLE = new Set(["not_submitted", "changes_requested", "rejected"]);
 
 const CHECKLIST_SECTION: Record<ChecklistItem["id"], SectionKey> = {
   basicInfo: "basicInfo",
+  location: "location",
   photos: "photos",
   amenities: "amenities",
   policies: "rooms",
@@ -159,6 +163,13 @@ export function PartnerPropertyListingView({
   const [activeSection, setActiveSection] = useState<SectionKey>("basicInfo");
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [previewHighlighted, setPreviewHighlighted] = useState(false);
+  const [sectionMessage, setSectionMessage] = useState("");
+  // One-shot request to advance to the next section once the locally-merged
+  // snapshot marks the saved section complete.
+  const [advanceFrom, setAdvanceFrom] = useState<SectionKey | null>(null);
+  // True while the active editor has a save/upload in flight.
+  const [editorBusy, setEditorBusy] = useState(false);
 
   const checklistById = useMemo(
     () => Object.fromEntries(checklist.map((item) => [item.id, item])) as Partial<Record<ChecklistItem["id"], ChecklistItem>>,
@@ -172,8 +183,38 @@ export function PartnerPropertyListingView({
   const activeIndex = SECTIONS.findIndex((section) => section.key === activeSection);
   const activeConfig = SECTIONS[activeIndex] ?? SECTIONS[0];
 
+  // Fired after an editor merges its save into local state. Requests an advance
+  // to the next section; the effect below performs it once the checklist
+  // reflects the change (no network refetch needed).
+  const handleEditorSaved = () => setAdvanceFrom(activeSection);
+
+  // Switch sections and clear the busy flag; the freshly mounted editor
+  // re-reports its own save/upload state.
+  const selectSection = (key: SectionKey) => {
+    setEditorBusy(false);
+    setActiveSection(key);
+  };
+
+  useEffect(() => {
+    if (!advanceFrom) return;
+    const savedSection = SECTIONS.find((section) => section.key === advanceFrom);
+    const savedItem = savedSection ? checklistById[savedSection.checklistId] : undefined;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAdvanceFrom(null);
+    if (!savedItem?.complete) return;
+
+    const savedIndex = SECTIONS.findIndex((section) => section.key === advanceFrom);
+    const nextSection = SECTIONS[savedIndex + 1];
+    if (!nextSection) return;
+    setActiveSection(nextSection.key);
+    setSectionMessage(`${savedSection?.shortTitle ?? "Section"} complete. Moving to ${nextSection.shortTitle}.`);
+    window.setTimeout(() => setSectionMessage(""), 3200);
+  }, [advanceFrom, checklistById]);
+
   const coverPhoto = useMemo(() => photos.find((photo) => photo.isCover) ?? photos[0] ?? null, [photos]);
   const statusLabel = STATUS_LABELS[property?.approvalStatus ?? "not_submitted"] ?? "Draft";
+  const canResubmit = RESUBMITTABLE.has(property?.approvalStatus ?? "not_submitted");
+  const isResubmission = property?.approvalStatus === "changes_requested" || property?.approvalStatus === "rejected";
   const lastUpdated = formatRelativeTime(property?.updatedAt);
   const propertyTypeLabel = PROPERTY_TYPE_LABELS[property?.propertyType ?? "hotel"] ?? "Property";
   const locationLabel = property?.address?.city
@@ -184,6 +225,7 @@ export function PartnerPropertyListingView({
   const handleSubmitForReview = async () => {
     if (!propertyId) return;
 
+    const startedAt = Date.now();
     setSubmitting(true);
     setSubmitMessage(null);
     try {
@@ -195,30 +237,51 @@ export function PartnerPropertyListingView({
     } catch (cause) {
       setSubmitMessage({ text: cause instanceof Error ? cause.message : "Unable to submit.", ok: false });
     } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 450) await new Promise((resolve) => setTimeout(resolve, 450 - elapsed));
       setSubmitting(false);
     }
   };
 
   const goToPrevious = () => {
     const previous = SECTIONS[Math.max(0, activeIndex - 1)];
-    if (previous) setActiveSection(previous.key);
+    if (previous) selectSection(previous.key);
   };
 
   const goToNext = () => {
     const next = SECTIONS[Math.min(SECTIONS.length - 1, activeIndex + 1)];
-    if (next) setActiveSection(next.key);
+    if (next) selectSection(next.key);
+  };
+
+  const focusGuestPreview = () => {
+    document.getElementById("partner-listing-guest-preview")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setPreviewHighlighted(true);
+    window.setTimeout(() => setPreviewHighlighted(false), 1400);
   };
 
   if (listing.loading && !property) {
     return (
-      <div className="grid min-h-[60vh] place-items-center text-slate-400">
-        <Loader2 className="h-6 w-6 animate-spin" />
+      <div className="grid min-h-[60vh] place-items-center">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <Loader2 className="h-7 w-7 animate-spin text-[#c89b3c]" />
+          <p className="text-sm font-semibold">{propertyId ? "Loading listing…" : "Loading your property…"}</p>
+        </div>
       </div>
     );
   }
 
+  // A background refresh (e.g. after submit) while the previous snapshot is
+  // still on screen. Shown as a thin top bar rather than blanking the page.
+  const backgroundRefreshing = listing.loading && Boolean(property);
+  const busy = editorBusy || backgroundRefreshing;
+
   return (
     <div className="space-y-6 pb-16 text-[#061224]">
+      {busy && (
+        <div className="fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-[#c89b3c]/15" role="status" aria-label="Working">
+          <div className="hk-loading-bar h-full w-1/4 rounded-full bg-[#c89b3c]" />
+        </div>
+      )}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
@@ -246,6 +309,7 @@ export function PartnerPropertyListingView({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
             type="button"
+            onClick={focusGuestPreview}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#c8cdd6] bg-white px-4 text-sm font-bold text-[#06142B] shadow-[0_6px_18px_rgba(6,20,43,0.05)] transition-colors hover:bg-slate-50"
           >
             <Eye className="h-4 w-4" />
@@ -254,11 +318,15 @@ export function PartnerPropertyListingView({
           <button
             type="button"
             onClick={handleSubmitForReview}
-            disabled={submitting || !propertyId || !readyToSubmit || property?.approvalStatus === "pending"}
+            disabled={submitting || !propertyId || !readyToSubmit || !canResubmit}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#06142B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(6,20,43,0.16)] transition-colors hover:bg-[#0A1F3C] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {property?.approvalStatus === "pending" ? "Awaiting Review" : "Submit for Review"}
+            {property?.approvalStatus === "pending"
+              ? "Awaiting Review"
+              : isResubmission
+                ? "Resubmit for Review"
+                : "Submit for Review"}
           </button>
         </div>
       </div>
@@ -273,9 +341,18 @@ export function PartnerPropertyListingView({
         </div>
       )}
 
-      {property?.approvalStatus === "rejected" && property.rejectionReason && (
+      {sectionMessage && (
+        <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+          {sectionMessage}
+        </div>
+      )}
+
+      {(property?.approvalStatus === "rejected" || property?.approvalStatus === "changes_requested") && property.rejectionReason && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-          <span className="font-bold">Changes requested:</span> {property.rejectionReason}
+          <span className="font-bold">
+            {property.approvalStatus === "rejected" ? "Listing rejected:" : "Changes requested:"}
+          </span>{" "}
+          {property.rejectionReason}
         </div>
       )}
 
@@ -305,7 +382,7 @@ export function PartnerPropertyListingView({
                   <button
                     key={section.key}
                     type="button"
-                    onClick={() => setActiveSection(section.key)}
+                    onClick={() => selectSection(section.key)}
                     className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                       active
                         ? "border-[#D8B46A] bg-[#FBF3DF] text-[#06142B]"
@@ -354,13 +431,25 @@ export function PartnerPropertyListingView({
                   <h2 className="mt-1 text-2xl font-bold tracking-tight">{activeConfig.title}</h2>
                   <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">{activeConfig.description}</p>
                 </div>
-                <SectionStatus item={checklistById[activeConfig.checklistId]} />
+                <div className="flex items-center gap-2">
+                  {editorBusy && (
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#ead59f] bg-[#FBF3DF] px-3 text-xs font-bold text-[#9a6b18]">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                    </span>
+                  )}
+                  <SectionStatus item={checklistById[activeConfig.checklistId]} />
+                </div>
               </div>
             </div>
 
-            <div className="p-5 sm:p-6">
+            <div className="relative p-5 sm:p-6">
+              {backgroundRefreshing && (
+                <div className="absolute inset-0 z-10 grid place-items-center rounded-b-2xl bg-white/60 backdrop-blur-[1px]" role="status" aria-label="Refreshing">
+                  <Loader2 className="h-5 w-5 animate-spin text-[#c89b3c]" />
+                </div>
+              )}
               {propertyId && listing.data ? (
-                <ActiveEditor section={activeSection} propertyId={propertyId} listing={listing.data} onSaved={listing.reload} />
+                <ActiveEditor section={activeSection} propertyId={propertyId} listing={listing.data} onSaved={handleEditorSaved} mutations={listing} onBusyChange={setEditorBusy} />
               ) : (
                 <EmptyState icon={AlertCircle} title="No property selected" text="Select a property from the top bar to edit its listing." />
               )}
@@ -370,7 +459,7 @@ export function PartnerPropertyListingView({
               <button
                 type="button"
                 onClick={goToPrevious}
-                disabled={activeIndex <= 0}
+                disabled={activeIndex <= 0 || busy}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#c8cdd6] bg-white px-4 text-sm font-bold text-[#06142B] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -379,7 +468,7 @@ export function PartnerPropertyListingView({
               <button
                 type="button"
                 onClick={goToNext}
-                disabled={activeIndex >= SECTIONS.length - 1}
+                disabled={activeIndex >= SECTIONS.length - 1 || busy}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#06142B] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Next section
@@ -389,7 +478,7 @@ export function PartnerPropertyListingView({
           </DashboardCard>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <SummaryCard title="Rooms" actionLabel="Edit rooms" onAction={() => setActiveSection("rooms")}>
+            <SummaryCard title="Rooms" actionLabel="Edit rooms" onAction={() => selectSection("rooms")}>
               {roomsWithPricing.length ? (
                 <div className="space-y-2">
                   {roomsWithPricing.slice(0, 3).map((room) => (
@@ -409,7 +498,7 @@ export function PartnerPropertyListingView({
               )}
             </SummaryCard>
 
-            <SummaryCard title="Photos" actionLabel="Manage photos" onAction={() => setActiveSection("photos")}>
+            <SummaryCard title="Photos" actionLabel="Manage photos" onAction={() => selectSection("photos")}>
               {photos.length ? (
                 <div className="grid grid-cols-4 gap-2">
                   {photos.slice(0, 4).map((photo) => (
@@ -449,7 +538,7 @@ export function PartnerPropertyListingView({
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setActiveSection(CHECKLIST_SECTION[item.id])}
+                    onClick={() => selectSection(CHECKLIST_SECTION[item.id])}
                     className="flex w-full items-start gap-3 rounded-2xl border border-[#E6E2DA] bg-white p-3 text-left transition-colors hover:border-[#D8B46A] hover:bg-[#FBF3DF]"
                   >
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#C6973E]" />
@@ -463,15 +552,19 @@ export function PartnerPropertyListingView({
             )}
           </DashboardCard>
 
-          <DashboardCard className="overflow-hidden">
+          <DashboardCard
+            className={`overflow-hidden transition-all ${
+              previewHighlighted ? "border-[#D8B46A] shadow-[0_0_0_4px_rgba(216,180,106,0.18),0_18px_45px_rgba(6,20,43,0.12)]" : ""
+            }`}
+          >
             <div className="flex items-center justify-between border-b border-[#E6E2DA] px-5 py-4">
               <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Guest Preview</h2>
-              <button type="button" className="inline-flex items-center gap-1 text-xs font-bold text-[#9a6b18]">
-                Full preview <ArrowUpRight className="h-3.5 w-3.5" />
+              <button type="button" onClick={focusGuestPreview} className="inline-flex items-center gap-1 text-xs font-bold text-[#9a6b18]">
+                View preview <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
             </div>
             <div className="p-5">
-              <div className="overflow-hidden rounded-2xl border border-[#E6E2DA] bg-white">
+              <div id="partner-listing-guest-preview" className="overflow-hidden rounded-2xl border border-[#E6E2DA] bg-white">
                 <div className="h-40 bg-slate-100">
                   {coverPhoto?.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -519,28 +612,6 @@ export function PartnerPropertyListingView({
         </aside>
       </div>
 
-      <DashboardCard className="p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-bold">
-              <Clock3 className="h-4 w-4 text-[#9a6b18]" />
-              Listing activity
-            </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
-              {property?.submittedAt ? `Submitted ${formatRelativeTime(property.submittedAt)}` : "This listing has not been submitted for review yet."}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
-              <div>
-                <p className="text-sm font-bold text-rose-900">Sensitive action</p>
-                <p className="mt-0.5 text-xs font-medium text-rose-700">Unpublishing will remove this property from guest search and requires confirmation.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </DashboardCard>
     </div>
   );
 }
@@ -550,19 +621,23 @@ function ActiveEditor({
   propertyId,
   listing,
   onSaved,
+  mutations,
+  onBusyChange,
 }: {
   section: SectionKey;
   propertyId: string;
   listing: ListingResponse;
   onSaved: () => void;
+  mutations: ListingMutations;
+  onBusyChange: (busy: boolean) => void;
 }) {
-  if (section === "basicInfo") return <BasicDetailsEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  if (section === "location") return <LocationEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  if (section === "photos") return <PhotosEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  if (section === "rooms") return <RoomsEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  if (section === "amenities") return <AmenitiesEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  if (section === "policies") return <PoliciesEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
-  return <SafetyEditor propertyId={propertyId} listing={listing} onSaved={onSaved} />;
+  if (section === "basicInfo") return <BasicDetailsEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  if (section === "location") return <LocationEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  if (section === "photos") return <PhotosEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  if (section === "rooms") return <RoomsEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  if (section === "amenities") return <AmenitiesEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  if (section === "policies") return <PoliciesEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
+  return <SafetyEditor propertyId={propertyId} listing={listing} onSaved={onSaved} mutations={mutations} onBusyChange={onBusyChange} />;
 }
 
 function SectionStatus({ item }: { item?: ChecklistItem }) {

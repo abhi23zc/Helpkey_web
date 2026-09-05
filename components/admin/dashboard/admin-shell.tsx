@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
   Building2,
   CalendarDays,
   Headphones,
@@ -28,6 +27,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { NotificationBell } from "@/components/shared/notification-bell";
 
 type AdminShellContextValue = {
   searchQuery: string;
@@ -200,14 +200,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 </span>
                 Live Production
               </span>
-              <button
-                type="button"
-                className="relative rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
-                title="Notifications"
-              >
-                <Bell className="h-4 w-4" />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white" />
-              </button>
+              <NotificationBell />
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0a1f3c] text-xs font-bold text-white shadow-sm ring-2 ring-[#d8b46a]">
                 A
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 
 export type ListingMedia = {
@@ -81,7 +81,7 @@ export type ListingResponse = {
 };
 
 export type ChecklistItem = {
-  id: "photos" | "amenities" | "basicInfo" | "policies" | "safetyDocs";
+  id: "photos" | "amenities" | "basicInfo" | "location" | "policies" | "safetyDocs";
   label: string;
   complete: boolean;
   hint: string;
@@ -137,6 +137,7 @@ function buildChecklist(data: ListingResponse): ChecklistItem[] {
       property.checkOutTime &&
       property.publicPhone,
   );
+  const locationComplete = Boolean(property.address?.city && property.googlePlaceId);
   const policiesComplete =
     sellableRooms.size > 0 &&
     roomsWithRate.size === sellableRooms.size &&
@@ -165,6 +166,12 @@ function buildChecklist(data: ListingResponse): ChecklistItem[] {
       hint: basicInfoComplete ? "Details complete." : "Complete name, hours and contact.",
     },
     {
+      id: "location",
+      label: "Location",
+      complete: locationComplete,
+      hint: locationComplete ? "Property location confirmed." : "Add city and confirmed map location.",
+    },
+    {
       id: "policies",
       label: "Policies",
       complete: policiesComplete,
@@ -188,8 +195,86 @@ export function usePropertyListing(propertyId: string | undefined) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
+  const loadedPropertyId = useRef<string | undefined>(undefined);
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
+
+  /**
+   * Applies a locally-known change to the in-memory snapshot without a network
+   * refetch. Each write endpoint returns the affected entity, so the UI stays
+   * consistent while avoiding the expensive full-listing GET on every action.
+   */
+  const applyPatch = useCallback((mutate: (current: ListingResponse) => ListingResponse) => {
+    setData((current) => (current ? mutate(current) : current));
+  }, []);
+
+  const patchProperty = useCallback(
+    (fields: Partial<ListingProperty>) =>
+      applyPatch((current) => ({ ...current, property: { ...current.property, ...fields } })),
+    [applyPatch],
+  );
+
+  const addRoomType = useCallback(
+    (room: ListingRoomType) =>
+      applyPatch((current) => ({ ...current, roomTypes: [...current.roomTypes, room] })),
+    [applyPatch],
+  );
+
+  const addRatePlan = useCallback(
+    (rate: ListingRatePlan) =>
+      applyPatch((current) => ({ ...current, ratePlans: [...current.ratePlans, rate] })),
+    [applyPatch],
+  );
+
+  const addPolicy = useCallback(
+    (policy: { id: string; name?: string }) =>
+      applyPatch((current) => ({
+        ...current,
+        policies: [...current.policies, policy],
+        property: {
+          ...current.property,
+          cancellationPolicyIds: current.property.cancellationPolicyIds.includes(policy.id)
+            ? current.property.cancellationPolicyIds
+            : [...current.property.cancellationPolicyIds, policy.id],
+        },
+      })),
+    [applyPatch],
+  );
+
+  const addMedia = useCallback(
+    (media: ListingMedia, coverMediaId?: string | null) =>
+      applyPatch((current) => ({
+        ...current,
+        media: [...current.media, media],
+        property: {
+          ...current.property,
+          coverMediaId: coverMediaId ?? current.property.coverMediaId,
+        },
+      })),
+    [applyPatch],
+  );
+
+  const setCoverMedia = useCallback(
+    (mediaId: string) =>
+      applyPatch((current) => ({
+        ...current,
+        property: { ...current.property, coverMediaId: mediaId },
+        media: current.media.map((asset) => ({ ...asset, isCover: asset.id === mediaId })),
+      })),
+    [applyPatch],
+  );
+
+  const addDocument = useCallback(
+    (document: { id: string; documentType?: string; status?: string }) =>
+      applyPatch((current) => ({
+        ...current,
+        documents: [
+          ...current.documents.filter((existing) => existing.documentType !== document.documentType),
+          document,
+        ],
+      })),
+    [applyPatch],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,8 +282,15 @@ export function usePropertyListing(propertyId: string | undefined) {
     const run = async () => {
       if (!propertyId) {
         setData(null);
+        loadedPropertyId.current = undefined;
         return;
       }
+      // Clear stale data only when the property actually changes, so a
+      // background reload() reconcile never blanks the current listing.
+      if (loadedPropertyId.current !== propertyId) {
+        setData(null);
+      }
+      loadedPropertyId.current = propertyId;
       setLoading(true);
       setError("");
       try {
@@ -269,7 +361,20 @@ export function usePropertyListing(propertyId: string | undefined) {
     loading,
     error,
     reload,
+    patchProperty,
+    addRoomType,
+    addRatePlan,
+    addPolicy,
+    addMedia,
+    setCoverMedia,
+    addDocument,
   };
 }
 
 export type PropertyListingData = ReturnType<typeof usePropertyListing>;
+
+/** Local-mutation callbacks editors use to update the snapshot without a refetch. */
+export type ListingMutations = Pick<
+  PropertyListingData,
+  "patchProperty" | "addRoomType" | "addRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "addDocument" | "reload"
+>;

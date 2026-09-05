@@ -31,21 +31,31 @@ export function usePartnerDashboardData() {
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     loadPartnerDashboard()
       .then((data) => {
+        if (cancelled) return;
         setProperties(data.properties);
         setBusinessName(data.businessName);
         setCurrency(data.currency);
         setUser(data.user);
         setSelectedPropertyId((current) => current || data.properties[0]?.id || "");
       })
-      .catch((cause) =>
+      .catch((cause) => {
+        if (cancelled) return;
         setError(
           cause instanceof Error ? cause.message : "Unable to load dashboard."
-        )
-      );
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedProperty = useMemo(
@@ -71,6 +81,7 @@ export function usePartnerDashboardData() {
     currency: selectedProperty?.currency ?? currency,
     user,
     error,
+    loading,
     counts: {
       completedSteps,
       currentStep: selectedProperty?.onboarding?.currentStep ?? 1,

@@ -5,6 +5,15 @@ import { useEffect, useState } from "react";
 import { adminApi } from "./api";
 import { label, textValue, type AdminRecord, type PropertyDetail } from "./types";
 
+type ReviewEvent = {
+  id: string;
+  action: string;
+  actorRole: string;
+  reason: string | null;
+  submissionAttempt?: number;
+  createdAt: string | null;
+};
+
 export function AdminPropertyReviewDrawer({
   propertyId,
   onClose,
@@ -16,6 +25,7 @@ export function AdminPropertyReviewDrawer({
 }) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [events, setEvents] = useState<ReviewEvent[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
@@ -35,6 +45,9 @@ export function AdminPropertyReviewDrawer({
           )
         )
       )
+      .catch(() => {});
+    void adminApi<{ events: ReviewEvent[] }>(`/api/admin/properties/${propertyId}/events`)
+      .then((data) => setEvents(data.events ?? []))
       .catch(() => {});
   };
 
@@ -96,6 +109,26 @@ export function AdminPropertyReviewDrawer({
     );
 
   const property = detail.property;
+
+  // P4: approval requires ≥6 approved photos + the 3 approved KYC docs. Compute
+  // readiness client-side to gate the Approve action; the server stays the
+  // authority via REQUIRED_ASSETS_NOT_APPROVED.
+  const approvedMediaCount = detail.media.filter(
+    (m) => m.moderationStatus === "approved" && m.kind === "property_image",
+  ).length;
+  const approvedDocKinds = new Set(
+    detail.documents.filter((d) => d.status === "approved").map((d) => d.documentType),
+  );
+  const REQUIRED_DOCS: Array<{ kind: string; label: string }> = [
+    { kind: "pan", label: "PAN" },
+    { kind: "government_id_front", label: "ID front" },
+    { kind: "government_id_back", label: "ID back" },
+  ];
+  const missingDocs = REQUIRED_DOCS.filter((d) => !approvedDocKinds.has(d.kind));
+  const photosReady = approvedMediaCount >= 6;
+  const isPending = property.approvalStatus === "pending";
+  const canApprove = isPending && photosReady && missingDocs.length === 0;
+
   const reviewAsset = (
     type: "media" | "documents",
     id: string,
@@ -142,18 +175,34 @@ export function AdminPropertyReviewDrawer({
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs mb-6">
           <h3 className="font-bold text-slate-900 text-sm mb-3">Moderation Actions</h3>
+          {isPending && !canApprove && (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+              <p className="mb-1 font-bold">Approve required assets first:</p>
+              <ul className="list-inside list-disc space-y-0.5">
+                <li className={photosReady ? "text-emerald-700" : ""}>
+                  {approvedMediaCount} of 6 photos approved
+                </li>
+                {missingDocs.length > 0 ? (
+                  <li>Approve documents: {missingDocs.map((d) => d.label).join(", ")}</li>
+                ) : (
+                  <li className="text-emerald-700">All required documents approved</li>
+                )}
+              </ul>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !canApprove}
+              title={canApprove ? undefined : "Approve required photos and documents first."}
               onClick={() =>
                 void act(`/api/admin/properties/${propertyId}/review`, {
                   decision: "approve",
                 })
               }
-              className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 transition-colors disabled:opacity-50 shadow-2xs"
+              className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
             >
-              Approve & List Property
+              Approve &amp; List Property
             </button>
             <button
               type="button"
@@ -219,6 +268,32 @@ export function AdminPropertyReviewDrawer({
             />
           </label>
         </div>
+
+        {events.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs mb-6">
+            <h3 className="font-bold text-slate-900 text-base mb-4">Review Timeline</h3>
+            <ol className="space-y-3">
+              {events.map((event) => (
+                <li key={event.id} className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#755a1a]" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900">
+                      {label(event.action)}
+                      {event.submissionAttempt ? ` · attempt ${event.submissionAttempt}` : ""}
+                      <span className="ml-2 font-semibold text-slate-400">{label(event.actorRole)}</span>
+                    </p>
+                    {event.reason && <p className="mt-0.5 text-xs font-medium text-slate-600">{event.reason}</p>}
+                    {event.createdAt && (
+                      <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                        {new Date(event.createdAt).toLocaleString("en-IN")}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs mb-6">
           <h3 className="font-bold text-slate-900 text-base mb-4">Listing Details</h3>

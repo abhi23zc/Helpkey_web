@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, Building2, CalendarDays, Check, ChevronDown, Menu, Search } from "lucide-react";
+import { Building2, CalendarDays, Check, ChevronDown, Loader2, Menu, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PartnerSidebar } from "./partner-sidebar";
+import { NotificationBell } from "@/components/shared/notification-bell";
 import {
   type PartnerDashboardData,
   usePartnerDashboardData,
@@ -27,11 +28,13 @@ function PropertyDropdown({
   selectedId,
   onSelect,
   selectedCover,
+  loading = false,
 }: {
   properties: Array<{ id: string; name: string }>;
   selectedId: string;
   onSelect: (id: string) => void;
   selectedCover: string;
+  loading?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -61,29 +64,44 @@ function PropertyDropdown({
     <div ref={dropdownRef} className="relative min-w-[220px]">
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-white px-3.5 shadow-xs transition-all duration-200 ${
+        onClick={() => !loading && setIsOpen((prev) => !prev)}
+        disabled={loading}
+        aria-busy={loading}
+        className={`flex h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-white px-3.5 shadow-xs transition-all duration-200 disabled:cursor-progress ${
           isOpen ? "border-[#c89b3c] ring-1 ring-[#c89b3c]" : "border-slate-200 hover:border-slate-300"
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="relative h-7 w-8 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={selectedCover}
-              alt={selectedProperty?.name ?? "Property"}
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <span className="truncate text-sm font-bold text-[#061224]">
-            {selectedProperty?.name ?? "The Balmoral Hotel"}
-          </span>
+          {loading ? (
+            <>
+              <div className="h-7 w-8 shrink-0 animate-pulse rounded-lg bg-slate-200" />
+              <span className="h-4 w-28 animate-pulse rounded bg-slate-200" />
+            </>
+          ) : (
+            <>
+              <div className="relative h-7 w-8 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selectedCover}
+                  alt={selectedProperty?.name ?? "Property"}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="truncate text-sm font-bold text-[#061224]">
+                {selectedProperty?.name ?? "The Balmoral Hotel"}
+              </span>
+            </>
+          )}
         </div>
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180 text-[#c89b3c]" : ""
-          }`}
-        />
+        {loading ? (
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#c89b3c]" />
+        ) : (
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
+              isOpen ? "rotate-180 text-[#c89b3c]" : ""
+            }`}
+          />
+        )}
       </button>
 
       {isOpen && (
@@ -193,6 +211,7 @@ export function PartnerShell({
             selectedId={data.selectedProperty?.id ?? ""}
             onSelect={data.setSelectedPropertyId}
             selectedCover={coverImage}
+            loading={data.loading}
           />
 
           <div className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-xs">
@@ -217,16 +236,7 @@ export function PartnerShell({
           </div>
 
           <div className="flex items-center justify-end gap-3 md:justify-self-end">
-            <button
-              type="button"
-              className="relative grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-white shadow-xs transition-colors hover:bg-slate-50"
-              title="Notifications"
-            >
-              <Bell className="h-5 w-5 text-[#061224]" />
-              <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#c89b3c] text-[10px] font-bold text-white shadow-xs">
-                5
-              </span>
-            </button>
+            <NotificationBell />
             {data.user?.photoURL ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
