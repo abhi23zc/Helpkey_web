@@ -47,3 +47,24 @@ export async function verifyR2Object(key: string, expectedSize: number, expected
   const response = await fetch(url, { method: "HEAD", headers: { "x-amz-content-sha256": payload, "x-amz-date": date, Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}` } });
   if (!response.ok || Number(response.headers.get("content-length")) !== expectedSize || response.headers.get("x-amz-meta-sha256") !== expectedChecksum) throw new Error("R2_OBJECT_VERIFICATION_FAILED");
 }
+
+/** Permanently removes a private R2 object. S3 DELETE is idempotent for missing keys. */
+export async function deleteR2Object(key: string) {
+  const { bucket, accessKeyId, secretAccessKey, endpoint } = config();
+  const url = new URL(`${endpoint}${objectPath(bucket, key)}`);
+  const now = new Date(), date = stamp(now), day = date.slice(0, 8), scope = `${day}/auto/s3/aws4_request`, payload = "UNSIGNED-PAYLOAD";
+  const headers: Record<string, string> = { host: url.host, "x-amz-content-sha256": payload, "x-amz-date": date };
+  const signedHeaders = Object.keys(headers).sort().join(";");
+  const canonicalHeaders = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}\n`).join("");
+  const canonical = `DELETE\n${objectPath(bucket, key)}\n\n${canonicalHeaders}\n${signedHeaders}\n${payload}`;
+  const signature = createHmac("sha256", signingKey(secretAccessKey, day)).update(`AWS4-HMAC-SHA256\n${date}\n${scope}\n${hash(canonical)}`).digest("hex");
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "x-amz-content-sha256": payload,
+      "x-amz-date": date,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+  });
+  if (!response.ok) throw new Error("R2_OBJECT_DELETION_FAILED");
+}

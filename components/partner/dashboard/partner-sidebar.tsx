@@ -67,21 +67,21 @@ export function PartnerSidebar({
         } ${isExpanded ? "w-[248px]" : "w-[248px] lg:w-20"}`}
       >
         <div
-          className={`flex h-20 items-center border-b border-white/10 px-4 transition-all duration-300 ${
+          className={`flex h-16 lg:h-20 items-center border-b border-white/10 px-4 transition-all duration-300 ${
             !isExpanded ? "justify-between" : "justify-between px-5"
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <KeyRound className="h-8 w-8 shrink-0 text-[#c89b3c]" />
+            <KeyRound className="h-7 w-7 shrink-0 text-[#c89b3c]" />
             <div
               className={`transition-opacity duration-300 ${
                 !isExpanded ? "hidden" : "block"
               }`}
             >
-              <p className="text-xl font-bold uppercase leading-none tracking-wide text-white">
+              <p className="text-lg font-bold uppercase leading-none tracking-wide text-white">
                 Helpkey
               </p>
-              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.22em] text-[#c89b3c]">
+              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.22em] text-[#c89b3c]">
                 Partner
               </p>
             </div>
@@ -114,20 +114,22 @@ export function PartnerSidebar({
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-3">
           {navItems.map(({ label, href, icon: Icon }) => {
             const isActive = href ? pathname === href : false;
-            const baseClass = `group relative flex w-full items-center rounded-xl py-3 text-left text-sm font-semibold transition-all duration-200 ${
+            const baseClass = `group relative flex w-full items-center rounded-xl py-2.5 text-left text-xs font-semibold transition-all duration-200 ${
+              !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"
+            } ${
               isActive
-                ? "border-l-4 border-[#c89b3c] bg-[#112440] text-white"
-                : "text-white/80 hover:bg-white/10 hover:text-white"
-            } ${!isExpanded ? "justify-center px-0" : "gap-3.5 px-4"}`;
+                ? "bg-[#c89b3c]/15 text-white font-bold border-l-2 border-[#c89b3c] shadow-xs"
+                : "text-slate-300 hover:bg-white/10 hover:text-white"
+            }`;
 
             const content = (
               <>
                 <Icon
-                  className={`h-5 w-5 shrink-0 ${
-                    isActive ? "text-[#c89b3c]" : ""
+                  className={`h-4.5 w-4.5 shrink-0 transition-colors ${
+                    isActive ? "text-[#c89b3c]" : "text-slate-400 group-hover:text-white"
                   }`}
                 />
                 <span
@@ -160,7 +162,7 @@ export function PartnerSidebar({
                 key={label}
                 type="button"
                 disabled
-                className={`${baseClass} cursor-not-allowed opacity-55 hover:bg-transparent hover:text-white/80`}
+                className={`${baseClass} cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-400`}
                 title={!isExpanded ? label : undefined}
               >
                 {content}
@@ -169,31 +171,41 @@ export function PartnerSidebar({
           })}
         </nav>
 
-        <div
-          className={`space-y-3 p-3 transition-opacity duration-300 ${
-            !isExpanded ? "hidden" : "block"
-          }`}
-        >
-          <div className="rounded-2xl border border-[#c89b3c]/30 bg-[#0d1e38] p-3.5">
-            <p className="text-xs font-bold text-[#c89b3c]">Need help?</p>
-            <p className="mt-1 text-[11px] leading-4 text-white/75">
-              Our Partner Support team is here for you.
-            </p>
-            <button className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c] px-3 py-1.5 text-xs font-bold text-[#c89b3c] transition-colors hover:bg-[#c89b3c]/10">
-              <Headphones className="h-3.5 w-3.5" />
-              Contact Support
-            </button>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center gap-2.5">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-              <div>
-                <p className="text-[11px] font-bold">Last synced</p>
-                <p className="text-[10px] text-white/65">2 mins ago</p>
+        <div className={`mt-auto p-3 transition-opacity duration-300 ${!isExpanded ? "hidden" : "block"}`}>
+          <div className="rounded-2xl border border-[#c89b3c]/25 bg-[#0d1e38]/80 p-3 backdrop-blur-xs shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <span className="text-[10px] font-bold text-white/80">Synced 2m ago</span>
               </div>
-              <ShieldCheck className="ml-auto h-4 w-4 shrink-0 text-white/75" />
+              <ShieldCheck className="h-3.5 w-3.5 text-[#c89b3c]" />
+            </div>
+
+            <div className="mt-2.5 border-t border-white/10 pt-2.5">
+              <p className="text-[11px] font-bold text-white">Need Support?</p>
+              <p className="text-[10px] text-white/60">Partner team is 24/7 active</p>
+              <button
+                type="button"
+                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c]/60 bg-[#c89b3c]/10 py-1.5 text-xs font-bold text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224]"
+              >
+                <Headphones className="h-3.5 w-3.5" />
+                Contact Support
+              </button>
             </div>
           </div>
+        </div>
+
+        <div className={`mt-auto flex justify-center p-3 ${isExpanded ? "hidden" : "block"}`}>
+          <button
+            type="button"
+            className="grid h-10 w-10 place-items-center rounded-xl border border-[#c89b3c]/30 bg-[#0d1e38] text-[#c89b3c] hover:bg-[#c89b3c] hover:text-[#061224] transition-all"
+            title="Contact Support"
+          >
+            <Headphones className="h-4 w-4" />
+          </button>
         </div>
       </aside>
     </>

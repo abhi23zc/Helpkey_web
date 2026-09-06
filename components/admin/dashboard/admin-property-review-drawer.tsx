@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, FileCheck, Image as ImageIcon, RefreshCw } from "lucide-react";
+import { AlertTriangle, FileCheck, Image as ImageIcon, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { adminApi } from "./api";
 import { label, textValue, type AdminRecord, type PropertyDetail } from "./types";
@@ -29,6 +29,8 @@ export function AdminPropertyReviewDrawer({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const load = () => {
     void adminApi<PropertyDetail>(`/api/admin/properties/${propertyId}`)
@@ -91,6 +93,24 @@ export function AdminPropertyReviewDrawer({
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteProperty = async () => {
+    if (deleteConfirmation !== "DELETE") return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminApi<unknown>(`/api/admin/properties/${propertyId}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: deleteConfirmation }),
+      });
+      onChanged();
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to delete property.");
     } finally {
       setBusy(false);
     }
@@ -255,6 +275,15 @@ export function AdminPropertyReviewDrawer({
                 ? "Restore"
                 : "Archive"}
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setDeleteOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50 shadow-2xs"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete Property
+            </button>
           </div>
 
           <label className="mt-4 block text-xs font-bold text-slate-700">
@@ -405,6 +434,38 @@ export function AdminPropertyReviewDrawer({
         />
         <div className="h-10" />
       </section>
+      {deleteOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-property-title"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-red-100 p-2.5 text-red-700"><Trash2 className="h-5 w-5" /></span>
+              <div>
+                <h3 id="delete-property-title" className="text-lg font-bold text-slate-900">Delete {property.name}?</h3>
+                <p className="mt-1.5 text-sm text-slate-600">This permanently deletes the listing, its rooms, rates, documents, photos, and related records. This cannot be undone.</p>
+              </div>
+            </div>
+            <label className="mt-5 block text-xs font-bold text-slate-700">
+              Type <span className="font-mono text-red-700">DELETE</span> to confirm
+              <input
+                autoFocus
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-red-500"
+                placeholder="DELETE"
+              />
+            </label>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" disabled={busy} onClick={() => { setDeleteOpen(false); setDeleteConfirmation(""); }} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={busy || deleteConfirmation !== "DELETE"} onClick={() => void deleteProperty()} className="rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Deleting..." : "Delete Permanently"}</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -444,8 +505,8 @@ function InfoList({ title, items }: { title: string; items: string[] }) {
       </p>
       {items.length ? (
         <ul className="space-y-1.5">
-          {items.map((item) => (
-            <li key={item} className="text-xs text-slate-700 font-medium">
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`} className="text-xs text-slate-700 font-medium">
               • {item}
             </li>
           ))}

@@ -241,7 +241,7 @@ function SidebarHeader({ expanded }: { expanded: boolean }) {
 
 function AdminSidebar({ collapsed }: { collapsed: boolean }) {
   return (
-    <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4">
       {adminNav.map((item) => (
         <SidebarItem key={item.href} item={item} collapsed={collapsed} />
       ))}

@@ -232,7 +232,8 @@ type GoogleMapsNamespace = {
 
 declare global {
   interface Window {
-    google?: GoogleMapsNamespace;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    google?: any;
     __helpkeyGoogleMapsPromise?: Promise<GoogleMapsNamespace>;
   }
 }
