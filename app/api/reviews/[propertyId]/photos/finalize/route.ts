@@ -1,0 +1,12 @@
+import { FieldValue } from "firebase-admin/firestore";
+import { z } from "zod";
+import { getAuthenticatedUser } from "@/lib/auth/session";
+import { adminDb } from "@/lib/firebase/admin";
+import { verifyR2Object } from "@/lib/r2";
+import { refreshPropertyReviewSummary, REVIEW_COLLECTION, REVIEW_PHOTOS_COLLECTION } from "@/lib/reviews";
+const schema = z.object({ uploadId: z.string().uuid() }).strict();
+export async function POST(request: Request, { params }: RouteContext<"/api/reviews/[propertyId]/photos/finalize">) {
+  const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
+  try { const { propertyId } = await params; const { uploadId } = schema.parse(await request.json()); const upload = await adminDb.collection("pendingUploads").doc(uploadId).get(); const data = upload.data(); const reviewId = `${propertyId}_${user.uid}`; if (!data || data.ownerId !== user.uid || data.reviewId !== reviewId || data.kind !== "review_photo" || data.expiresAt < Date.now()) throw new Error("UPLOAD_EXPIRED"); await verifyR2Object(data.objectKey, data.sizeBytes, data.checksum); const reviewRef = adminDb.collection(REVIEW_COLLECTION).doc(reviewId), photoRef = adminDb.collection(REVIEW_PHOTOS_COLLECTION).doc(); let wasApproved = false; await adminDb.runTransaction(async tx => { const review = await tx.get(reviewRef); if (!review.exists || review.data()?.reviewerId !== user.uid) throw new Error("REVIEW_NOT_FOUND"); const photoIds = Array.isArray(review.data()?.photoIds) ? review.data()?.photoIds : []; if (photoIds.length >= 5) throw new Error("PHOTO_LIMIT_REACHED"); wasApproved = review.data()?.status === "approved"; tx.create(photoRef, { reviewId, propertyId, ownerId: user.uid, fileName: data.fileName, mimeType: data.mimeType, sizeBytes: data.sizeBytes, checksum: data.checksum, r2ObjectKey: data.objectKey, status: "pending", isPrivate: true, createdAt: FieldValue.serverTimestamp(), createdBy: user.uid }); tx.update(reviewRef, { photoIds: [...photoIds, photoRef.id], status: "pending", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid, editHistory: FieldValue.arrayUnion({ action: "photo_added", at: new Date() }) }); }); await upload.ref.delete(); if (wasApproved) await refreshPropertyReviewSummary(propertyId); return Response.json({ photoId: photoRef.id }); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to finalize upload." }, { status: 422 }); }
+}

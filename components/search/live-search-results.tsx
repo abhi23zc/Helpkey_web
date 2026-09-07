@@ -1055,7 +1055,7 @@ function Empty({ onReset }: { onReset: () => void }) {
 }
 
 function StayCard({ property, recommended }: { property: Property; recommended: boolean }) {
-  const rating = property.ratingAverage || 4.6;
+  const rating = property.ratingAverage;
   return (
     <article
       className={`overflow-hidden rounded-2xl border bg-white shadow-[var(--hk-shadow-soft)] ${
@@ -1098,18 +1098,18 @@ function StayCard({ property, recommended }: { property: Property; recommended: 
                 {property.state ? `, ${property.state}` : ""} · City centre
               </p>
             </div>
-            <span className="rounded bg-[var(--hk-navy)] px-2 py-1 text-xs font-bold text-white">
+            {rating > 0 && <span className="rounded bg-[var(--hk-navy)] px-2 py-1 text-xs font-bold text-white h-fit">
               {rating.toFixed(1)}
-            </span>
+            </span>}
           </div>
 
-          <div className="mt-2 text-xs">
+          {rating > 0 ? <div className="mt-2 text-xs">
             <span className="tracking-wide text-[var(--hk-gold-strong)]">★★★★★</span>{" "}
             <b>{rating >= 4.5 ? "Exceptional" : "Very good"}</b>{" "}
             <span className="text-[var(--hk-muted)]">
               ({property.ratingCount || "New"} reviews)
             </span>
-          </div>
+          </div> : <p className="mt-2 text-xs text-[var(--hk-muted)]">New to Helpkey</p>}
 
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--hk-border)] pb-3 text-xs text-[var(--hk-muted)]">
             <span className="flex items-center gap-1">

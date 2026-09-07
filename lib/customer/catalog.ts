@@ -71,6 +71,9 @@ export type CatalogProperty = {
   amenityCodes: string[];
   freeCancellation: boolean;
 };
+export type CatalogImage = { id: string; imageUrl: string; altText: string };
+export type CatalogReviewSummary = { count: number; ratingSum: number; average: number; buckets: Record<"1" | "2" | "3" | "4" | "5", number> };
+export type CatalogDetailProperty = CatalogProperty & { images: CatalogImage[]; reviewSummary: CatalogReviewSummary | null };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
 
 export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
@@ -104,8 +107,8 @@ async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesB
     propertyType: typeof data.propertyType === "string" ? data.propertyType : "hotel",
     city: typeof data.address?.city === "string" ? data.address.city : "",
     state: typeof data.address?.state === "string" ? data.address.state : null,
-    ratingAverage: typeof data.ratingAverage === "number" ? data.ratingAverage : 0,
-    ratingCount: typeof data.ratingCount === "number" ? data.ratingCount : 0,
+    ratingAverage: typeof data.reviewSummary?.count === "number" && data.reviewSummary.count > 0 && typeof data.reviewSummary.average === "number" ? data.reviewSummary.average : typeof data.ratingAverage === "number" ? data.ratingAverage : 0,
+    ratingCount: typeof data.reviewSummary?.count === "number" && data.reviewSummary.count > 0 ? data.reviewSummary.count : typeof data.ratingCount === "number" ? data.ratingCount : 0,
     minimumPricePaise: activePrices.length ? Math.min(...activePrices) : storedPrice,
     currency: typeof data.currency === "string" ? data.currency : "INR",
     coverImageUrl: coverData?.moderationStatus === "approved" ? signedUrl(coverData.r2ObjectKey) : null,
@@ -196,6 +199,25 @@ function publicCatalogProperty(property: CatalogSearchProperty): CatalogProperty
   };
 }
 
+async function propertyImages(propertyId: string, property: FirebaseFirestore.DocumentData): Promise<CatalogImage[]> {
+  const snapshot = await adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).limit(50).get();
+  const images = snapshot.docs.flatMap((doc) => {
+    const media = doc.data();
+    const imageUrl = media.kind === "property_image" && media.moderationStatus === "approved" ? signedUrl(media.r2ObjectKey) : null;
+    return imageUrl ? [{ id: doc.id, imageUrl, altText: typeof media.altText === "string" ? media.altText : "" }] : [];
+  });
+  const imagesById = new Map(images.map((image) => [image.id, image]));
+  const configuredIds = [property.coverMediaId, ...(Array.isArray(property.mediaIds) ? property.mediaIds : [])]
+    .filter((id): id is string => typeof id === "string");
+  const ordered = configuredIds.flatMap((id) => {
+    const image = imagesById.get(id);
+    if (!image) return [];
+    imagesById.delete(id);
+    return [image];
+  });
+  return [...ordered, ...imagesById.values()];
+}
+
 export async function searchCatalog(input: CatalogSearch) {
   const [properties, codesById] = await Promise.all([
     adminDb.collection("properties").where("status", "==", "active").where("isBookable", "==", true).limit(200).get(),
@@ -238,10 +260,15 @@ export async function homeCatalog() {
   return { recommendations: properties.slice(0, 4), cities };
 }
 
-export async function catalogPropertyBySlug(slug: string) {
+export async function catalogPropertyBySlug(slug: string): Promise<CatalogDetailProperty | null> {
   const snapshot = await adminDb.collection("properties").where("slug", "==", slug).limit(1).get();
   const doc = snapshot.docs[0];
   if (!doc || doc.data().status !== "active" || doc.data().approvalStatus !== "approved" || doc.data().isBookable !== true) return null;
-  const codesById = await amenityCodeMap();
-  return propertyCard(doc, codesById);
+  const data = doc.data();
+  const [codesById, images] = await Promise.all([amenityCodeMap(), propertyImages(doc.id, data)]);
+  const rawSummary = data.reviewSummary;
+  const reviewSummary = rawSummary && typeof rawSummary.count === "number" && rawSummary.count > 0 && typeof rawSummary.ratingSum === "number" && rawSummary.buckets && typeof rawSummary.buckets === "object"
+    ? { count: rawSummary.count, ratingSum: rawSummary.ratingSum, average: typeof rawSummary.average === "number" ? rawSummary.average : Math.round((rawSummary.ratingSum / rawSummary.count) * 10) / 10, buckets: { "1": Number(rawSummary.buckets["1"]) || 0, "2": Number(rawSummary.buckets["2"]) || 0, "3": Number(rawSummary.buckets["3"]) || 0, "4": Number(rawSummary.buckets["4"]) || 0, "5": Number(rawSummary.buckets["5"]) || 0 } }
+    : null;
+  return { ...publicCatalogProperty(await propertyCard(doc, codesById)), images, reviewSummary };
 }
