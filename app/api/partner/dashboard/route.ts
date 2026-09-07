@@ -69,6 +69,7 @@ export async function GET() {
         const data = doc.data();
         return {
           id: doc.id,
+          slug: typeof data.slug === "string" ? data.slug : undefined,
           name: data.name,
           propertyType: data.propertyType ?? "hotel",
           status: data.status,

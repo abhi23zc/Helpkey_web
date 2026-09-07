@@ -6,13 +6,14 @@ import { PartnerShell } from "./partner-shell";
 export function PartnerOverviewPage() {
   return (
     <PartnerShell>
-      {({ selectedProperty, businessName, counts }) => (
+      {({ selectedProperty, businessName, counts, reportingDate }) => (
         <PartnerOverviewView
           selectedProperty={selectedProperty}
           propertyName={selectedProperty?.name ?? "The Balmoral Hotel"}
           businessName={businessName ?? "Partner"}
           isLive={counts.isLive}
           health={counts.health}
+          reportingDate={reportingDate}
         />
       )}
     </PartnerShell>

@@ -17,12 +17,6 @@ function toInitials(name: string): string {
   return letters.toUpperCase();
 }
 
-const TODAY_FORMATTER = new Intl.DateTimeFormat("en-IN", {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
 function PropertyDropdown({
   properties,
   selectedId,
@@ -174,7 +168,6 @@ export function PartnerShell({
 
   const displayName = data.user?.fullName?.trim() || "Partner";
   const initials = useMemo(() => toInitials(displayName), [displayName]);
-  const today = useMemo(() => TODAY_FORMATTER.format(new Date()), []);
   const coverImage = data.selectedProperty?.coverImageUrl || "/balmoral_hotel.png";
 
   return (
@@ -216,13 +209,15 @@ export function PartnerShell({
 
           <div className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-xs">
             <CalendarDays className="h-4 w-4 shrink-0 text-slate-400" />
-            <button
-              type="button"
-              className="flex w-full items-center justify-between text-left text-sm font-semibold text-[#061224]"
-            >
-              {today}
-              <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
-            </button>
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">Dashboard reporting date</span>
+              <input
+                type="date"
+                value={data.reportingDate}
+                onChange={(event) => data.setReportingDate(event.target.value)}
+                className="w-full bg-transparent text-sm font-semibold text-[#061224] outline-none [color-scheme:light]"
+              />
+            </label>
           </div>
 
           <div className="hidden h-12 items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-xs md:flex xl:min-w-0">

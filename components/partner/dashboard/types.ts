@@ -1,5 +1,6 @@
 export type Property = {
   id: string;
+  slug?: string;
   name: string;
   propertyType: string;
   status: string;

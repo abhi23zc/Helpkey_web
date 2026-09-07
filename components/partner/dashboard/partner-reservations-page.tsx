@@ -8,6 +8,8 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Headphones,
   Mail,
@@ -21,6 +23,7 @@ import {
 } from "lucide-react";
 import { PartnerShell } from "./partner-shell";
 import { Drawer } from "./drawer";
+import { ManualBookingDialog } from "./manual-booking-dialog";
 
 type Booking = {
   id: string;
@@ -137,6 +140,9 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [assignedRooms, setAssignedRooms] = useState<Record<string, string>>({});
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
 
   const today = useMemo(() => getTodayKey(), []);
 
@@ -181,6 +187,11 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [inspectorOpen]);
+
+  // Reset to first page whenever filters/search change
+  useEffect(() => {
+    setPage(1);
+  }, [status, roomFilter, paymentFilter, query]);
 
   const rooms = useMemo(() => {
     return Array.from(new Set(bookings.map((booking) => booking.roomName).filter(Boolean))).sort();
@@ -238,6 +249,12 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
     return `${formatShortDate(sorted[0].checkIn)} – ${formatShortDate(sorted[sorted.length - 1].checkOut)}`;
   }, [filtered]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedBookings = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page, PAGE_SIZE]
+  );
+
   const updateStatus = async (bookingId: string, nextStatus: ActionStatus) => {
     setBusy(bookingId);
     setError("");
@@ -287,7 +304,7 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
 
   return (
     <section className="space-y-5 pt-1">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#e4ded2] bg-white px-5 py-4 shadow-[0_8px_28px_rgba(6,18,36,0.04)] xl:flex-row xl:items-center">
+      <div className="flex flex-col justify-between gap-4  px-5 py-4  xl:flex-row xl:items-center">
         <div>
           <h1 className="text-[28px] font-bold leading-tight tracking-[-0.035em] text-[#061224]">Reservations</h1>
           <p className="mt-1 text-sm font-medium text-[#5f6b82]">
@@ -297,7 +314,8 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#061224] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#0b1f3a]"
+            onClick={() => setBookingDialogOpen(true)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#061224] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#0b1f3a] transition-colors"
           >
             <Plus className="h-4 w-4" />
             Add Manual Booking
@@ -429,11 +447,16 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
               <EmptyState />
             ) : (
               <ReservationTable
-                bookings={filtered}
+                bookings={paginatedBookings}
                 selectedId={selectedBooking?.id ?? null}
                 busy={busy}
                 onSelect={selectReservation}
                 onUpdate={updateStatus}
+                page={page}
+                totalPages={totalPages}
+                totalCount={filtered.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
               />
             )}
         </div>
@@ -451,6 +474,17 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
         busy={selectedBooking ? busy === selectedBooking.id : false}
         onUpdate={updateStatus}
         onClose={() => setInspectorOpen(false)}
+      />
+
+      <ManualBookingDialog
+        open={bookingDialogOpen}
+        propertyId={propertyId}
+        propertyName={propertyName}
+        onClose={() => setBookingDialogOpen(false)}
+        onCreated={() => {
+          setBookingDialogOpen(false);
+          void load();
+        }}
       />
     </section>
   );
@@ -541,13 +575,38 @@ function ReservationTable({
   busy,
   onSelect,
   onUpdate,
+  page,
+  totalPages,
+  totalCount,
+  pageSize,
+  onPageChange,
 }: {
   bookings: Booking[];
   selectedId: string | null;
   busy: string | null;
   onSelect: (id: string) => void;
   onUpdate: (bookingId: string, status: ActionStatus) => void;
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  onPageChange: (p: number) => void;
 }) {
+  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, totalCount);
+
+  // Build page number list (show max 5 pages with ellipsis logic)
+  const pageNumbers: (number | "...")[] = [];
+  if (totalPages <= 5) {
+    for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
+  } else {
+    pageNumbers.push(1);
+    if (page > 3) pageNumbers.push("...");
+    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pageNumbers.push(i);
+    if (page < totalPages - 2) pageNumbers.push("...");
+    pageNumbers.push(totalPages);
+  }
+
   return (
     <div>
       <div className="hidden grid-cols-[1.08fr_1.15fr_1fr_0.78fr_0.82fr_0.58fr] border-b border-[#ede7dc] bg-[#fbfbff] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.04em] text-[#4d5870] lg:grid">
@@ -570,15 +629,51 @@ function ReservationTable({
           />
         ))}
       </div>
-      <div className="flex flex-col gap-3 border-t border-[#ede7dc] px-4 py-4 text-xs font-semibold text-[#4d5870] sm:flex-row sm:items-center sm:justify-between">
-        <span>Showing 1 to {bookings.length} of {bookings.length} reservations</span>
-        <div className="flex items-center gap-2">
-          <button className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#8b96aa]" type="button">‹</button>
-          <button className="grid h-8 w-8 place-items-center rounded-lg bg-[#061224] text-white" type="button">1</button>
-          <button className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#061224]" type="button">2</button>
-          <button className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#8b96aa]" type="button">›</button>
+      {totalCount > 0 && (
+        <div className="flex flex-col gap-3 border-t border-[#ede7dc] px-4 py-4 text-xs font-semibold text-[#4d5870] sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing {from}–{to} of {totalCount} reservation{totalCount !== 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onPageChange(page - 1)}
+              disabled={page === 1}
+              className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#4d5870] hover:border-[#c89b3c] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            {pageNumbers.map((num, idx) =>
+              num === "..." ? (
+                <span key={`ellipsis-${idx}`} className="px-1 text-[#8b96aa]">…</span>
+              ) : (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => onPageChange(num)}
+                  className={`grid h-8 min-w-[32px] place-items-center rounded-lg px-2 text-xs font-bold transition-colors ${
+                    num === page
+                      ? "bg-[#061224] text-white"
+                      : "border border-[#e4ded2] bg-white text-[#061224] hover:border-[#c89b3c] hover:bg-[#fbf5e8]"
+                  }`}
+                  aria-label={`Page ${num}`}
+                  aria-current={num === page ? "page" : undefined}
+                >
+                  {num}
+                </button>
+              )
+            )}
+            <button
+              type="button"
+              onClick={() => onPageChange(page + 1)}
+              disabled={page === totalPages}
+              className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#4d5870] hover:border-[#c89b3c] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

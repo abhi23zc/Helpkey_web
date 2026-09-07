@@ -32,6 +32,20 @@ export function usePartnerDashboardData() {
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [reportingDate, setReportingDateState] = useState(() => {
+    const fallback = new Date().toISOString().slice(0, 10);
+    if (typeof window === "undefined") return fallback;
+    const date = new URLSearchParams(window.location.search).get("date");
+    return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : fallback;
+  });
+
+  const setReportingDate = (nextDate: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) return;
+    setReportingDateState(nextDate);
+    const url = new URL(window.location.href);
+    url.searchParams.set("date", nextDate);
+    window.history.replaceState(null, "", url);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +91,8 @@ export function usePartnerDashboardData() {
     selectedProperty,
     selectedPropertyId,
     setSelectedPropertyId,
+    reportingDate,
+    setReportingDate,
     businessName,
     currency: selectedProperty?.currency ?? currency,
     user,

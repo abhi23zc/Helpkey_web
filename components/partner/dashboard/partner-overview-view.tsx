@@ -1,482 +1,86 @@
+"use client";
+
 import Link from "next/link";
-import {
-  ArrowUpRight,
-  BedDouble,
-  Bell,
-  Building2,
-  CalendarDays,
-  ChevronRight,
-  CircleAlert,
-  Clock3,
-  CreditCard,
-  IndianRupee,
-  MessageCircle,
-  MoreVertical,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  TrendingUp,
-  UsersRound
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowUpRight, BedDouble, Bell, CalendarDays, ChevronRight, CircleAlert, Clock3, IndianRupee, MessageCircle, RefreshCw, Send, Star, UsersRound } from "lucide-react";
 import type { Property } from "./types";
 import { formatPaise } from "@/lib/currency";
-import { ActionRow, DashboardCard, MetricCard, OperationItem, PayoutLine, RevenueOccupancyDualChart, StatusChip } from "./shared";
+import { ActionRow, DashboardCard, MetricCard, StatusChip } from "./shared";
 
-export function PartnerOverviewView({
-  selectedProperty,
-  propertyName,
-  businessName,
-  isLive,
-  health,
-}: {
-  selectedProperty?: Property;
-  propertyName: string;
-  businessName: string;
-  isLive: boolean;
-  health: number;
-}) {
-  const coverImage = selectedProperty?.coverImageUrl || "/balmoral_hotel.png";
-  return (
-    <div className="space-y-4">
-      {/* Hero Section Banner */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[#ffffffba] p-5 shadow-[0_4px_16px_rgba(0,0,0,0.03)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-          {/* Real Hotel Thumbnail Image */}
-          <div className="h-32 w-full shrink-0 overflow-hidden rounded-xl bg-slate-100 shadow-xs lg:h-28 lg:w-44">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={coverImage}
-              alt={propertyName}
-              className="h-full w-full object-cover"
-            />
-          </div>
+type Range = "daily" | "weekly" | "monthly";
+type Overview = {
+  metrics: { arrivals: number; departures: number; occupancy: number; stayingTonight: number; pendingRequests: number; noShowRisk: number; bookedPaise: number; paidPaise: number };
+  series: Array<{ label: string; bookedPaise: number; paidPaise: number; occupancy: number }>;
+  availability: Array<{ date: string; total: number; reserved: number; remaining: number; percentage: number }>;
+  upcomingReservations: Array<{ id: string; confirmationCode: string; guestName: string; roomName: string; checkIn: string; checkOut: string; nights: number; paymentStatus: string; bookingStatus: string; specialRequest: string | null }>;
+  review: { summary: { count: number; average: number }; latest: { reviewerName: string; rating: number; text: string; submittedAt: string | null } | null };
+  alerts: Array<{ type: "availability" | "requests" | "reviews"; title: string; detail: string; href: string }>;
+};
 
-          <div className="min-w-0 flex-1">
-            <h2 className="text-2xl font-bold tracking-tight text-[#061224] sm:text-3xl">
-              Welcome back, {businessName}
-            </h2>
-            <p className="mt-1 text-sm font-medium text-slate-600">
-              Here&apos;s what&apos;s happening at{" "}
-              <span className="font-semibold text-[#061224]">{propertyName}</span> today.
-            </p>
-            <div className="mt-3.5 flex flex-wrap items-center gap-3">
-              {isLive ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/70 px-3.5 py-1 text-xs font-bold text-emerald-700">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Live on Helpkey
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/70 px-3.5 py-1 text-xs font-bold text-amber-700">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  Not live yet
-                </span>
-              )}
-              <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
-                Listing Health
-                <b className="grid h-7 w-7 place-items-center rounded-full border-2 border-[#c89b3c] text-xs text-[#061224]">
-                  {health}
-                </b>
-                <span className="font-bold text-[#061224]">Excellent</span>
-                <span className="text-slate-500">Keep it up!</span>
-              </span>
-            </div>
-          </div>
+const money = (value: number) => formatPaise(value, { currency: "INR" });
+const shortDate = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+const statusLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-          {/* Action Buttons */}
-          <div className="flex flex-col gap-2.5 sm:flex-row lg:flex-row lg:items-center">
-            <Link
-              href={selectedProperty ? `/partner/properties/${selectedProperty.id}` : "#"}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 text-xs font-bold text-white shadow-xs hover:bg-[#0a1f3c] transition-colors"
-            >
-              <CalendarDays className="h-4 w-4" />
-              Update Availability
-            </Link>
-            <Link
-              href="/partner/onboarding?new=1"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-[#061224] hover:bg-slate-50 transition-colors"
-            >
-              <BedDouble className="h-4 w-4" />
-              Add Room
-            </Link>
-            <button
-              type="button"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-[#061224] hover:bg-slate-50 transition-colors"
-            >
-              <ArrowUpRight className="h-4 w-4" />
-              View Public Listing
-            </button>
-          </div>
+export function PartnerOverviewView({ selectedProperty, propertyName, businessName, isLive, health, reportingDate }: { selectedProperty?: Property; propertyName: string; businessName: string; isLive: boolean; health: number; reportingDate: string }) {
+  const [range, setRange] = useState<Range>("daily");
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const propertyId = selectedProperty?.id;
+
+  const load = useCallback(async (signal?: AbortSignal, background = false) => {
+    if (!propertyId) { setOverview(null); setLoading(false); return; }
+    if (background) setRefreshing(true); else setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ propertyId, date: reportingDate, range });
+      const response = await fetch(`/api/partner/dashboard/overview?${params}`, { cache: "no-store", signal });
+      const body = await response.json() as Overview & { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Unable to load dashboard overview.");
+      setOverview(body);
+    } catch (cause) {
+      if ((cause as DOMException)?.name !== "AbortError") setError(cause instanceof Error ? cause.message : "Unable to load dashboard overview.");
+    } finally { if (!signal?.aborted) { setLoading(false); setRefreshing(false); } }
+  }, [propertyId, reportingDate, range]);
+
+  useEffect(() => { const controller = new AbortController(); void Promise.resolve().then(() => load(controller.signal)); return () => controller.abort(); }, [load]);
+  useEffect(() => { const refresh = () => { if (document.visibilityState === "visible") void load(undefined, true); }; const timer = window.setInterval(refresh, 60_000); window.addEventListener("focus", refresh); return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); }; }, [load]);
+
+  return <div className="space-y-4">
+    <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/75 p-5 shadow-[0_4px_16px_rgba(0,0,0,0.03)]">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+        <div className="h-28 w-full shrink-0 overflow-hidden rounded-xl bg-slate-100 lg:w-44">
+          {/* The partner cover may be a short-lived R2 URL, so it cannot use the static image optimizer. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={selectedProperty?.coverImageUrl || "/balmoral_hotel.png"} alt={propertyName} className="h-full w-full object-cover" />
         </div>
-      </section>
-
-      {/* 5 Metric Header Cards */}
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
-        <MetricCard
-          icon={UsersRound}
-          title="Arrivals Today"
-          value="14"
-          trend="↑ 27% vs yesterday"
-          trendType="up"
-        />
-        <MetricCard
-          icon={Send}
-          title="Departures Today"
-          value="8"
-          trend="↓ 11% vs yesterday"
-          trendType="down"
-        />
-        <MetricCard
-          icon={Clock3}
-          title="Occupancy"
-          value="78%"
-          trend="↑ 6 pts vs last week"
-          trendType="up"
-        />
-        <MetricCard
-          icon={IndianRupee}
-          title="Revenue This Week"
-          value={formatPaise(482_500_00)}
-          trend="↑ 18% vs last week"
-          trendType="up"
-        />
-        <MetricCard
-          icon={Bell}
-          title="Pending Requests"
-          value="5"
-          trend="Requires attention"
-          trendType="attention"
-        />
+        <div className="min-w-0 flex-1"><h1 className="text-2xl font-bold tracking-tight text-[#061224] sm:text-3xl">{businessName}</h1><p className="mt-1 text-sm text-slate-600">A live view of <span className="font-semibold text-[#061224]">{propertyName}</span> for {shortDate(reportingDate)}.</p><div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${isLive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}><span className={`h-2 w-2 rounded-full ${isLive ? "bg-emerald-500" : "bg-amber-500"}`} />{isLive ? "Live on Helpkey" : "Not live yet"}</span><span className="text-slate-600">Listing health <b className="ml-1 text-[#061224]">{health}%</b></span></div></div>
+        <div className="flex flex-wrap gap-2"><Link href="/partner/rooms" className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#061224] px-3.5 text-xs font-semibold text-white hover:bg-[#102848]"><CalendarDays className="h-4 w-4" />Update availability</Link><Link href="/partner/rooms" className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-[#061224] hover:bg-slate-50"><BedDouble className="h-4 w-4" />Manage rooms</Link>{selectedProperty?.status === "active" && selectedProperty.slug && <Link href={`/hotels/${selectedProperty.slug}`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-[#061224] hover:bg-slate-50"><ArrowUpRight className="h-4 w-4" />Public listing</Link>}</div>
       </div>
-
-      {/* Middle Row Layout (Revenue & Occupancy Chart + Operations + Action Center) */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_340px_360px]">
-        {/* Card 1: Dual Axis Chart */}
-        <DashboardCard className="p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-bold text-[#061224]">Revenue & Occupancy</h3>
-              <div className="mt-2 flex items-center gap-4 text-xs text-slate-600">
-                <span className="inline-flex items-center gap-2 font-medium">
-                  <span className="h-2.5 w-3.5 rounded-sm bg-[#061224]" />
-                  Revenue (INR)
-                </span>
-                <span className="inline-flex items-center gap-2 font-medium">
-                  <span className="h-2.5 w-3.5 rounded-sm bg-[#c89b3c]" />
-                  Occupancy (%)
-                </span>
-              </div>
-            </div>
-
-            {/* Timeframe Switcher */}
-            <div className="flex rounded-xl border border-slate-200/80 bg-[#f7f5f0] p-1">
-              {["Daily", "Weekly", "Monthly"].map((item, index) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                    index === 0
-                      ? "bg-[#061224] text-white shadow-xs"
-                      : "text-slate-600 hover:text-[#061224]"
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* SVG Dual-Axis Chart */}
-          <RevenueOccupancyDualChart />
-
-          {/* Mini Summary Stats */}
-          <div className="mt-4 grid gap-4 border-t border-slate-200/80 pt-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs font-semibold text-slate-500">Total Revenue</p>
-              <p className="mt-1 text-xl font-bold text-[#061224]">{formatPaise(482_500_00)}</p>
-              <p className="text-xs font-bold text-emerald-600">↑ 18%</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-500">Average Occupancy</p>
-              <p className="mt-1 text-xl font-bold text-[#061224]">78%</p>
-              <p className="text-xs font-bold text-emerald-600">↑ 6 pts</p>
-            </div>
-            <div className="flex items-end justify-end">
-              <Link
-                href={selectedProperty ? `/partner/properties/${selectedProperty.id}` : "#"}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#061224] hover:underline"
-              >
-                View full report <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          </div>
-        </DashboardCard>
-
-        {/* Card 2: Today's Operations */}
-        <DashboardCard className="p-5 flex flex-col justify-between">
-          <div>
-            <h3 className="text-base font-bold text-[#061224]">Today&apos;s Operations</h3>
-            <div className="mt-4 space-y-2.5">
-              <OperationItem
-                icon={UsersRound}
-                title="Check-ins"
-                detail="14 expected"
-                tone="blue"
-              />
-              <OperationItem
-                icon={Bell}
-                title="Special Requests"
-                detail="3 new requests"
-                tone="gold"
-              />
-              <OperationItem
-                icon={Sparkles}
-                title="Housekeeping Notes"
-                detail="8 rooms pending"
-                tone="green"
-              />
-              <OperationItem
-                icon={CreditCard}
-                title="Payment Issues"
-                detail="1 requires attention"
-                tone="red"
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="mt-4 inline-flex items-center justify-end gap-1.5 text-xs font-bold text-[#061224] hover:underline"
-          >
-            View all operations <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </DashboardCard>
-
-        {/* Card 3: Action Center */}
-        <DashboardCard className="p-5 flex flex-col justify-between">
-          <div>
-            <h3 className="text-base font-bold text-[#061224]">Action Center</h3>
-            <div className="mt-4 space-y-2.5">
-              <ActionRow
-                icon={CircleAlert}
-                title="Low Availability Alert"
-                detail="Only 2 Deluxe Rooms left for May 24"
-                tone="warning"
-              />
-              <ActionRow
-                icon={MessageCircle}
-                title="Reply to Reviews"
-                detail="2 new reviews need your response"
-                tone="info"
-              />
-              <ActionRow
-                icon={Building2}
-                title="Payout Pending"
-                detail="Your next payout is due soon"
-                tone="gold"
-              />
-              <ActionRow
-                icon={TrendingUp}
-                title="Update Seasonal Pricing"
-                detail="High demand dates coming up"
-                tone="purple"
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="mt-4 inline-flex items-center justify-end gap-1.5 text-xs font-bold text-[#061224] hover:underline"
-          >
-            View all actions <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </DashboardCard>
-      </div>
-
-      {/* Upcoming Reservations Table (Full Width) */}
-      <DashboardCard className="overflow-hidden flex flex-col justify-between w-full">
-        <div>
-          <div className="flex items-center justify-between border-b border-slate-200/60 p-5">
-            <h3 className="text-base font-bold text-[#061224]">Upcoming Reservations</h3>
-            <button type="button" className="text-xs font-bold text-[#061224] hover:underline">
-              View all
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200/60 bg-[#fbfaf7] text-slate-500 font-bold uppercase tracking-wider">
-                <tr>
-                  <th className="px-5 py-3">Guest</th>
-                  <th className="px-4 py-3">Room Type</th>
-                  <th className="px-4 py-3">Stay Dates</th>
-                  <th className="px-4 py-3">Payment</th>
-                  <th className="px-4 py-3">Request</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60">
-                {reservationRows.map((row) => (
-                  <tr key={row.guest} className="hover:bg-[#fcfbf9] transition-colors">
-                    <td className="px-5 py-3.5 font-bold text-[#061224]">
-                      <div className="flex items-center gap-3">
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#061224] text-[11px] font-bold text-white shadow-xs">
-                          {row.initials}
-                        </div>
-                        <span>{row.guest}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 font-medium text-slate-700">{row.room}</td>
-                    <td className="px-4 py-3.5 text-slate-600 font-medium">{row.dates}</td>
-                    <td className="px-4 py-3.5">
-                      <StatusChip label={row.payment} tone={row.payment === "Paid" ? "green" : "amber"} />
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600 font-medium">{row.request}</td>
-                    <td className="px-4 py-3.5">
-                      <StatusChip label={row.status} tone={row.status === "Arriving Today" ? "blue" : "neutral"} />
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button className="rounded-lg border border-slate-200/80 px-3 py-1.5 font-bold text-xs hover:bg-slate-50 transition-colors">
-                          View
-                        </button>
-                        <button className="p-1 text-slate-400 hover:text-slate-600">
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="border-t border-slate-200/60 p-4 text-center">
-          <button type="button" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#061224] hover:underline">
-            View all reservations <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </DashboardCard>
-
-      {/* Room Availability Card (Full Width Below Reservations) */}
-      <DashboardCard className="p-5 w-full">
-        <h3 className="text-base font-bold text-[#061224]">Room Availability <span className="text-xs font-normal text-slate-500">(Next 7 Days)</span></h3>
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 overflow-hidden rounded-xl border border-slate-200/60 text-center text-xs">
-          {availabilityDays.map((day) => (
-            <div key={day.day} className="border-r border-slate-200/60 p-3.5 last:border-r-0 border-b lg:border-b-0">
-              <p className="font-bold text-slate-700 text-sm">{day.day}</p>
-              <p className="text-xs text-slate-500">{day.date}</p>
-              <p className={`mt-2 text-lg font-extrabold ${day.color}`}>
-                {day.value}
-              </p>
-              <p className={`text-xs font-bold ${day.color}`}>{day.label}</p>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="mt-4 inline-flex w-full items-center justify-center gap-1.5 text-xs font-bold text-[#061224] hover:underline"
-        >
-          Manage Availability Calendar <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </DashboardCard>
-
-      {/* Reviews Summary & Payout Summary 2-Column Grid */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Reviews Summary Card */}
-        <DashboardCard className="p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#061224]">Reviews Summary</h3>
-              <span className="text-xs font-semibold text-slate-400">Latest Review</span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-1.5">
-              <p className="text-4xl font-extrabold text-[#061224]">4.6</p>
-              <span className="text-xs text-slate-500 font-semibold">/ 5</span>
-            </div>
-            <div className="mt-1 flex text-[#c89b3c]">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Star key={index} className="h-4 w-4 fill-current" />
-              ))}
-            </div>
-            <p className="mt-1 text-[11px] font-semibold text-slate-500">
-              Based on 126 reviews
-            </p>
-
-            <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 italic text-slate-600 text-xs leading-relaxed">
-              &quot;Wonderful stay! The staff were incredibly welcoming and the room was spotless. We&apos;ll be back for sure!&quot;
-              <span className="mt-1 block not-italic text-[10px] font-bold text-slate-500">— James T., May 17, 2025</span>
-            </div>
-          </div>
-          <button className="mt-4 rounded-xl bg-[#061224] px-3.5 py-2.5 text-xs font-bold text-white hover:bg-[#0a1f3c] transition-colors">
-            Respond to Reviews
-          </button>
-        </DashboardCard>
-
-        {/* Payout Summary Card */}
-        <DashboardCard className="p-5 flex flex-col justify-between">
-          <div>
-            <h3 className="text-base font-bold text-[#061224]">Payout Summary</h3>
-            <div className="mt-4 space-y-2.5 text-xs">
-              <PayoutLine label="Next Payout Date" value="May 26, 2025" />
-              <PayoutLine label="Payout Amount" value={formatPaise(124_500_00, { withFractions: true })} positive />
-              <PayoutLine label="Commission" value="12%" />
-              <PayoutLine label="Bank Status" value="Verified" positive icon={<ShieldCheck className="h-3.5 w-3.5 text-emerald-600 inline ml-1" />} />
-            </div>
-          </div>
-          <button className="mt-4 inline-flex w-full items-center justify-center gap-1.5 border-t border-slate-200/60 pt-3 text-xs font-bold text-[#061224] hover:underline">
-            View Payouts <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </DashboardCard>
-      </div>
+    </section>
+    {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><span>{error}</span><button type="button" onClick={() => void load()} className="font-semibold underline">Try again</button></div>}
+    <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-5" aria-busy={loading}>
+      <MetricCard icon={UsersRound} title="Arrivals" value={loading ? "—" : String(overview?.metrics.arrivals ?? 0)} trend={loading ? "Loading…" : `${overview?.metrics.arrivals ?? 0} expected check-in${(overview?.metrics.arrivals ?? 0) === 1 ? "" : "s"}`} trendType="up" />
+      <MetricCard icon={Send} title="Departures" value={loading ? "—" : String(overview?.metrics.departures ?? 0)} trend={loading ? "Loading…" : `${overview?.metrics.departures ?? 0} expected check-out${(overview?.metrics.departures ?? 0) === 1 ? "" : "s"}`} trendType="neutral" />
+      <MetricCard icon={Clock3} title="Occupancy" value={loading ? "—" : `${overview?.metrics.occupancy ?? 0}%`} trend={loading ? "Loading…" : `${overview?.metrics.stayingTonight ?? 0} active stay${(overview?.metrics.stayingTonight ?? 0) === 1 ? "" : "s"}`} trendType="up" />
+      <MetricCard icon={IndianRupee} title="Booked value" value={loading ? "—" : money(overview?.metrics.bookedPaise ?? 0)} trend={loading ? "Loading…" : `${overview?.series.length ?? 0} reporting points`} trendType="up" />
+      <MetricCard icon={Bell} title="Needs attention" value={loading ? "—" : String((overview?.metrics.pendingRequests ?? 0) + (overview?.metrics.noShowRisk ?? 0))} trend={loading ? "Loading…" : `${overview?.metrics.pendingRequests ?? 0} requests · ${overview?.metrics.noShowRisk ?? 0} risks`} trendType={(overview?.metrics.noShowRisk ?? 0) > 0 ? "attention" : "neutral"} />
     </div>
-  );
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_340px_340px]">
+      <DashboardCard className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-base font-semibold text-[#061224]">Revenue & occupancy</h2><p className="mt-1 text-xs text-slate-500">Booked value and paid revenue are recorded on their transaction dates.</p></div><div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Reporting range">{(["daily", "weekly", "monthly"] as Range[]).map((item) => <button key={item} type="button" onClick={() => setRange(item)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize ${range === item ? "bg-[#061224] text-white shadow-sm" : "text-slate-600 hover:text-[#061224]"}`}>{item}</button>)}</div></div><RevenueChart data={overview?.series ?? []} loading={loading} /><div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3"><Summary label="Booked value" value={money(overview?.metrics.bookedPaise ?? 0)} /><Summary label="Paid revenue" value={money(overview?.metrics.paidPaise ?? 0)} positive /><Link href="/partner/reservations" className="self-end text-xs font-semibold text-[#061224] hover:underline">View reservations <ChevronRight className="inline h-3.5 w-3.5" /></Link></div></DashboardCard>
+      <DashboardCard className="p-5"><h2 className="text-base font-semibold text-[#061224]">Today&apos;s operations</h2><div className="mt-4 space-y-2"><OperationLink href="/partner/reservations" icon={UsersRound} title="Check-ins" detail={`${overview?.metrics.arrivals ?? 0} expected`} /><OperationLink href="/partner/reservations" icon={MessageCircle} title="Guest requests" detail={`${overview?.metrics.pendingRequests ?? 0} to review`} /><OperationLink href="/partner/reservations" icon={CircleAlert} title="No-show risk" detail={`${overview?.metrics.noShowRisk ?? 0} reservation${(overview?.metrics.noShowRisk ?? 0) === 1 ? "" : "s"}`} /></div></DashboardCard>
+      <DashboardCard className="p-5"><h2 className="text-base font-semibold text-[#061224]">Action center</h2><div className="mt-4 space-y-2">{loading ? <p className="text-sm text-slate-500">Checking property activity…</p> : overview?.alerts.length ? overview.alerts.map((alert) => <Link key={`${alert.type}-${alert.detail}`} href={alert.href} className="block"><ActionRow icon={alert.type === "availability" ? CircleAlert : alert.type === "reviews" ? Star : MessageCircle} title={alert.title} detail={alert.detail} tone={alert.type === "availability" ? "warning" : alert.type === "reviews" ? "gold" : "info"} /></Link>) : <p className="rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-slate-500">No action items right now.</p>}</div></DashboardCard>
+    </div>
+    <DashboardCard className="overflow-hidden"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 className="text-base font-semibold text-[#061224]">Upcoming reservations</h2><p className="mt-0.5 text-xs text-slate-500">Next active stays from {shortDate(reportingDate)}.</p></div><Link href="/partner/reservations" className="text-xs font-semibold text-[#061224] hover:underline">View all</Link></div><ReservationTable rows={overview?.upcomingReservations ?? []} loading={loading} /></DashboardCard>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]"><DashboardCard className="p-5"><div className="flex items-center justify-between"><div><h2 className="text-base font-semibold text-[#061224]">Room availability</h2><p className="mt-0.5 text-xs text-slate-500">Next seven days of sellable inventory.</p></div><Link href="/partner/rooms" className="text-xs font-semibold text-[#061224] hover:underline">Manage rooms</Link></div><Availability data={overview?.availability ?? []} loading={loading} /></DashboardCard><DashboardCard className="p-5"><div className="flex items-center justify-between"><h2 className="text-base font-semibold text-[#061224]">Guest reviews</h2><Link href="/partner/reviews" className="text-xs font-semibold text-[#061224] hover:underline">View reviews</Link></div><ReviewSummary review={overview?.review} loading={loading} /></DashboardCard></div>
+    <div className="flex justify-end"><button type="button" onClick={() => void load(undefined, true)} disabled={refreshing} className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-[#061224] disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />{refreshing ? "Refreshing…" : "Refresh dashboard"}</button></div>
+  </div>;
 }
 
-const reservationRows = [
-  {
-    initials: "EJ",
-    guest: "Emma Johnson",
-    room: "Deluxe King",
-    dates: "May 18 – May 21",
-    payment: "Paid",
-    request: "Late check-in",
-    status: "Arriving Today",
-  },
-  {
-    initials: "MB",
-    guest: "Michael Brown",
-    room: "Executive Suite",
-    dates: "May 18 – May 20",
-    payment: "Paid",
-    request: "Extra pillows",
-    status: "Arriving Today",
-  },
-  {
-    initials: "SW",
-    guest: "Sarah Wilson",
-    room: "Deluxe Twin",
-    dates: "May 19 – May 22",
-    payment: "Pending",
-    request: "High floor",
-    status: "Upcoming",
-  },
-  {
-    initials: "DL",
-    guest: "David Lee",
-    room: "Premier King",
-    dates: "May 19 – May 23",
-    payment: "Paid",
-    request: "Airport transfer",
-    status: "Upcoming",
-  },
-];
-
-const availabilityDays = [
-  { day: "Sun", date: "18", value: "72%", label: "Available", color: "text-emerald-600" },
-  { day: "Mon", date: "19", value: "68%", label: "Available", color: "text-emerald-600" },
-  { day: "Tue", date: "20", value: "64%", label: "Available", color: "text-emerald-600" },
-  { day: "Wed", date: "21", value: "58%", label: "Available", color: "text-emerald-600" },
-  { day: "Thu", date: "22", value: "41%", label: "Low", color: "text-amber-600" },
-  { day: "Fri", date: "23", value: "36%", label: "Low", color: "text-amber-600" },
-  { day: "Sat", date: "24", value: "18%", label: "Very Low", color: "text-red-500" },
-];
+function Summary({ label, value, positive = false }: { label: string; value: string; positive?: boolean }) { return <div><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 text-lg font-semibold ${positive ? "text-emerald-700" : "text-[#061224]"}`}>{value}</p></div>; }
+function OperationLink({ href, icon: Icon, title, detail }: { href: string; icon: typeof UsersRound; title: string; detail: string }) { return <Link href={href} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 hover:bg-slate-50"><span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600"><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><b className="block text-xs font-semibold text-[#061224]">{title}</b><small className="text-[11px] text-slate-500">{detail}</small></span><ChevronRight className="h-4 w-4 text-slate-400" /></Link>; }
+function RevenueChart({ data, loading }: { data: Overview["series"]; loading: boolean }) { const max = Math.max(1, ...data.flatMap((item) => [item.bookedPaise, item.paidPaise])); return <div className="mt-5 h-56 rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/70 p-4">{loading ? <div className="h-full animate-pulse rounded-lg bg-slate-100" /> : !data.length || data.every((item) => !item.bookedPaise && !item.paidPaise) ? <div className="grid h-full place-items-center text-center text-sm text-slate-500">No booking or payment activity in this reporting period.</div> : <div className="flex h-full items-end gap-2">{data.map((item) => <div key={item.label} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1"><div className="flex flex-1 items-end justify-center gap-1"><span title={`${item.label}: booked ${money(item.bookedPaise)}`} style={{ height: `${Math.max(3, Math.round(item.bookedPaise / max * 100))}%` }} className="w-2 rounded-t bg-[#061224] sm:w-3" /><span title={`${item.label}: paid ${money(item.paidPaise)}`} style={{ height: `${Math.max(3, Math.round(item.paidPaise / max * 100))}%` }} className="w-2 rounded-t bg-emerald-500 sm:w-3" /></div><span className="truncate text-center text-[10px] text-slate-500">{item.label}</span></div>)}</div>}</div>; }
+function ReservationTable({ rows, loading }: { rows: Overview["upcomingReservations"]; loading: boolean }) { if (loading) return <div className="p-5"><div className="h-32 animate-pulse rounded-xl bg-slate-100" /></div>; if (!rows.length) return <p className="p-8 text-center text-sm text-slate-500">No upcoming active reservations for this property.</p>; return <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-5 py-3 font-medium">Guest</th><th className="px-4 py-3 font-medium">Room</th><th className="px-4 py-3 font-medium">Stay</th><th className="px-4 py-3 font-medium">Payment</th><th className="px-4 py-3 font-medium">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.id}><td className="px-5 py-3.5"><p className="font-semibold text-[#061224]">{row.guestName}</p><p className="mt-0.5 text-slate-500">{row.confirmationCode}</p></td><td className="px-4 py-3.5 text-slate-700">{row.roomName}</td><td className="px-4 py-3.5 text-slate-600">{shortDate(row.checkIn)} – {shortDate(row.checkOut)}<span className="ml-1 text-slate-400">· {row.nights} night{row.nights === 1 ? "" : "s"}</span></td><td className="px-4 py-3.5"><StatusChip label={statusLabel(row.paymentStatus)} tone={row.paymentStatus === "paid" ? "green" : "amber"} /></td><td className="px-4 py-3.5"><StatusChip label={statusLabel(row.bookingStatus)} tone={row.bookingStatus === "confirmed" ? "blue" : "neutral"} /></td></tr>)}</tbody></table></div>; }
+function Availability({ data, loading }: { data: Overview["availability"]; loading: boolean }) { if (loading) return <div className="mt-4 h-28 animate-pulse rounded-xl bg-slate-100" />; if (!data.length || !data.some((day) => day.total)) return <p className="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-7 text-center text-sm text-slate-500">Add active rooms to start tracking availability.</p>; return <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-4 xl:grid-cols-7">{data.map((day) => <div key={day.date} className="border-b border-r border-slate-200 p-3 text-center last:border-r-0 xl:border-b-0"><p className="text-xs font-medium text-slate-600">{shortDate(day.date)}</p><p className={`mt-2 text-xl font-semibold ${day.percentage <= 20 ? "text-red-600" : day.percentage <= 45 ? "text-amber-600" : "text-emerald-700"}`}>{day.remaining}</p><p className="text-[11px] text-slate-500">of {day.total} available</p></div>)}</div>; }
+function ReviewSummary({ review, loading }: { review?: Overview["review"]; loading: boolean }) { if (loading) return <div className="mt-4 h-36 animate-pulse rounded-xl bg-slate-100" />; if (!review?.summary.count) return <p className="mt-5 rounded-xl border border-dashed border-slate-200 px-4 py-7 text-center text-sm text-slate-500">No approved Helpkey reviews yet.</p>; return <div className="mt-4"><div className="flex items-end gap-2"><p className="text-4xl font-semibold text-[#061224]">{review.summary.average.toFixed(1)}</p><span className="mb-1 text-xs text-slate-500">/ 5 · {review.summary.count} review{review.summary.count === 1 ? "" : "s"}</span></div><div className="mt-2 flex gap-1 text-[#c89b3c]">{Array.from({ length: 5 }).map((_, index) => <Star key={index} className={`h-4 w-4 ${index < Math.round(review.summary.average) ? "fill-current" : "text-slate-200"}`} />)}</div>{review.latest && <blockquote className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">“{review.latest.text || "Guest feedback received."}”<footer className="mt-2 font-medium text-slate-500">— {review.latest.reviewerName}</footer></blockquote>}</div>; }
