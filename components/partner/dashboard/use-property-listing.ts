@@ -22,6 +22,11 @@ export type ListingRatePlan = {
   roomTypeId: string;
   cancellationPolicyId: string;
   paymentMode?: string;
+  taxBasisPoints?: number;
+  customerFeePaise?: number;
+  depositBasisPoints?: number;
+  minimumNights?: number;
+  maximumNights?: number | null;
   status: "active" | "paused";
 };
 

@@ -40,7 +40,7 @@ const adminNav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true, disabled: false },
   { href: "/admin/partners", label: "Partners", icon: ShieldCheck, exact: false, disabled: false },
   { href: "/admin/properties", label: "Properties", icon: Building2, exact: false, disabled: false },
-  { href: "/admin/bookings", label: "Bookings", icon: CalendarDays, exact: false, disabled: true },
+  { href: "/admin/bookings", label: "Bookings", icon: CalendarDays, exact: false, disabled: false },
   { href: "/admin/users", label: "Users", icon: Users, exact: false, disabled: false },
   { href: "/admin/reviews", label: "Reviews", icon: MessageSquare, exact: false, disabled: false },
   { href: "/admin/payments", label: "Payments", icon: WalletCards, exact: false, disabled: true },

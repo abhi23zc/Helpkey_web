@@ -1,434 +1,142 @@
-import Image from "next/image";
-import Link from "next/link";
+"use client";
 
-type IconProps = {
-  className?: string;
-};
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, CheckCircle2, Hotel, RefreshCw, XCircle } from "lucide-react";
+import { SiteHeader } from "@/components/home/home-page";
 
 type Booking = {
-  hotel: string;
-  city: string;
-  image: string;
-  total: string;
-  totalLabel: string;
+  id: string;
+  confirmationCode: string;
+  propertySlug: string | null;
+  propertyName: string;
+  roomName: string;
+  ratePlanName: string;
   checkIn: string;
-  checkInTime: string;
   checkOut: string;
-  checkOutTime: string;
-  guests: string;
-  confirmation: string;
-  status: "Confirmed";
-  hotelHref: string;
+  nights: number;
+  adults: number;
+  children: number;
+  totalPaise: number;
+  payableNowPaise: number;
+  paidPaise: number;
+  currency: string;
+  bookingStatus: string;
+  paymentStatus: string;
+  paymentMethod: string | null;
+  razorpayOrderId: string | null;
 };
 
-const tabs = ["Upcoming", "Past", "Cancelled"] as const;
+declare global {
+  interface Window {
+    Razorpay?: new (options: { key: string; amount: number; currency: string; name: string; order_id: string; handler: (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => void; modal?: { ondismiss: () => void } }) => { open: () => void };
+  }
+}
 
-const bookings: Booking[] = [
-  {
-    hotel: "The Balmoral Hotel",
-    city: "Edinburgh, UK",
-    image:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDMERPdoJNhOoeHHG-vVfy4W5jCM-Og6XvqBOatXFFn8SjNy_9dNlTuV4WD0Fg7lt0vX0Fm5q0cGXbE4JrDJdROTKbPZ32Tjm45aDyNa2v6Tw3uGDN8VPv0vwufo4HCv20J568YXKPlZosDROKlyARCy-FqA8qBD6NL5YPEhASC_R3rhcog9CPF-AT2nLD-G5ls3j3yhu6odFX55JnV76G0q4Ze7BI52uhWdQijltmIT1bKP7hHuaORnw",
-    total: "₹1,485",
-    totalLabel: "Total for 3 nights",
-    checkIn: "Oct 12, 2024",
-    checkInTime: "3:00 PM",
-    checkOut: "Oct 15, 2024",
-    checkOutTime: "11:00 AM",
-    guests: "1 Adult",
-    confirmation: "#HK-8924B",
-    status: "Confirmed",
-    hotelHref: "/hotels/the-balmoral-hotel",
-  },
-  {
-    hotel: "The Ritz London",
-    city: "London, UK",
-    image:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAT5dxFsMqmozjD2fbybzad3gBdj8-CW4lCW6g-jU0M43xChj_RVxmd4WsifrO0DYHYxbsgshCZKYiDBrFggPVBCpSoQjOwgOJc_fR5Esi_Y8gc8R_4TwdbutTrqMunni_9fJf5NrLejZUuZdHIc_saLO79eHOL5nquhTUA8VvWzxDUgW79uTHF9-hPiDlbCXOf7fnhlrPk_1oboWrS8BQfsUxvwKYh_OU6UVne0Qarq3y9tG63duOXyQ",
-    total: "₹1,090",
-    totalLabel: "Total for 2 nights",
-    checkIn: "Nov 05, 2024",
-    checkInTime: "3:00 PM",
-    checkOut: "Nov 07, 2024",
-    checkOutTime: "12:00 PM",
-    guests: "2 Adults",
-    confirmation: "#HK-2195R",
-    status: "Confirmed",
-    hotelHref: "/hotels/the-balmoral-hotel",
-  },
-];
+const tabs = [
+  { id: "upcoming", label: "Upcoming" },
+  { id: "pending_payment", label: "Pending payment" },
+  { id: "past", label: "Past" },
+  { id: "cancelled", label: "Cancelled" },
+] as const;
+
+const money = (value: number, currency: string) => new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(value / 100);
+const prettyDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const statusLabel = (value: string) => value.replaceAll("_", " ");
+
+async function loadRazorpay() {
+  if (window.Razorpay) return;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Secure payment could not load. Please try again."));
+    document.head.appendChild(script);
+  });
+}
 
 export function MyBookingsPage() {
-  return (
-    <div className="flex min-h-screen flex-col bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <BookingsHeader />
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-12 sm:px-6 lg:px-10">
-        <section className="mb-12">
-          <h1 className="text-[40px] font-extrabold tracking-[-0.05em] text-[var(--hk-navy-strong)] sm:text-[52px]">
-            My Bookings
-          </h1>
-          <p className="mt-3 text-[17px] leading-7 text-[var(--hk-muted)]">
-            Manage your upcoming stays and review past trips.
-          </p>
-        </section>
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("upcoming");
+  const [busy, setBusy] = useState<string | null>(null);
 
-        <section className="mb-8">
-          <div className="inline-flex rounded-full bg-[#e7ebfb] p-1">
-            {tabs.map((tab, index) => (
-              <button
-                key={tab}
-                className={`rounded-full px-6 py-2.5 text-[15px] font-semibold transition-colors ${
-                  index === 0
-                    ? "bg-[var(--hk-navy-strong)] text-white shadow-sm"
-                    : "text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </section>
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/bookings/mine", { cache: "no-store" });
+      const body = await response.json() as { bookings?: Booking[]; error?: string };
+      if (!response.ok) throw new Error(body.error === "UNAUTHENTICATED" ? "Sign in to view your bookings." : "Unable to load bookings.");
+      setBookings(body.bookings ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load bookings.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        <section className="space-y-8">
-          {bookings.map((booking) => (
-            <article
-              key={booking.confirmation}
-              className="rounded-[20px] border border-transparent bg-white p-6 shadow-[var(--hk-shadow-soft)] transition-all hover:border-[rgba(8,20,44,0.1)] hover:shadow-[var(--hk-shadow-card)]"
-            >
-              <div className="flex flex-col gap-6 md:flex-row">
-                <div className="relative h-52 overflow-hidden rounded-[14px] md:h-auto md:w-[31%] lg:w-[25%]">
-                  <Image
-                    src={booking.image}
-                    alt={booking.hotel}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 30vw"
-                    className="object-cover"
-                  />
-                  <div className="absolute left-4 top-4 flex items-center gap-1 rounded-full bg-white/92 px-3 py-1.5 backdrop-blur">
-                    <CheckCircleIcon className="h-4 w-4 text-[var(--hk-success)]" />
-                    <span className="text-[12px] font-bold text-[var(--hk-success)]">
-                      {booking.status}
-                    </span>
-                  </div>
-                </div>
+  useEffect(() => { void Promise.resolve().then(() => load()); }, []);
 
-                <div className="flex flex-1 flex-col justify-between">
-                  <div>
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--hk-navy-strong)] sm:text-[24px]">
-                          {booking.hotel}
-                        </h2>
-                        <p className="mt-1 flex items-center gap-1 text-[16px] text-[var(--hk-muted)]">
-                          <PinIcon className="h-4 w-4" />
-                          {booking.city}
-                        </p>
-                      </div>
+  const visible = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return bookings.filter((booking) => {
+      if (tab === "pending_payment") return booking.bookingStatus === "pending_payment";
+      if (tab === "cancelled") return ["cancelled", "no_show", "expired", "payment_failed"].includes(booking.bookingStatus);
+      if (tab === "past") return !["cancelled", "no_show", "expired", "payment_failed", "pending_payment"].includes(booking.bookingStatus) && booking.checkOut < today;
+      return !["cancelled", "no_show", "expired", "payment_failed", "pending_payment"].includes(booking.bookingStatus) && booking.checkOut >= today;
+    });
+  }, [bookings, tab]);
 
-                      <div className="text-left lg:text-right">
-                        <div className="text-[28px] font-extrabold tracking-[-0.04em] text-[var(--hk-navy-strong)]">
-                          {booking.total}
-                        </div>
-                        <div className="text-[13px] text-[var(--hk-muted)]">
-                          {booking.totalLabel}
-                        </div>
-                      </div>
-                    </div>
+  const cancel = async (bookingId: string) => {
+    setBusy(bookingId);
+    setError("");
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/cancel`, { method: "POST" });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Unable to cancel booking.");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to cancel booking.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
-                    <div className="mt-6 grid grid-cols-2 gap-4 rounded-[12px] border border-[rgba(229,225,216,0.7)] bg-[var(--hk-ivory)] p-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <BookingMeta
-                        label="Check In"
-                        value={booking.checkIn}
-                        secondary={booking.checkInTime}
-                      />
-                      <BookingMeta
-                        label="Check Out"
-                        value={booking.checkOut}
-                        secondary={booking.checkOutTime}
-                      />
-                      <BookingMeta label="Guests" value={booking.guests} />
-                      <BookingMeta
-                        label="Confirmation"
-                        value={booking.confirmation}
-                        strong
-                      />
-                    </div>
-                  </div>
+  const resumePayment = async (bookingId: string) => {
+    setBusy(bookingId);
+    setError("");
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/payment-session`, { method: "POST" });
+      const result = await response.json() as { error?: string; confirmationCode?: string; razorpay?: { keyId: string; amount: number; currency: string; name: string; orderId: string } };
+      if (!response.ok || !result.razorpay) throw new Error(result.error ?? "Unable to resume payment.");
+      await loadRazorpay();
+      if (!window.Razorpay) throw new Error("Secure payment is unavailable.");
+      new window.Razorpay({
+        key: result.razorpay.keyId,
+        amount: result.razorpay.amount,
+        currency: result.razorpay.currency,
+        name: result.razorpay.name,
+        order_id: result.razorpay.orderId,
+        handler: async (payment) => {
+          const verified = await fetch(`/api/bookings/${bookingId}/verify-payment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payment) });
+          if (!verified.ok) {
+            setError("Payment was received but could not be verified. Please contact support.");
+            setBusy(null);
+            return;
+          }
+          await load();
+          setTab("upcoming");
+          setBusy(null);
+        },
+        modal: { ondismiss: () => setBusy(null) },
+      }).open();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to resume payment.");
+      setBusy(null);
+    }
+  };
 
-                  <div className="mt-6 flex flex-wrap justify-end gap-3">
-                    <button className="flex items-center gap-2 rounded-[10px] border border-[var(--hk-navy-strong)] px-5 py-2.5 text-[14px] font-semibold text-[var(--hk-navy-strong)] hover:bg-[var(--hk-navy-strong)] hover:text-white">
-                      <EditIcon className="h-4 w-4" />
-                      Change Booking
-                    </button>
-                    <Link
-                      href={booking.hotelHref}
-                      className="flex items-center gap-2 rounded-[10px] border border-[var(--hk-border)] px-5 py-2.5 text-[14px] font-semibold text-[var(--hk-ink)] hover:border-[var(--hk-navy-strong)]"
-                    >
-                      <ReceiptIcon className="h-4 w-4" />
-                      Get Receipt
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </article>
-          ))}
-        </section>
-      </main>
-      <BookingsFooter />
-    </div>
-  );
-}
-
-function BookingMeta({
-  label,
-  value,
-  secondary,
-  strong,
-}: {
-  label: string;
-  value: string;
-  secondary?: string;
-  strong?: boolean;
-}) {
-  return (
-    <div>
-      <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-[var(--hk-muted)]">
-        {label}
-      </div>
-      <div
-        className={`text-[15px] ${strong ? "font-semibold" : "font-medium"} text-[var(--hk-ink)]`}
-      >
-        {value}
-      </div>
-      {secondary ? (
-        <div className="text-[13px] text-[var(--hk-muted)]">{secondary}</div>
-      ) : null}
-    </div>
-  );
-}
-
-function BookingsHeader() {
-  const navItems = ["Find Stays", "Deals", "For Business", "Help"];
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--hk-border)] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-10">
-        <Link
-          href="/"
-          className="flex items-center gap-3 text-[18px] font-bold text-[var(--hk-navy-strong)] sm:text-[22px]"
-        >
-          <KeyIcon className="h-5 w-5 text-[var(--hk-navy-strong)]" />
-          Helpkey
-        </Link>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          {navItems.map((item) => (
-            <Link
-              key={item}
-              href={
-                item === "Find Stays"
-                  ? "/search"
-                  : item === "Help"
-                    ? "/help"
-                    : "/profile"
-              }
-              className="text-[15px] font-medium text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]"
-            >
-              {item}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-4 md:flex">
-            <button className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]">
-              <GlobeIcon className="h-6 w-6" />
-            </button>
-            <Link
-              href="/wishlist"
-              className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
-            >
-              <HeartIcon className="h-6 w-6" />
-            </Link>
-          </div>
-          <button className="hidden items-center gap-1 text-[14px] text-[var(--hk-muted)] md:flex">
-            INR
-            <ChevronDownIcon className="h-4 w-4" />
-          </button>
-          <button className="flex items-center gap-2 rounded-[12px] bg-[var(--hk-navy-strong)] px-4 py-3 text-[15px] font-semibold text-white">
-            <UserCircleIcon className="h-5 w-5" />
-            Log in
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function BookingsFooter() {
-  const links = [
-    "Privacy Policy",
-    "Terms of Service",
-    "Cookie Policy",
-    "Sustainability",
-    "Careers",
-    "Press",
-  ];
-
-  return (
-    <footer className="mt-auto border-t border-[var(--hk-border)] bg-white">
-      <div className="mx-auto grid max-w-[1280px] grid-cols-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-4 lg:px-10">
-        <div className="md:col-span-1">
-          <Link
-            href="/"
-            className="flex items-center gap-3 text-[18px] font-bold text-[var(--hk-navy-strong)] sm:text-[22px]"
-          >
-            <KeyIcon className="h-5 w-5 text-[var(--hk-navy-strong)]" />
-            Helpkey
-          </Link>
-          <p className="mt-4 text-[12px] text-[var(--hk-muted)]">
-            © 2024 Helpkey International. All rights reserved.
-          </p>
-        </div>
-        <div className="md:col-span-3 flex flex-wrap gap-x-8 gap-y-4 md:justify-end">
-          {links.map((link) => (
-            <Link
-              key={link}
-              href="/help"
-              className="text-[15px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
-            >
-              {link}
-            </Link>
-          ))}
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-function KeyIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M14.5 8.5a4.5 4.5 0 1 1-8.63 1.75A4.5 4.5 0 0 1 14.5 8.5ZM14.5 8.5H22m-3.5 0v3.25m-3.25-3.25V12"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.5" cy="8.5" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function GlobeIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HeartIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m12 20.25-.94-.85C5.75 14.6 2.5 11.64 2.5 8a4.75 4.75 0 0 1 8.2-3.27L12 6.02l1.3-1.29A4.75 4.75 0 0 1 21.5 8c0 3.64-3.25 6.6-8.56 11.4l-.94.85Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronDownIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m5 7.5 5 5 5-5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function UserCircleIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 8a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-5-2.2c.91-1.7 2.74-2.8 5-2.8s4.09 1.1 5 2.8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CheckCircleIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-3.25-9 2.25 2.25 4.5-4.75"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PinIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 20s6-5.27 6-10a6 6 0 1 0-12 0c0 4.73 6 10 6 10Zm0-7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function EditIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Zm8-12 3 3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ReceiptIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M7 4.75h10A1.75 1.75 0 0 1 18.75 6.5v13l-2.75-1.75-2 1.75-2-1.75-2 1.75-2.75-1.75v-13A1.75 1.75 0 0 1 7 4.75Zm2.25 4h5.5m-5.5 3.5h5.5m-5.5 3.5h3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]"><SiteHeader onLoginClick={() => {}} /><main className="mx-auto max-w-[1180px] px-4 py-10 sm:px-6 lg:px-8"><div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--hk-gold-strong)]">Reservations</p><h1 className="mt-2 text-4xl font-bold text-[var(--hk-navy)]">My bookings</h1><p className="mt-2 text-[var(--hk-muted)]">Track confirmed stays, pending payments, and cancellation status.</p></div><button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border border-[var(--hk-border-strong)] bg-white px-4 py-2 text-sm font-bold text-[var(--hk-navy)]"><RefreshCw className="h-4 w-4" />Refresh</button></div><div className="mt-8 flex gap-2 overflow-x-auto">{tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`shrink-0 rounded-lg px-4 py-2 text-sm font-bold ${tab === item.id ? "bg-[var(--hk-navy)] text-white" : "border border-[var(--hk-border)] bg-white text-[var(--hk-muted)]"}`}>{item.label}</button>)}</div>{error && <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">{error}</div>}{loading && <div className="mt-8 rounded-xl border border-[var(--hk-border)] bg-white p-8 text-[var(--hk-muted)]">Loading bookings...</div>}{!loading && visible.length === 0 && <div className="mt-8 rounded-xl border border-dashed border-[var(--hk-border-strong)] bg-white p-8 text-[var(--hk-muted)]">No bookings in this section. <Link href="/search" className="font-bold text-[var(--hk-navy)] underline">Explore stays</Link></div>}<div className="mt-8 space-y-5">{visible.map((booking) => <article key={booking.id} className="rounded-xl border border-[var(--hk-border)] bg-white p-5 shadow-[var(--hk-shadow-soft)]"><div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"><div className="flex gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]"><Hotel className="h-7 w-7" /></div><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold text-[var(--hk-navy)]">{booking.propertyName}</h2><span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold ${booking.bookingStatus === "confirmed" ? "bg-green-50 text-green-700" : booking.bookingStatus === "pending_payment" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-700"}`}>{booking.bookingStatus === "confirmed" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}{statusLabel(booking.bookingStatus)}</span></div><p className="mt-1 text-sm text-[var(--hk-muted)]">{booking.roomName} · {booking.ratePlanName} · {booking.confirmationCode}</p><p className="mt-3 flex items-center gap-2 text-sm font-semibold text-[var(--hk-navy)]"><CalendarDays className="h-4 w-4" />{prettyDate(booking.checkIn)} to {prettyDate(booking.checkOut)} · {booking.nights} night{booking.nights === 1 ? "" : "s"}</p><p className="mt-1 text-sm text-[var(--hk-muted)]">{booking.adults} adult{booking.adults === 1 ? "" : "s"}{booking.children ? `, ${booking.children} child${booking.children === 1 ? "" : "ren"}` : ""}</p></div></div><div className="min-w-[220px] lg:text-right"><p className="text-2xl font-bold text-[var(--hk-navy)]">{money(booking.totalPaise, booking.currency)}</p><p className="text-sm text-[var(--hk-muted)]">Payment: {statusLabel(booking.paymentStatus)}</p><div className="mt-4 flex flex-wrap gap-2 lg:justify-end">{booking.propertySlug && <Link href={`/hotels/${booking.propertySlug}`} className="rounded-lg border border-[var(--hk-border-strong)] px-3 py-2 text-sm font-bold text-[var(--hk-navy)]">View stay</Link>}{booking.bookingStatus === "pending_payment" && <button type="button" disabled={busy === booking.id} onClick={() => void resumePayment(booking.id)} className="rounded-lg bg-[var(--hk-navy)] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy === booking.id ? "Opening payment..." : "Continue payment"}</button>}{["pending_payment", "confirmed"].includes(booking.bookingStatus) && <button type="button" disabled={busy === booking.id} onClick={() => void cancel(booking.id)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-50">{busy === booking.id ? "Working..." : "Cancel"}</button>}</div></div></div></article>)}</div></main></div>;
 }

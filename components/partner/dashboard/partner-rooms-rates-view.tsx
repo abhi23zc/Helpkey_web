@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BedDouble,
   CheckCircle2,
@@ -219,9 +219,79 @@ function NewRoomEditor({ propertyId, onCreated }: { propertyId: string; onCreate
 }
 
 function RateEditor({ propertyId, roomTypeId, policies, rates, selectedRate, selectRate, saving, setSaving, onMessage, onRateAdded, onRateUpdated }: { propertyId: string; roomTypeId: string; policies: ListingResponse["policies"]; rates: ListingRatePlan[]; selectedRate: ListingRatePlan | null; selectRate: (id: string) => void; saving: boolean; setSaving: (saving: boolean) => void; onMessage: (ok: boolean, text: string) => void; onRateAdded: (rate: ListingRatePlan) => void; onRateUpdated: (rate: ListingRatePlan) => void }) {
-  const [name, setName] = useState(selectedRate?.name ?? ""); const [code, setCode] = useState(selectedRate?.code ?? ""); const [price, setPrice] = useState(selectedRate ? String(Math.round(selectedRate.basePricePaise / 100)) : ""); const [policy, setPolicy] = useState(selectedRate?.cancellationPolicyId ?? policies[0]?.id ?? ""); const [paymentMode, setPaymentMode] = useState(selectedRate?.paymentMode ?? "full"); const [status, setStatus] = useState<"active" | "paused">(selectedRate?.status ?? "active");
-  const submit = async () => { const nightly = Number(price); if (!name.trim() || !/^[A-Z0-9_-]{2,32}$/.test(code) || !Number.isInteger(nightly) || nightly < 1 || !policy) { onMessage(false, "Provide a rate name, uppercase code, nightly price, and cancellation policy."); return; } setSaving(true); try { if (selectedRate) { const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans/${selectedRate.id}`, { name: name.trim(), code, basePricePaise: nightly * 100, cancellationPolicyId: policy, paymentMode, status }, "PATCH"); if (!result.ratePlan) throw new Error("The rate update was not returned."); onRateUpdated(result.ratePlan); onMessage(true, "Rate plan saved."); } else { const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId, name: name.trim(), code, basePricePaise: nightly * 100, cancellationPolicyId: policy, paymentMode }); if (!result.ratePlan) throw new Error("The rate plan was not returned."); onRateAdded(result.ratePlan); selectRate(result.ratePlan.id); onMessage(true, "Rate plan added."); } } catch (cause) { onMessage(false, cause instanceof Error ? cause.message : "Could not save rate plan."); } finally { setSaving(false); } };
-  return <><div className="flex gap-2 overflow-x-auto">{rates.map((rate) => <button key={rate.id} type="button" onClick={() => selectRate(rate.id)} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${selectedRate?.id === rate.id ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>{rate.name}</button>)}<button type="button" onClick={() => selectRate("new")} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${!selectedRate ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>+ New</button></div>{!policies.length && <p className="rounded-lg bg-amber-50 p-2 font-semibold text-amber-700">Add a cancellation policy in Listing before creating a rate.</p>}<label className="block font-bold text-slate-700">Rate name<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label><div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Code<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="FLEX" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label><NumberField label="Price / night (₹)" value={price} setValue={setPrice} min={1} /></div><label className="block font-bold text-slate-700">Cancellation policy<select value={policy} onChange={(event) => setPolicy(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">Select a policy</option>{policies.map((item) => <option key={item.id} value={item.id}>{item.name ?? "Policy"}</option>)}</select></label><div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Payment<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="full">Pay in full</option><option value="deposit">Deposit</option><option value="pay_at_property">Pay at property</option></select></label>{selectedRate && <label className="font-bold text-slate-700">Status<select value={status} onChange={(event) => setStatus(event.target.value as "active" | "paused")} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="active">Active</option><option value="paused">Paused</option></select></label>}</div><button type="button" disabled={saving || !policies.length} onClick={() => void submit()} className={primaryButtonClass}>{selectedRate ? "Save rate plan" : "Add rate plan"}</button></>;
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [price, setPrice] = useState("");
+  const [policy, setPolicy] = useState("");
+  const [paymentMode, setPaymentMode] = useState("full");
+  const [status, setStatus] = useState<"active" | "paused">("active");
+  const [taxPercent, setTaxPercent] = useState("0");
+  const [fee, setFee] = useState("0");
+  const [depositPercent, setDepositPercent] = useState("25");
+  const [minNights, setMinNights] = useState("1");
+  const [maxNights, setMaxNights] = useState("");
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setName(selectedRate?.name ?? "");
+      setCode(selectedRate?.code ?? "");
+      setPrice(selectedRate ? String(Math.round(selectedRate.basePricePaise / 100)) : "");
+      setPolicy(selectedRate?.cancellationPolicyId ?? policies[0]?.id ?? "");
+      setPaymentMode(selectedRate?.paymentMode ?? "full");
+      setStatus(selectedRate?.status ?? "active");
+      setTaxPercent(String(Math.round((selectedRate?.taxBasisPoints ?? 0) / 100)));
+      setFee(String(Math.round((selectedRate?.customerFeePaise ?? 0) / 100)));
+      setDepositPercent(String(Math.round((selectedRate?.depositBasisPoints ?? 2500) / 100)));
+      setMinNights(String(selectedRate?.minimumNights ?? 1));
+      setMaxNights(selectedRate?.maximumNights ? String(selectedRate.maximumNights) : "");
+    });
+  }, [policies, selectedRate]);
+
+  const submit = async () => {
+    const nightly = Number(price);
+    const tax = Number(taxPercent);
+    const customerFee = Number(fee);
+    const deposit = Number(depositPercent);
+    const minimumNights = Number(minNights);
+    const maximumNights = maxNights.trim() ? Number(maxNights) : null;
+    if (!name.trim() || !/^[A-Z0-9_-]{2,32}$/.test(code) || !Number.isInteger(nightly) || nightly < 1 || !policy || !Number.isInteger(tax) || tax < 0 || tax > 100 || !Number.isInteger(customerFee) || customerFee < 0 || !Number.isInteger(deposit) || deposit < 0 || deposit > 100 || !Number.isInteger(minimumNights) || minimumNights < 1 || (maximumNights !== null && (!Number.isInteger(maximumNights) || maximumNights < minimumNights))) {
+      onMessage(false, "Provide valid rate, payment, tax, deposit, and stay rule details.");
+      return;
+    }
+    const payload = {
+      name: name.trim(),
+      code,
+      basePricePaise: nightly * 100,
+      cancellationPolicyId: policy,
+      paymentMode,
+      taxBasisPoints: tax * 100,
+      customerFeePaise: customerFee * 100,
+      depositBasisPoints: deposit * 100,
+      minimumNights,
+      maximumNights,
+    };
+    setSaving(true);
+    try {
+      if (selectedRate) {
+        const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans/${selectedRate.id}`, { ...payload, status }, "PATCH");
+        if (!result.ratePlan) throw new Error("The rate update was not returned.");
+        onRateUpdated(result.ratePlan);
+        onMessage(true, "Rate plan saved.");
+      } else {
+        const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId, ...payload }, "POST");
+        if (!result.ratePlan) throw new Error("The rate plan was not returned.");
+        onRateAdded(result.ratePlan);
+        selectRate(result.ratePlan.id);
+        onMessage(true, "Rate plan added.");
+      }
+    } catch (cause) {
+      onMessage(false, cause instanceof Error ? cause.message : "Could not save rate plan.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <><div className="flex gap-2 overflow-x-auto">{rates.map((rate) => <button key={rate.id} type="button" onClick={() => selectRate(rate.id)} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${selectedRate?.id === rate.id ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>{rate.name}</button>)}<button type="button" onClick={() => selectRate("new")} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${!selectedRate ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>+ New</button></div>{!policies.length && <p className="rounded-lg bg-amber-50 p-2 font-semibold text-amber-700">Add a cancellation policy in Listing before creating a rate.</p>}<label className="block font-bold text-slate-700">Rate name<input value={name} onChange={(event) => setName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label><div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Code<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="FLEX" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label><NumberField label="Price / night (₹)" value={price} setValue={setPrice} min={1} /></div><label className="block font-bold text-slate-700">Cancellation policy<select value={policy} onChange={(event) => setPolicy(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">Select a policy</option>{policies.map((item) => <option key={item.id} value={item.id}>{item.name ?? "Policy"}</option>)}</select></label><div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Payment<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="full">Pay in full</option><option value="deposit">Deposit</option><option value="pay_at_property">Pay at property</option></select></label>{selectedRate && <label className="font-bold text-slate-700">Status<select value={status} onChange={(event) => setStatus(event.target.value as "active" | "paused")} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="active">Active</option><option value="paused">Paused</option></select></label>}</div><div className="grid grid-cols-3 gap-2"><NumberField label="Tax (%)" value={taxPercent} setValue={setTaxPercent} min={0} /><NumberField label="Guest fee (₹)" value={fee} setValue={setFee} min={0} /><NumberField label="Deposit (%)" value={depositPercent} setValue={setDepositPercent} min={0} /></div><div className="grid grid-cols-2 gap-2"><NumberField label="Minimum nights" value={minNights} setValue={setMinNights} min={1} /><NumberField label="Maximum nights" value={maxNights} setValue={setMaxNights} min={1} /></div><button type="button" disabled={saving || !policies.length} onClick={() => void submit()} className={primaryButtonClass}>{selectedRate ? "Save rate plan" : "Add rate plan"}</button></>;
 }
 
 export function PartnerRoomsRatesView({
