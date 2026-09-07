@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
+import { createR2ReadUrl } from "@/lib/r2";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 const HOLD_TTL_MS = 10 * 60_000;
@@ -66,6 +67,19 @@ function safeCompare(left: string, right: string) {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function propertyCoverUrl(propertyData: FirebaseFirestore.DocumentData) {
+  if (typeof propertyData.coverImageUrl === "string" && propertyData.coverImageUrl) return propertyData.coverImageUrl;
+  if (typeof propertyData.coverMediaId !== "string" || !propertyData.coverMediaId) return null;
+  const media = await adminDb.collection("mediaAssets").doc(propertyData.coverMediaId).get();
+  const data = media.data();
+  if (!media.exists || !data?.r2ObjectKey || !["approved", "pending"].includes(data.moderationStatus ?? data.status)) return null;
+  try {
+    return createR2ReadUrl(data.r2ObjectKey).url;
+  } catch {
+    return null;
+  }
 }
 
 export function bookingError(error: unknown) {
@@ -132,10 +146,17 @@ export async function quote(input: BookingInput) {
   const depositBasisPoints = Math.max(0, Math.min(10000, Math.round(asNumber(rateData.depositBasisPoints, paymentMode === "deposit" ? 2500 : 10000))));
   const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Math.round(totalPaise * depositBasisPoints / 10000) : totalPaise;
 
+  const coverImageUrl = await propertyCoverUrl(propertyData ?? {});
   return {
     propertyId: property.id,
     propertySlug: input.propertySlug,
     propertyName: propertyData?.name ?? "Property",
+    propertyCity: propertyData?.address?.city ?? propertyData?.city ?? null,
+    propertyState: propertyData?.address?.state ?? propertyData?.state ?? null,
+    propertyRatingAverage: typeof propertyData?.reviewSummary?.average === "number" && propertyData.reviewSummary.count > 0 ? propertyData.reviewSummary.average : typeof propertyData?.ratingAverage === "number" ? propertyData.ratingAverage : 0,
+    propertyCoverImageUrl: coverImageUrl,
+    checkInTime: propertyData?.checkInTime ?? "14:00",
+    checkOutTime: propertyData?.checkOutTime ?? "11:00",
     currency: propertyData?.currency ?? "INR",
     roomType: { id: room.id, name: roomData.name ?? "Room" },
     ratePlan: { id: rate.id, name: rateData.name ?? "Standard", paymentMode, depositBasisPoints },

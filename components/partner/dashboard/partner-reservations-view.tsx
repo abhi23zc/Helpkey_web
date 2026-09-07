@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { DashboardCard, MetricCard, PayoutLine, StatusChip } from "./shared";
 import { formatPaise } from "@/lib/currency";
+import { Drawer } from "./drawer";
 
 type ReservationItem = {
   id: string;
@@ -471,60 +472,44 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
         </div>
       </DashboardCard>
 
-      {/* Floating Backdrop Overlay for Slide-Over Drawer */}
-      {isInspectorOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-[2px] transition-opacity duration-300"
-          onClick={() => setSelectedBookingId(null)}
-        />
-      )}
-
-      {/* Floating Slide-Over Drawer (Booking Inspector Sheet) */}
-      <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[540px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-in-out ${
-          isInspectorOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        {/* Sticky Header with Close Button */}
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/60 bg-[#fbfaf7] px-6">
-          <div className="flex items-center gap-2.5">
-            <h3 className="text-lg font-extrabold text-[#061224]">{selectedBooking?.id ?? "BK-789451"}</h3>
-            {selectedBooking && (
-              <StatusChip
-                label={selectedBooking.status}
-                tone={
-                  selectedBooking.status === "Arriving Today"
-                    ? "blue"
-                    : selectedBooking.status === "No-show Risk"
-                    ? "amber"
-                    : "neutral"
-                }
-              />
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setSelectedBookingId(null)}
-            className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-100 hover:text-[#061224] transition-colors"
-            aria-label="Close inspector panel"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Scrollable Drawer Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+      {selectedBooking && (
+        <Drawer
+          open={isInspectorOpen}
+          onClose={() => setSelectedBookingId(null)}
+          title={selectedBooking.id}
+          description={`${selectedBooking.guest} · ${selectedBooking.room}`}
+          badge={<StatusChip label={selectedBooking.status} tone={selectedBooking.status === "Arriving Today" ? "blue" : selectedBooking.status === "No-show Risk" ? "amber" : "neutral"} />}
+          headerExtra={<StatusChip label={selectedBooking.payment} tone={selectedBooking.payment === "Paid" ? "green" : "amber"} />}
+          footer={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedBookingId(null)}
+                className="flex-1 rounded-xl bg-[#061224] py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-colors"
+              >
+                Mark Checked In
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedBookingId(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          }
+        >
           {/* Guest Header & readiness gauge */}
           <div className="flex items-start justify-between border-b border-slate-200/60 pb-4">
             <div>
               <div className="flex items-center gap-3">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-[#fbf5e8] text-base font-bold text-[#c89b3c] border border-[#c89b3c]/30">
-                  {selectedBooking?.guest ? selectedBooking.guest.split(" ").map(n => n[0]).join("") : "SL"}
+                  {selectedBooking.guest ? selectedBooking.guest.split(" ").map(n => n[0]).join("") : "SL"}
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <p className="text-lg font-bold text-[#061224]">{selectedBooking?.guest ?? "Sophia Lee"}</p>
-                    {selectedBooking?.vip && (
+                    <p className="text-lg font-bold text-[#061224]">{selectedBooking.guest}</p>
+                    {selectedBooking.vip && (
                       <span className="rounded bg-[#c89b3c]/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-[#9a6b18]">
                         VIP
                       </span>
@@ -532,17 +517,6 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
                   </div>
                   <p className="text-xs font-semibold text-[#c89b3c]">★ Gold Member</p>
                 </div>
-              </div>
-              <div className="mt-3 space-y-1 text-xs text-slate-600 font-medium">
-                <p className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5 text-slate-400" />
-                  +1 (555) 987-6543
-                </p>
-                <p className="flex items-center gap-2">
-                  <Mail className="h-3.5 w-3.5 text-slate-400" />
-                  sophia.lee@email.com
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                </p>
               </div>
             </div>
 
@@ -574,7 +548,7 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
           </div>
 
           {/* Stay Timeline */}
-          <div className="rounded-xl border border-slate-200 bg-[#fcfbf9] p-4 space-y-2 text-xs">
+          <div className="rounded-xl border border-slate-200 bg-[#fcfbf9] p-4 space-y-2 text-xs mt-4">
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-semibold">Stay Timeline</span>
             </div>
@@ -591,16 +565,16 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-[11px] font-bold text-[#061224]">
-              <span>{selectedBooking?.nights ?? 3} nights</span>
-              <span>{selectedBooking?.guests ?? 2} Guests</span>
+              <span>{selectedBooking.nights} nights</span>
+              <span>{selectedBooking.guests} Guests</span>
             </div>
           </div>
 
           {/* Room Details & Room Assignment */}
-          <div className="grid gap-3 sm:grid-cols-2 text-xs">
+          <div className="grid gap-3 sm:grid-cols-2 text-xs mt-4">
             <div className="rounded-xl border border-slate-200 p-3">
               <p className="text-[10px] font-bold text-slate-400 uppercase">Room Details</p>
-              <p className="mt-1 font-bold text-[#061224]">{selectedBooking?.room ?? "Deluxe King (1205)"}</p>
+              <p className="mt-1 font-bold text-[#061224]">{selectedBooking.room}</p>
               <p className="mt-0.5 text-[11px] text-slate-500">1 King Bed • City View • 28 m²</p>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
@@ -623,7 +597,7 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
           </div>
 
           {/* Payment Summary */}
-          <div className="rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs">
+          <div className="rounded-xl border border-slate-200 p-3.5 space-y-2 text-xs mt-4">
             <div className="flex items-center justify-between">
               <span className="font-bold text-[#061224]">Payment Summary</span>
             </div>
@@ -635,118 +609,8 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
             </div>
           </div>
 
-          {/* Guest Requests & Pre-arrival Checklist */}
-          <div className="grid gap-3 sm:grid-cols-2 text-xs">
-            <div className="rounded-xl border border-slate-200 p-3 space-y-1.5">
-              <p className="font-bold text-[#061224]">Guest Requests (3)</p>
-              <ul className="space-y-1 text-[11px] text-slate-600">
-                <li className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  Late check-in (After 3 PM)
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  Extra pillows
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  Anniversary celebration
-                </li>
-              </ul>
-              <p className="text-[10px] italic text-slate-500 pt-1">Notes: Celebrating 5th anniversary.</p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 p-3 space-y-1.5">
-              <p className="font-bold text-[#061224]">Pre-arrival Checklist</p>
-              <div className="space-y-1 text-[11px]">
-                <div className="flex items-center justify-between text-slate-700">
-                  <span>ID Verification</span>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" />
-                </div>
-                <div className="flex items-center justify-between text-slate-700">
-                  <span>Payment Confirmed</span>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" />
-                </div>
-                <div className="flex items-center justify-between text-slate-700">
-                  <span>Room Assigned</span>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" />
-                </div>
-                <div className="flex items-center justify-between text-slate-700">
-                  <span>Welcome Note</span>
-                  <span className="h-2 w-2 rounded-full bg-amber-500" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Primary Action Buttons */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <button className="col-span-2 rounded-xl bg-[#061224] py-2.5 font-bold text-white shadow-xs hover:bg-[#0a1f3c] transition-colors">
-              Mark Checked In
-            </button>
-            <button className="rounded-xl border border-slate-200 bg-white py-2 font-bold text-[#061224] hover:bg-slate-50">
-              Update Room
-            </button>
-            <button className="rounded-xl border border-slate-200 bg-white py-2 font-bold text-[#061224] hover:bg-slate-50">
-              Send Message
-            </button>
-            <button className="col-span-2 rounded-xl border border-slate-200 bg-white py-2 font-bold text-[#061224] hover:bg-slate-50">
-              Print Confirmation
-            </button>
-          </div>
-
-          {/* Internal Note */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1 text-xs">
-            <p className="font-bold text-[#061224]">Internal Note</p>
-            <p className="text-slate-600 text-[11px] leading-relaxed">
-              Guest celebrating anniversary. Prepare welcome amenities and upgrade requested.
-            </p>
-            <p className="text-[10px] text-slate-400">Saved 10:20 AM by Daniel Carter</p>
-          </div>
-
-          {/* Audit Activity Log */}
-          <div className="space-y-2 text-xs border-t border-slate-200/60 pt-4">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[#061224]">Activity Log</span>
-              <button className="text-[10px] font-bold text-[#061224] hover:underline">View all</button>
-            </div>
-            <div className="space-y-1.5 text-[11px] text-slate-600">
-              <div className="flex items-center justify-between">
-                <span>May 20, 10:15 AM</span>
-                <span className="font-semibold text-slate-800">Payment confirmed</span>
-                <span className="text-slate-400">Daniel Carter</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>May 19, 01:42 PM</span>
-                <span className="font-semibold text-slate-800">Room 1205 assigned</span>
-                <span className="text-slate-400">Daniel Carter</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>May 19, 04:30 PM</span>
-                <span className="font-semibold text-slate-800">Reservation created</span>
-                <span className="text-slate-400">Helpkey System</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Communication Card */}
-          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2 text-xs">
-            <p className="font-bold text-[#061224]">Quick Communication</p>
-            <div className="space-y-1.5">
-              <button className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-[#061224] hover:bg-slate-50">
-                <MessageSquare className="h-3.5 w-3.5 text-slate-500" /> Message Guest
-              </button>
-              <button className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-[#061224] hover:bg-slate-50">
-                <Phone className="h-3.5 w-3.5 text-slate-500" /> Call Guest
-              </button>
-              <button className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-[#061224] hover:bg-slate-50">
-                <Headphones className="h-3.5 w-3.5 text-slate-500" /> Contact Helpkey Support
-              </button>
-            </div>
-          </div>
-
-          {/* Requires Confirmation (Sensitive Actions) Block */}
-          <div className="rounded-xl border border-red-200 bg-red-50/50 p-3.5 space-y-2 text-xs">
+          {/* Safe Actions */}
+          <div className="rounded-xl border border-red-200 bg-red-50/50 p-3.5 space-y-2 text-xs mt-4">
             <div className="flex items-center gap-1.5 font-bold text-red-800">
               <AlertCircle className="h-4 w-4 text-red-600" />
               <span>Safe Actions &amp; Confirmation</span>
@@ -758,19 +622,10 @@ export function PartnerReservationsView({ propertyName }: { propertyName: string
               <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-300 bg-white py-1.5 font-bold text-red-600 hover:bg-red-50">
                 <UserX className="h-3.5 w-3.5" /> Cancel Reservation
               </button>
-              <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-300 bg-white py-1.5 font-bold text-red-600 hover:bg-red-50">
-                <UserX className="h-3.5 w-3.5" /> Mark No-show
-              </button>
-              <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-300 bg-white py-1.5 font-bold text-red-600 hover:bg-red-50">
-                <Calendar className="h-3.5 w-3.5" /> Modify Dates
-              </button>
-              <button className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-300 bg-white py-1.5 font-bold text-red-600 hover:bg-red-50">
-                <IndianRupee className="h-3.5 w-3.5" /> Request Refund Review
-              </button>
             </div>
           </div>
-        </div>
-      </aside>
+        </Drawer>
+      )}
 
       {/* Bottom Grid: 7-Day Arrival & Capacity Overview + Today's Priority */}
       <div className="grid gap-4 lg:grid-cols-3">

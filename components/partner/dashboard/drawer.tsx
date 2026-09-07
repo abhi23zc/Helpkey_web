@@ -17,6 +17,8 @@ export function Drawer({
   onClose,
   title,
   description,
+  badge,
+  headerExtra,
   children,
   footer,
 }: {
@@ -24,6 +26,8 @@ export function Drawer({
   onClose: () => void;
   title: string;
   description?: string;
+  badge?: React.ReactNode;
+  headerExtra?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -45,7 +49,7 @@ export function Drawer({
 
   const panelClass =
     "relative flex h-full w-full max-w-full flex-col bg-white shadow-2xl hk-drawer-panel " +
-    "sm:w-[560px] sm:max-w-[92vw] sm:border-l sm:border-slate-200";
+    "sm:w-[580px] sm:max-w-[92vw] sm:border-l sm:border-slate-200";
 
   return (
     <div
@@ -63,18 +67,24 @@ export function Drawer({
 
       <div className={panelClass}>
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="text-base font-bold text-[#061224]">{title}</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-base font-bold text-[#061224]">{title}</h2>
+              {badge}
+            </div>
             {description && <p className="mt-0.5 text-xs font-medium text-slate-500">{description}</p>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-            aria-label="Close panel"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {headerExtra}
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              aria-label="Close panel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
