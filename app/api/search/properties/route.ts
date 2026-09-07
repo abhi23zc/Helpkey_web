@@ -21,6 +21,7 @@ export async function GET(request: Request) {
       minPricePaise: url.searchParams.get("minPricePaise") || undefined,
       maxPricePaise: url.searchParams.get("maxPricePaise") || undefined,
       minRating: url.searchParams.get("minRating") || undefined,
+      sort: url.searchParams.get("sort") || undefined,
       limit: url.searchParams.get("limit") ?? 24,
     });
     return Response.json({ properties: await searchCatalog(input) });

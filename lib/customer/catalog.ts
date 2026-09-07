@@ -6,6 +6,20 @@ import { createR2ReadUrl } from "@/lib/r2";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const amenityCodes = ["business_ready", "city_center", "luxury", "work_desk", "airport_access", "fast_wifi"] as const;
+export const catalogSorts = [
+  "top_picks",
+  "homes_and_apartments",
+  "price_low_to_high",
+  "price_high_to_low",
+  "best_reviewed_lowest_price",
+  "rating_high_to_low",
+  "rating_low_to_high",
+  "rating_and_price",
+  "distance_from_downtown",
+  "top_reviewed",
+  "business_traveler_picks",
+] as const;
+export type CatalogSort = (typeof catalogSorts)[number];
 
 export const catalogSearchSchema = z.object({
   destination: z.string().trim().max(120).optional().default(""),
@@ -24,6 +38,7 @@ export const catalogSearchSchema = z.object({
   minPricePaise: z.coerce.number().int().nonnegative().optional(),
   maxPricePaise: z.coerce.number().int().nonnegative().optional(),
   minRating: z.coerce.number().min(0).max(5).optional(),
+  sort: z.enum(catalogSorts).default("top_picks"),
   limit: z.coerce.number().int().min(1).max(50).default(24),
 }).superRefine((value, ctx) => {
   if ((value.checkIn && !value.checkOut) || (!value.checkIn && value.checkOut)) {
@@ -34,6 +49,9 @@ export const catalogSearchSchema = z.object({
   }
   if (value.minPricePaise !== undefined && value.maxPricePaise !== undefined && value.minPricePaise > value.maxPricePaise) {
     ctx.addIssue({ code: "custom", message: "INVALID_PRICE_RANGE" });
+  }
+  if (value.sort === "distance_from_downtown" && (value.placeLat === undefined || value.placeLng === undefined)) {
+    ctx.addIssue({ code: "custom", message: "DISTANCE_SORT_REQUIRES_DESTINATION_COORDINATES" });
   }
 });
 
@@ -53,6 +71,7 @@ export type CatalogProperty = {
   amenityCodes: string[];
   freeCancellation: boolean;
 };
+type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
 
 export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
 
@@ -67,7 +86,7 @@ async function amenityCodeMap() {
     .filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
-async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesById: Map<string, string>): Promise<CatalogProperty> {
+async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesById: Map<string, string>): Promise<CatalogSearchProperty> {
   const data = doc.data();
   const [rates, cover] = await Promise.all([
     adminDb.collection("ratePlans").where("propertyId", "==", doc.id).limit(100).get(),
@@ -92,6 +111,88 @@ async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesB
     coverImageUrl: coverData?.moderationStatus === "approved" ? signedUrl(coverData.r2ObjectKey) : null,
     amenityCodes: cardAmenityCodes,
     freeCancellation: Array.isArray(data.cancellationPolicyIds) && data.cancellationPolicyIds.length > 0,
+    coordinates:
+      typeof data.geoPoint?.latitude === "number" && typeof data.geoPoint?.longitude === "number"
+        ? { latitude: data.geoPoint.latitude, longitude: data.geoPoint.longitude }
+        : null,
+  };
+}
+
+const compareText = (a: CatalogProperty, b: CatalogProperty) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+const comparePriceAscending = (a: CatalogProperty, b: CatalogProperty) => {
+  if (a.minimumPricePaise === null) return b.minimumPricePaise === null ? 0 : 1;
+  if (b.minimumPricePaise === null) return -1;
+  return a.minimumPricePaise - b.minimumPricePaise;
+};
+const comparePriceDescending = (a: CatalogProperty, b: CatalogProperty) => {
+  if (a.minimumPricePaise === null) return b.minimumPricePaise === null ? 0 : 1;
+  if (b.minimumPricePaise === null) return -1;
+  return b.minimumPricePaise - a.minimumPricePaise;
+};
+const compareTopPicks = (a: CatalogProperty, b: CatalogProperty) =>
+  b.ratingAverage - a.ratingAverage ||
+  b.ratingCount - a.ratingCount ||
+  Number(b.freeCancellation) - Number(a.freeCancellation) ||
+  comparePriceAscending(a, b) ||
+  compareText(a, b);
+const distanceKm = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) => {
+  const radians = Math.PI / 180;
+  const deltaLatitude = (to.latitude - from.latitude) * radians;
+  const deltaLongitude = (to.longitude - from.longitude) * radians;
+  const originLatitude = from.latitude * radians;
+  const destinationLatitude = to.latitude * radians;
+  const haversine = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
+function sortCatalog(properties: CatalogSearchProperty[], input: CatalogSearch) {
+  const topPicks = (a: CatalogSearchProperty, b: CatalogSearchProperty) => compareTopPicks(a, b);
+  return [...properties].sort((a, b) => {
+    switch (input.sort) {
+      case "homes_and_apartments":
+        return Number(!["apartment", "villa", "homestay"].includes(a.propertyType)) - Number(!["apartment", "villa", "homestay"].includes(b.propertyType)) || topPicks(a, b);
+      case "price_low_to_high":
+        return comparePriceAscending(a, b) || topPicks(a, b);
+      case "price_high_to_low":
+        return comparePriceDescending(a, b) || topPicks(a, b);
+      case "best_reviewed_lowest_price":
+      case "rating_and_price":
+        return b.ratingAverage - a.ratingAverage || comparePriceAscending(a, b) || topPicks(a, b);
+      case "rating_high_to_low":
+        return b.ratingAverage - a.ratingAverage || topPicks(a, b);
+      case "rating_low_to_high":
+        return a.ratingAverage - b.ratingAverage || comparePriceAscending(a, b) || compareText(a, b);
+      case "distance_from_downtown": {
+        const origin = { latitude: input.placeLat!, longitude: input.placeLng! };
+        const aDistance = a.coordinates ? distanceKm(origin, a.coordinates) : Number.POSITIVE_INFINITY;
+        const bDistance = b.coordinates ? distanceKm(origin, b.coordinates) : Number.POSITIVE_INFINITY;
+        return aDistance - bDistance || topPicks(a, b);
+      }
+      case "top_reviewed":
+        return b.ratingCount - a.ratingCount || b.ratingAverage - a.ratingAverage || comparePriceAscending(a, b) || compareText(a, b);
+      case "business_traveler_picks":
+        return Number(!a.amenityCodes.includes("business_ready")) - Number(!b.amenityCodes.includes("business_ready")) || topPicks(a, b);
+      case "top_picks":
+        return topPicks(a, b);
+    }
+  });
+}
+
+function publicCatalogProperty(property: CatalogSearchProperty): CatalogProperty {
+  return {
+    id: property.id,
+    slug: property.slug,
+    name: property.name,
+    propertyType: property.propertyType,
+    city: property.city,
+    state: property.state,
+    ratingAverage: property.ratingAverage,
+    ratingCount: property.ratingCount,
+    minimumPricePaise: property.minimumPricePaise,
+    currency: property.currency,
+    coverImageUrl: property.coverImageUrl,
+    amenityCodes: property.amenityCodes,
+    freeCancellation: property.freeCancellation,
   };
 }
 
@@ -102,7 +203,7 @@ export async function searchCatalog(input: CatalogSearch) {
   ]);
   const cards = await Promise.all(properties.docs.filter((doc) => doc.data().approvalStatus === "approved").map((doc) => propertyCard(doc, codesById)));
   const destination = input.destination.toLocaleLowerCase();
-  return cards.filter((property) => {
+  const matchingCards = cards.filter((property) => {
     const location = `${property.city} ${property.state ?? ""} ${property.name}`.toLocaleLowerCase();
     return (!destination || location.includes(destination))
       && (!input.propertyType || property.propertyType === input.propertyType)
@@ -110,7 +211,8 @@ export async function searchCatalog(input: CatalogSearch) {
       && (input.minPricePaise === undefined || (property.minimumPricePaise !== null && property.minimumPricePaise >= input.minPricePaise))
       && (input.maxPricePaise === undefined || (property.minimumPricePaise !== null && property.minimumPricePaise <= input.maxPricePaise))
       && input.amenities.every((code) => property.amenityCodes.includes(code));
-  }).sort((a, b) => b.ratingAverage - a.ratingAverage || (a.minimumPricePaise ?? Number.MAX_SAFE_INTEGER) - (b.minimumPricePaise ?? Number.MAX_SAFE_INTEGER)).slice(0, input.limit);
+  });
+  return sortCatalog(matchingCards, input).slice(0, input.limit).map(publicCatalogProperty);
 }
 
 export async function searchSuggestions(query: string): Promise<CatalogSuggestion[]> {
@@ -128,7 +230,7 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
 }
 
 export async function homeCatalog() {
-  const properties = await searchCatalog({ destination: "", adults: 2, children: 0, infants: 0, amenities: [], limit: 50 });
+  const properties = await searchCatalog({ destination: "", adults: 2, children: 0, infants: 0, amenities: [], sort: "top_picks", limit: 50 });
   const cities = [...properties.reduce((counts, property) => {
     if (property.city) counts.set(property.city, (counts.get(property.city) ?? 0) + 1);
     return counts;
