@@ -531,14 +531,14 @@ function RoomCard({
       onClick={onSelect}
       className={`relative flex cursor-pointer flex-col gap-5 rounded-2xl border p-5 transition-all md:flex-row ${
         selected
-          ? "border-[#d8b46a] ring-2 ring-[#d8b46a]/40 bg-[#fffdf5] shadow-md"
+          ? "border-[#0F172A] ring-2 ring-[#0F172A]/15 bg-slate-50/80 shadow-md"
           : premium
-            ? "border-[#d8b46a]/60 bg-white hover:border-[#d8b46a] hover:shadow-md"
-            : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
+            ? "border-slate-300 bg-white hover:border-[#0F172A]/60 hover:shadow-md"
+            : "border-slate-200 bg-white hover:border-slate-400 hover:shadow-md"
       }`}
     >
       {premium && (
-        <span className="absolute right-0 top-0 rounded-tr-2xl rounded-bl-xl bg-[#c89b3c] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+        <span className="absolute right-0 top-0 rounded-tr-2xl rounded-bl-xl bg-[#0F172A] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
           PREMIUM
         </span>
       )}

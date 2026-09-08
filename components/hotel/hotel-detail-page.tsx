@@ -320,12 +320,12 @@ function RoomsSection({ hotelId }: { hotelId: string }) {
             key={room.name}
             className={`relative flex flex-col gap-6 overflow-hidden rounded-[20px] border bg-white p-6 shadow-[var(--hk-shadow-soft)] transition-shadow hover:shadow-[var(--hk-shadow-card)] md:flex-row ${
               room.featured
-                ? "border-[rgba(213,171,84,0.45)]"
+                ? "border-[var(--hk-navy-strong)]/30"
                 : "border-[var(--hk-border)]"
             }`}
           >
             {room.featured ? (
-              <div className="absolute right-0 top-0 rounded-bl-lg bg-[var(--hk-gold)] px-3 py-1 text-[11px] font-bold text-[#261a00]">
+              <div className="absolute right-0 top-0 rounded-bl-lg bg-[var(--hk-navy-strong)] px-3 py-1 text-[11px] font-bold text-white">
                 Premium
               </div>
             ) : null}
@@ -356,7 +356,7 @@ function RoomsSection({ hotelId }: { hotelId: string }) {
                       key={tag}
                       className={`rounded-md px-2 py-1 text-[11px] ${
                         room.featured
-                          ? "border border-[rgba(213,171,84,0.25)] bg-[rgba(213,171,84,0.12)] text-[var(--hk-gold-strong)]"
+                          ? "border border-[var(--hk-navy-strong)]/20 bg-[var(--hk-surface-soft)] text-[var(--hk-navy-strong)] font-semibold"
                           : "bg-[var(--hk-surface-soft)] text-[var(--hk-navy-strong)]"
                       }`}
                     >
