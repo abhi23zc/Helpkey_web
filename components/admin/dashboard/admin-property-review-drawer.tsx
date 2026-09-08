@@ -544,6 +544,7 @@ function AssetSection({
             type === "media"
               ? (asset.moderationStatus ?? asset.status)
               : asset.status;
+          const publicationStatus = type === "media" ? asset.publicationStatus : null;
           return (
             <article
               key={asset.id}
@@ -590,15 +591,16 @@ function AssetSection({
                   {asset.fileName ?? asset.documentType}
                 </p>
                 <p className="mt-0.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                  {label(asset.category ?? asset.documentType)}
+                  {label(asset.category ?? asset.documentType)}{publicationStatus ? ` · ${label(publicationStatus)}` : ""}
                 </p>
                 <div className="mt-auto pt-3 flex gap-2">
                   <button
                     type="button"
+                    disabled={publicationStatus === "queued" || publicationStatus === "processing" || publicationStatus === "unpublishing"}
                     onClick={() => onReview(type, asset.id, "approve")}
-                    className="flex-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition-colors px-3 py-1.5 text-xs font-bold text-emerald-800 border border-emerald-200"
+                    className="flex-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition-colors px-3 py-1.5 text-xs font-bold text-emerald-800 border border-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Approve
+                    {publicationStatus === "failed" ? "Retry publication" : publicationStatus === "queued" || publicationStatus === "processing" ? "Publishing…" : "Approve"}
                   </button>
                   <button
                     type="button"

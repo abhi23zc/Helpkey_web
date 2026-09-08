@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
-import { createR2ReadUrl } from "@/lib/r2";
+import { resolvePublicImage } from "@/lib/media-resolver";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const amenityCodes = ["business_ready", "city_center", "luxury", "work_desk", "airport_access", "fast_wifi"] as const;
@@ -68,20 +68,18 @@ export type CatalogProperty = {
   minimumPricePaise: number | null;
   currency: string;
   coverImageUrl: string | null;
+  coverImageSrcSet: string;
+  coverImageWidth: number;
+  coverImageHeight: number;
   amenityCodes: string[];
   freeCancellation: boolean;
 };
-export type CatalogImage = { id: string; imageUrl: string; altText: string };
+export type CatalogImage = { id: string; imageUrl: string; imageSrcSet: string; width: number; height: number; altText: string };
 export type CatalogReviewSummary = { count: number; ratingSum: number; average: number; buckets: Record<"1" | "2" | "3" | "4" | "5", number> };
 export type CatalogDetailProperty = CatalogProperty & { images: CatalogImage[]; reviewSummary: CatalogReviewSummary | null };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
 
 export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
-
-function signedUrl(objectKey: unknown) {
-  if (typeof objectKey !== "string" || !objectKey) return null;
-  try { return createR2ReadUrl(objectKey).url; } catch { return null; }
-}
 
 async function amenityCodeMap() {
   const snapshot = await adminDb.collection("amenities").limit(500).get();
@@ -100,6 +98,7 @@ async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesB
   const amenityIds = Array.isArray(data.amenityIds) ? data.amenityIds : [];
   const cardAmenityCodes = amenityIds.map((id) => codesById.get(id)).filter((code): code is string => Boolean(code));
   const coverData = cover?.data();
+  const coverImage = cover && coverData ? await resolvePublicImage(cover.id, coverData, typeof coverData.altText === "string" ? coverData.altText : "") : null;
   return {
     id: doc.id,
     slug: typeof data.slug === "string" && data.slug ? data.slug : doc.id,
@@ -111,7 +110,10 @@ async function propertyCard(doc: FirebaseFirestore.QueryDocumentSnapshot, codesB
     ratingCount: typeof data.reviewSummary?.count === "number" && data.reviewSummary.count > 0 ? data.reviewSummary.count : typeof data.ratingCount === "number" ? data.ratingCount : 0,
     minimumPricePaise: activePrices.length ? Math.min(...activePrices) : storedPrice,
     currency: typeof data.currency === "string" ? data.currency : "INR",
-    coverImageUrl: coverData?.moderationStatus === "approved" ? signedUrl(coverData.r2ObjectKey) : null,
+    coverImageUrl: coverImage?.imageUrl ?? null,
+    coverImageSrcSet: coverImage?.imageSrcSet ?? "",
+    coverImageWidth: coverImage?.width ?? 1,
+    coverImageHeight: coverImage?.height ?? 1,
     amenityCodes: cardAmenityCodes,
     freeCancellation: Array.isArray(data.cancellationPolicyIds) && data.cancellationPolicyIds.length > 0,
     coordinates:
@@ -194,6 +196,9 @@ function publicCatalogProperty(property: CatalogSearchProperty): CatalogProperty
     minimumPricePaise: property.minimumPricePaise,
     currency: property.currency,
     coverImageUrl: property.coverImageUrl,
+    coverImageSrcSet: property.coverImageSrcSet,
+    coverImageWidth: property.coverImageWidth,
+    coverImageHeight: property.coverImageHeight,
     amenityCodes: property.amenityCodes,
     freeCancellation: property.freeCancellation,
   };
@@ -201,11 +206,10 @@ function publicCatalogProperty(property: CatalogSearchProperty): CatalogProperty
 
 async function propertyImages(propertyId: string, property: FirebaseFirestore.DocumentData): Promise<CatalogImage[]> {
   const snapshot = await adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).limit(50).get();
-  const images = snapshot.docs.flatMap((doc) => {
+  const images = (await Promise.all(snapshot.docs.map(async (doc) => {
     const media = doc.data();
-    const imageUrl = media.kind === "property_image" && media.moderationStatus === "approved" ? signedUrl(media.r2ObjectKey) : null;
-    return imageUrl ? [{ id: doc.id, imageUrl, altText: typeof media.altText === "string" ? media.altText : "" }] : [];
-  });
+    return media.kind === "property_image" ? resolvePublicImage(doc.id, media, typeof media.altText === "string" ? media.altText : "") : null;
+  }))).filter((image): image is CatalogImage => Boolean(image));
   const imagesById = new Map(images.map((image) => [image.id, image]));
   const configuredIds = [property.coverMediaId, ...(Array.isArray(property.mediaIds) ? property.mediaIds : [])]
     .filter((id): id is string => typeof id === "string");

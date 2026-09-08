@@ -67,8 +67,8 @@ export async function listingDetail(propertyId: string) {
     roomTypes: rooms.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
     ratePlans: rates.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
     policies: policies.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
-    media: media.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
-    documents: documents.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
+    media: media.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, kind: data.kind, category: data.category ?? null, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, altText: data.altText ?? "", moderationStatus: data.moderationStatus ?? data.status ?? "pending", publicationStatus: data.publication?.status ?? "private", publicationErrorCode: data.publication?.lastErrorCode ?? null, publicationAttempts: data.publication?.attempts ?? 0, reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
+    documents: documents.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, documentType: data.documentType, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
   };
 }
 

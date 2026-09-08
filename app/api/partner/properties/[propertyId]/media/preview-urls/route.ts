@@ -11,10 +11,10 @@ export async function GET(_request: Request, { params }: RouteContext<"/api/part
     const { propertyId } = await params;
     await propertyOwner(user.uid, propertyId);
     const media = await adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).get();
-    const previews = media.docs
+    const previews = await Promise.all(media.docs
       .filter((document) => document.data().kind === "property_image")
-      .map((document) => ({ id: document.id, ...createR2ReadUrl(document.data().r2ObjectKey) }));
-    return Response.json({ previews });
+      .map(async (document) => ({ id: document.id, ...await createR2ReadUrl(document.data().r2ObjectKey), mimeType: document.data().mimeType ?? "application/octet-stream", fileName: document.data().fileName ?? "image" })));
+    return Response.json({ previews }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load photo previews." }, { status: 422 });
   }

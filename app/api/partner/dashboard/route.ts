@@ -46,7 +46,7 @@ export async function GET() {
         try {
           const media = await adminDb.collection("mediaAssets").doc(coverMediaId).get();
           const key = media.data()?.r2ObjectKey;
-          return typeof key === "string" && key ? createR2ReadUrl(key).url : null;
+          return typeof key === "string" && key ? (await createR2ReadUrl(key)).url : null;
         } catch {
           return null;
         }

@@ -5,7 +5,8 @@
     { "collectionGroup": "roomTypes", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] },
     { "collectionGroup": "ratePlans", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] },
     { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "readAt", "order": "ASCENDING" }] },
-    { "collectionGroup": "propertyReviews", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "submittedAt", "order": "DESCENDING" }] }
+    { "collectionGroup": "propertyReviews", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "submittedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "mediaPublicationJobs", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseExpiresAt", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

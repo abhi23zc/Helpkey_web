@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
-import { createR2ReadUrl } from "@/lib/r2";
+import { resolvePublicImage } from "@/lib/media-resolver";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 const HOLD_TTL_MS = 10 * 60_000;
@@ -69,17 +69,13 @@ function safeCompare(left: string, right: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-async function propertyCoverUrl(propertyData: FirebaseFirestore.DocumentData) {
-  if (typeof propertyData.coverImageUrl === "string" && propertyData.coverImageUrl) return propertyData.coverImageUrl;
-  if (typeof propertyData.coverMediaId !== "string" || !propertyData.coverMediaId) return null;
+async function propertyCover(propertyData: FirebaseFirestore.DocumentData) {
+  if (typeof propertyData.coverMediaId !== "string" || !propertyData.coverMediaId) return { id: null, checksum: null, url: null };
   const media = await adminDb.collection("mediaAssets").doc(propertyData.coverMediaId).get();
   const data = media.data();
-  if (!media.exists || !data?.r2ObjectKey || !["approved", "pending"].includes(data.moderationStatus ?? data.status)) return null;
-  try {
-    return createR2ReadUrl(data.r2ObjectKey).url;
-  } catch {
-    return null;
-  }
+  if (!media.exists || !data || (data.moderationStatus ?? data.status) !== "approved") return { id: null, checksum: null, url: null };
+  const resolved = await resolvePublicImage(media.id, data, typeof data.altText === "string" ? data.altText : "");
+  return { id: media.id, checksum: typeof data.checksum === "string" ? data.checksum : null, url: resolved?.imageUrl ?? null };
 }
 
 export function bookingError(error: unknown) {
@@ -146,7 +142,7 @@ export async function quote(input: BookingInput) {
   const depositBasisPoints = Math.max(0, Math.min(10000, Math.round(asNumber(rateData.depositBasisPoints, paymentMode === "deposit" ? 2500 : 10000))));
   const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Math.round(totalPaise * depositBasisPoints / 10000) : totalPaise;
 
-  const coverImageUrl = await propertyCoverUrl(propertyData ?? {});
+  const cover = await propertyCover(propertyData ?? {});
   return {
     propertyId: property.id,
     propertySlug: input.propertySlug,
@@ -154,7 +150,9 @@ export async function quote(input: BookingInput) {
     propertyCity: propertyData?.address?.city ?? propertyData?.city ?? null,
     propertyState: propertyData?.address?.state ?? propertyData?.state ?? null,
     propertyRatingAverage: typeof propertyData?.reviewSummary?.average === "number" && propertyData.reviewSummary.count > 0 ? propertyData.reviewSummary.average : typeof propertyData?.ratingAverage === "number" ? propertyData.ratingAverage : 0,
-    propertyCoverImageUrl: coverImageUrl,
+    propertyCoverImageUrl: cover.url,
+    propertyCoverMediaId: cover.id,
+    propertyCoverSourceChecksum: cover.checksum,
     checkInTime: propertyData?.checkInTime ?? "14:00",
     checkOutTime: propertyData?.checkOutTime ?? "11:00",
     currency: propertyData?.currency ?? "INR",
@@ -200,8 +198,10 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       }, { merge: true });
     }
 
+    const { propertyCoverImageUrl: _renderedCoverUrl, ...persistedQuote } = quoteData;
+    void _renderedCoverUrl;
     tx.create(adminDb.collection("bookings").doc(id), {
-      ...quoteData,
+      ...persistedQuote,
       id,
       confirmationCode,
       guestId: uid,
@@ -346,6 +346,11 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     propertyId: data.propertyId,
     propertySlug: data.propertySlug ?? null,
     propertyName: data.propertyName,
+    propertyCity: data.propertyCity ?? data.city ?? null,
+    propertyState: data.propertyState ?? data.state ?? null,
+    propertyCoverImageUrl: data.propertyCoverImageUrl ?? data.coverImageUrl ?? null,
+    checkInTime: data.checkInTime ?? "15:00",
+    checkOutTime: data.checkOutTime ?? "11:00",
     roomTypeId: data.roomType?.id ?? null,
     roomName: data.roomType?.name ?? "Room",
     ratePlanName: data.ratePlan?.name ?? "Rate",
@@ -373,4 +378,19 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     createdAt: asIso(data.createdAt),
     updatedAt: asIso(data.updatedAt),
   };
+}
+
+export async function serializeBookingWithResolvedMedia(id: string, data: FirebaseFirestore.DocumentData) {
+  let imageUrl: string | null = null;
+  const mediaIds = [data.propertyCoverMediaId].filter((value): value is string => typeof value === "string" && Boolean(value));
+  const property = typeof data.propertyId === "string" ? await adminDb.collection("properties").doc(data.propertyId).get() : null;
+  const currentCoverId = property?.data()?.coverMediaId;
+  if (typeof currentCoverId === "string" && !mediaIds.includes(currentCoverId)) mediaIds.push(currentCoverId);
+  for (const mediaId of mediaIds) {
+    const media = await adminDb.collection("mediaAssets").doc(mediaId).get(); const raw = media.data();
+    if (!raw || raw.propertyId !== data.propertyId) continue;
+    const resolved = await resolvePublicImage(media.id, raw, typeof raw.altText === "string" ? raw.altText : "");
+    if (resolved) { imageUrl = resolved.imageUrl; break; }
+  }
+  return { ...serializeBooking(id, { ...data, propertyCoverImageUrl: imageUrl }), propertyCoverImageUrl: imageUrl ?? "/balmoral_hotel.png" };
 }

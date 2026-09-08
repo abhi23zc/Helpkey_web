@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { TravelSearch } from "@/components/search/travel-search";
+import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { LoginModal } from "../auth/login-modal";
 
 type IconProps = {
@@ -64,6 +65,7 @@ type LiveProperty = {
   minimumPricePaise: number | null;
   currency: string;
   coverImageUrl: string | null;
+  coverImageSrcSet?: string;
   freeCancellation: boolean;
 };
 
@@ -594,7 +596,7 @@ function RecommendedSection({ properties, loading }: { properties: LiveProperty[
             className="group flex flex-col overflow-hidden rounded-[16px] border border-[rgba(196,198,206,0.55)] bg-white shadow-sm transition-all hover:shadow-md sm:flex-row"
           >
             <div className="relative h-[240px] shrink-0 overflow-hidden sm:h-auto sm:w-[260px]">
-              {stay.coverImageUrl ? <img src={stay.coverImageUrl} alt={stay.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center bg-[var(--hk-surface-muted)] text-sm font-semibold text-[var(--hk-muted)]">Photo coming soon</div>}
+              {stay.coverImageUrl ? <PublicMediaImage src={stay.coverImageUrl} srcSet={stay.coverImageSrcSet} alt={stay.name} sizes="(min-width: 640px) 260px, 100vw" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center bg-[var(--hk-surface-muted)] text-sm font-semibold text-[var(--hk-muted)]">Photo coming soon</div>}
               <div className="absolute left-3 top-3 flex flex-col gap-2">
                 <span className="inline-flex items-center rounded-[6px] bg-[var(--hk-success)] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">Verified stay</span>
               </div>

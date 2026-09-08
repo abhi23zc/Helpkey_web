@@ -40,6 +40,9 @@ export type AdminAssetRecord = {
   category?: string;
   mimeType?: string;
   moderationStatus?: string;
+  publicationStatus?: string;
+  publicationErrorCode?: string | null;
+  publicationAttempts?: number;
   status?: string;
 };
 

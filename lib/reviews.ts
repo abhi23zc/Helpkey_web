@@ -2,7 +2,7 @@ import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
-import { createR2ReadUrl } from "@/lib/r2";
+import { privatePreviewDto, resolvePublicImage } from "@/lib/media-resolver";
 
 export const REVIEW_COLLECTION = "propertyReviews";
 export const REVIEW_PHOTOS_COLLECTION = "reviewPhotos";
@@ -44,17 +44,23 @@ export async function refreshPropertyReviewSummary(propertyId: string) {
 }
 
 function asIso(value: unknown) { return value instanceof Timestamp ? value.toDate().toISOString() : typeof value === "string" ? value : null; }
-function photoUrl(key: unknown) { try { return typeof key === "string" && key ? createR2ReadUrl(key).url : null; } catch { return null; } }
-
-export async function publicReview(doc: FirebaseFirestore.QueryDocumentSnapshot, includePrivatePhotos = false) {
+export async function publicReview(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const data = doc.data();
   const photoIds = Array.isArray(data.photoIds) ? data.photoIds.filter((id): id is string => typeof id === "string").slice(0, 5) : [];
   const photos = await Promise.all(photoIds.map(async (id) => {
     const photo = await adminDb.collection(REVIEW_PHOTOS_COLLECTION).doc(id).get(); const raw = photo.data();
-    if (!photo.exists || !raw || (raw.status !== "approved" && !includePrivatePhotos)) return null;
-    return { id: photo.id, imageUrl: photoUrl(raw.r2ObjectKey), altText: typeof raw.fileName === "string" ? raw.fileName : "Guest review photo" };
+    if (!photo.exists || !raw) return null;
+    return resolvePublicImage(photo.id, raw, typeof raw.fileName === "string" ? raw.fileName : "Guest review photo");
   }));
-  return { id: doc.id, reviewerName: typeof data.reviewerName === "string" ? data.reviewerName : "Helpkey guest", rating: data.rating, text: typeof data.text === "string" ? data.text : "", submittedAt: asIso(data.submittedAt) ?? asIso(data.updatedAt), photos: photos.filter((photo): photo is { id: string; imageUrl: string | null; altText: string } => Boolean(photo?.imageUrl)) };
+  return { id: doc.id, reviewerName: typeof data.reviewerName === "string" ? data.reviewerName : "Helpkey guest", rating: data.rating, text: typeof data.text === "string" ? data.text : "", submittedAt: asIso(data.submittedAt) ?? asIso(data.updatedAt), photos: photos.filter((photo): photo is NonNullable<typeof photo> => Boolean(photo)) };
+}
+
+export async function moderationReview(doc: FirebaseFirestore.QueryDocumentSnapshot) {
+  const data = doc.data();
+  const base = await publicReview(doc);
+  const ids = Array.isArray(data.photoIds) ? data.photoIds.filter((id): id is string => typeof id === "string").slice(0, 5) : [];
+  const photos = (await Promise.all(ids.map(async (id) => { const photo = await adminDb.collection(REVIEW_PHOTOS_COLLECTION).doc(id).get(); if (!photo.exists) return null; const preview = await privatePreviewDto(photo.id, photo.data() ?? {}); return preview ? { ...preview, imageUrl: preview.url, altText: preview.fileName } : null; }))).filter((photo): photo is NonNullable<typeof photo> => Boolean(photo));
+  return { ...base, photos };
 }
 
 export async function publicReviews(propertyId: string, page: number, pageSize: number) {

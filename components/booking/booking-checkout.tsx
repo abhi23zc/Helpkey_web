@@ -30,6 +30,7 @@ import { SiteHeader } from "@/components/home/home-page";
 import { LoginModal } from "@/components/auth/login-modal";
 import { useAuth } from "@/components/auth/auth-provider";
 import { BookingConfirmationCard } from "@/components/booking/booking-confirmation-card";
+import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type Quote = {
   propertyName: string;
@@ -697,9 +698,10 @@ function BookingSummary({
         {/* Cover Image Header */}
         <div className="relative h-48 bg-slate-900">
           {quote?.propertyCoverImageUrl ? (
-            <img
+            <PublicMediaImage
               src={quote.propertyCoverImageUrl}
               alt={quote.propertyName}
+              sizes="(min-width: 1024px) 33vw, 100vw"
               className="h-full w-full object-cover"
             />
           ) : (

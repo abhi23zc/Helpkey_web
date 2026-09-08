@@ -11,10 +11,10 @@ function serializeDate(value: unknown): string | null {
   return null;
 }
 
-function safeReadUrl(objectKey: unknown): string | null {
+async function safeReadUrl(objectKey: unknown): Promise<string | null> {
   if (typeof objectKey !== "string" || !objectKey) return null;
   try {
-    return createR2ReadUrl(objectKey).url;
+    return (await createR2ReadUrl(objectKey)).url;
   } catch {
     return null;
   }
@@ -109,7 +109,7 @@ export async function GET(_: Request, { params }: RouteContext<"/api/partner/pro
         };
       }),
       policies: policies.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-      media: media.docs.map((doc) => {
+      media: await Promise.all(media.docs.map(async (doc) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -119,10 +119,10 @@ export async function GET(_: Request, { params }: RouteContext<"/api/partner/pro
           altText: typeof data.altText === "string" ? data.altText : "",
           moderationStatus: data.moderationStatus ?? data.status ?? "pending",
           isCover: doc.id === (p.coverMediaId ?? null),
-          imageUrl: safeReadUrl(data.r2ObjectKey),
+          imageUrl: await safeReadUrl(data.r2ObjectKey),
         };
-      }),
-      documents: documents.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      })),
+      documents: documents.docs.map((doc) => { const data = doc.data(); return { id: doc.id, documentType: data.documentType, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: serializeDate(data.createdAt) }; }),
     });
   } catch {
     return Response.json({ error: "Property access required." }, { status: 403 });
@@ -144,6 +144,14 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/par
       } catch {
         throw new Error("INVALID_TIMEZONE");
       }
+    }
+    if (patch.mediaIds || patch.coverMediaId) {
+      const current = await ref.get();
+      const ids = patch.mediaIds ?? (Array.isArray(current.data()?.mediaIds) ? current.data()?.mediaIds : []);
+      const required = [...new Set([...(ids as string[]), ...(patch.coverMediaId ? [patch.coverMediaId] : [])])];
+      if (patch.coverMediaId && !ids.includes(patch.coverMediaId)) throw new Error("PROPERTY_COVER_MUST_BE_ASSIGNED");
+      const assets = await Promise.all(required.map((id) => adminDb.collection("mediaAssets").doc(id).get()));
+      if (assets.some((asset) => !asset.exists || asset.data()?.propertyId !== propertyId || asset.data()?.kind !== "property_image")) throw new Error("INVALID_PROPERTY_MEDIA");
     }
     const update: Record<string, unknown> = { ...patch, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid };
     if (patch.latitude !== undefined && patch.longitude !== undefined) {

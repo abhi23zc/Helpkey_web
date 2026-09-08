@@ -3,6 +3,7 @@
 import { ArrowRight, Camera, ChevronDown, MessageCircle, Star } from "lucide-react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type ReviewSummary = {
   count: number;
@@ -25,7 +26,7 @@ type PublicReview = {
   rating: number;
   text: string;
   submittedAt: string | null;
-  photos: Array<{ id: string; imageUrl: string; altText: string }>;
+  photos: Array<{ id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string }>;
 };
 
 type OwnReview = {
@@ -366,9 +367,11 @@ export function Reviews({
                         rel="noreferrer"
                         className="h-14 w-14 overflow-hidden rounded-lg border border-slate-200 hover:opacity-90"
                       >
-                        <img
+                        <PublicMediaImage
                           src={photo.imageUrl}
+                          srcSet={photo.imageSrcSet}
                           alt={photo.altText}
+                          sizes="56px"
                           className="h-full w-full object-cover"
                         />
                       </a>

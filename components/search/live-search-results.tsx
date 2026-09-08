@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { SiteHeader } from "@/components/home/home-page";
 import { LoginModal } from "@/components/auth/login-modal";
+import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type Property = {
   id: string;
@@ -36,6 +37,7 @@ type Property = {
   minimumPricePaise: number | null;
   currency: string;
   coverImageUrl: string | null;
+  coverImageSrcSet?: string;
   amenityCodes: string[];
   freeCancellation: boolean;
 };
@@ -1065,9 +1067,11 @@ function StayCard({ property, recommended }: { property: Property; recommended: 
       <div className="grid md:grid-cols-[250px_minmax(0,1fr)_180px]">
         <div className="relative min-h-52 bg-[var(--hk-surface-muted)]">
           {property.coverImageUrl ? (
-            <img
+            <PublicMediaImage
               src={property.coverImageUrl}
+              srcSet={property.coverImageSrcSet}
               alt={property.name}
+              sizes="(min-width: 768px) 250px, 100vw"
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : (

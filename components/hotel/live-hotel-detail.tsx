@@ -29,8 +29,9 @@ import {
 import { SiteHeader } from "@/components/home/home-page";
 import { LoginModal } from "@/components/auth/login-modal";
 import { Reviews } from "@/components/hotel/hotel-reviews";
+import { PublicMediaImage } from "@/components/shared/public-media-image";
 
-type PropertyImage = { id: string; imageUrl: string; altText: string };
+type PropertyImage = { id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string };
 type ReviewSummary = {
   count: number;
   ratingSum: number;
@@ -400,9 +401,12 @@ function Gallery({ property }: { property: Property }) {
               index === 0 ? "col-span-2 row-span-2" : ""
             }`}
           >
-            <img
+            <PublicMediaImage
               src={image.imageUrl}
+              srcSet={image.imageSrcSet}
               alt={image.altText || `${property.name} photo ${index + 1}`}
+              sizes={index === 0 ? "(min-width: 1024px) 50vw, 100vw" : "(min-width: 1024px) 25vw, 50vw"}
+              loading={index === 0 ? "eager" : "lazy"}
               className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
             />
             {index === 0 && (
@@ -436,9 +440,12 @@ function Gallery({ property }: { property: Property }) {
           </div>
 
           <div className="relative mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center py-4">
-            <img
+            <PublicMediaImage
               src={activeImage.imageUrl}
+              srcSet={activeImage.imageSrcSet}
               alt={activeImage.altText || property.name}
+              sizes="100vw"
+              loading="eager"
               className="max-h-full max-w-full rounded-xl object-contain"
             />
             <button
@@ -476,9 +483,11 @@ function Gallery({ property }: { property: Property }) {
                     : "border-transparent opacity-65 hover:opacity-100"
                 }`}
               >
-                <img
+                <PublicMediaImage
                   src={image.imageUrl}
+                  srcSet={image.imageSrcSet}
                   alt=""
+                  sizes="80px"
                   className="h-full w-full object-cover"
                 />
               </button>
