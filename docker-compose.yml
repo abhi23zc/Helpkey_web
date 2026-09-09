@@ -1,0 +1,94 @@
+name: helpkey
+
+x-app: &app
+  image: helpkey:local
+  build:
+    context: .
+    args:
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID}
+      NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+  env_file:
+    - .env.local
+  environment:
+    # Services communicate with Redis over Docker's private network.
+    REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.local}@redis:6379
+  restart: unless-stopped
+  init: true
+  # Avoid Docker inheriting an unavailable local stub resolver. The app needs
+  # outbound DNS for Firebase, R2, Cloudflare, and remote Google profile images.
+  dns:
+    - 1.1.1.1
+    - 8.8.8.8
+  depends_on:
+    redis:
+      condition: service_healthy
+  networks:
+    - internal
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: >-
+      redis-server --appendonly yes --appendfsync everysec
+      --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.local}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.local}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - internal
+
+  web:
+    <<: *app
+    command: ["node", "server.js"]
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  dispatcher:
+    <<: *app
+    command: ["node", "dist/workers/media/dispatcher.js"]
+
+  media-worker-1:
+    <<: *app
+    command: ["node", "dist/workers/media/runner.js"]
+
+  media-worker-2:
+    <<: *app
+    command: ["node", "dist/workers/media/runner.js"]
+
+  cleanup:
+    <<: *app
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        while true; do
+          node dist/workers/media/cleanup.js
+          sleep 3600
+        done
+
+  media-migrate:
+    <<: *app
+    profiles: ["migration"]
+    restart: "no"
+    command: ["node", "dist/workers/media/migrate-firestore-jobs.js"]
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  redis-data:

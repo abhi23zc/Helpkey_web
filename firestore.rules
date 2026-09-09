@@ -1,6 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isActiveAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles.hasAny(["admin"])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == "active"
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive != false;
+    }
+
+    // The admin drawer subscribes only to media document IDs it already received
+    // from an authenticated API response. Queries/listing and every browser write
+    // remain denied.
+    match /mediaAssets/{mediaId} {
+      allow get: if isActiveAdmin();
+    }
+
     // Operational data is read through server DTOs and all mutations use Admin SDK routes.
     match /{document=**} { allow read, write: if false; }
   }

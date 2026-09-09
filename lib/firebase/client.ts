@@ -9,6 +9,7 @@ import {
   signOut,
   type Auth,
 } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -21,6 +22,7 @@ const firebaseConfig = {
 };
 
 let auth: Auth | null = null;
+let firestore: Firestore | null = null;
 
 export function hasFirebaseClientConfig() {
   return Object.values(firebaseConfig).every(Boolean);
@@ -43,6 +45,17 @@ export function getFirebaseAuth() {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
   return auth;
+}
+
+export function getFirebaseFirestore() {
+  if (firestore) {
+    return firestore;
+  }
+
+  assertFirebaseClientConfig();
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  firestore = getFirestore(app);
+  return firestore;
 }
 
 export function getGoogleProvider() {

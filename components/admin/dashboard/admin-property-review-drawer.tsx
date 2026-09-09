@@ -2,6 +2,8 @@
 
 import { AlertTriangle, FileCheck, Image as ImageIcon, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { getFirebaseFirestore } from "@/lib/firebase/client";
 import { adminApi } from "./api";
 import { label, textValue, type AdminRecord, type PropertyDetail } from "./types";
 
@@ -54,6 +56,48 @@ export function AdminPropertyReviewDrawer({
   };
 
   useEffect(load, [propertyId]);
+
+  // The API remains the source of the complete review DTO. These narrow,
+  // per-document listeners only keep worker-owned publication state current.
+  const mediaListenerIds = detail?.media.map((asset) => asset.id).sort().join("|") ?? "";
+  useEffect(() => {
+    const mediaIds = mediaListenerIds ? mediaListenerIds.split("|") : [];
+    if (!mediaIds.length) return;
+    let firestore;
+    try {
+      firestore = getFirebaseFirestore();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Realtime publication updates are unavailable.");
+      return;
+    }
+    const unsubscribers = mediaIds.map((mediaId) =>
+      onSnapshot(
+        doc(firestore, "mediaAssets", mediaId),
+        (snapshot) => {
+          if (!snapshot.exists()) return;
+          const publication = snapshot.data().publication as Record<string, unknown> | undefined;
+          setDetail((current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              media: current.media.map((asset) =>
+                asset.id === mediaId
+                  ? {
+                      ...asset,
+                      publicationStatus: typeof publication?.status === "string" ? publication.status : asset.publicationStatus,
+                      publicationErrorCode: typeof publication?.lastErrorCode === "string" ? publication.lastErrorCode : null,
+                      publicationAttempts: typeof publication?.attempts === "number" ? publication.attempts : asset.publicationAttempts,
+                    }
+                  : asset,
+              ),
+            };
+          });
+        },
+        (cause) => setError(cause.message),
+      ),
+    );
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [mediaListenerIds]);
 
   const act = async (url: string, body?: unknown) => {
     setBusy(true);

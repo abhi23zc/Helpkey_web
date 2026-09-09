@@ -1,6 +1,6 @@
 import "server-only";
 
-import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, type GetObjectCommandOutput, type HeadObjectCommandOutput } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, type HeadObjectCommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const PRIVATE_READ_SECONDS = 5 * 60;
@@ -15,7 +15,10 @@ function endpoint() {
 
 function client(accessKeyId: string | undefined, secretAccessKey: string | undefined) {
   if (!accessKeyId || !secretAccessKey) throw new Error("R2_NOT_CONFIGURED");
-  return new S3Client({ region: "auto", endpoint: endpoint(), credentials: { accessKeyId, secretAccessKey } });
+  // R2 accepts direct virtual-host requests, but this SDK version generates
+  // invalid presigned PUT signatures for that form. Path-style URLs sign and
+  // upload correctly, including from browser clients.
+  return new S3Client({ region: "auto", endpoint: endpoint(), forcePathStyle: true, credentials: { accessKeyId, secretAccessKey } });
 }
 
 function privateConfig(): BucketConfig {
@@ -24,12 +27,6 @@ function privateConfig(): BucketConfig {
   const secretAccessKey = process.env.R2_PRIVATE_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY;
   if (!bucket) throw new Error("R2_NOT_CONFIGURED");
   return { bucket, client: client(accessKeyId, secretAccessKey) };
-}
-
-function publicConfig(): BucketConfig {
-  const bucket = process.env.R2_PUBLIC_BUCKET_NAME;
-  if (!bucket) throw new Error("PUBLIC_MEDIA_NOT_CONFIGURED");
-  return { bucket, client: client(process.env.R2_PUBLIC_WRITE_ACCESS_KEY_ID, process.env.R2_PUBLIC_WRITE_SECRET_ACCESS_KEY) };
 }
 
 function validObjectKey(key: string) {
@@ -41,7 +38,9 @@ export async function createPrivateUploadUrl(key: string, contentType: string, c
   const { bucket, client } = privateConfig();
   const command = new PutObjectCommand({ Bucket: bucket, Key: validObjectKey(key), ContentType: contentType, Metadata: { sha256: checksum } });
   const seconds = Math.min(expiresSeconds, PRIVATE_UPLOAD_SECONDS);
-  return { uploadUrl: await getSignedUrl(client, command, { expiresIn: seconds }), headers: { "Content-Type": contentType, "x-amz-meta-sha256": checksum }, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+  // R2 rejects metadata hoisted into a presigned URL query string. Preserve
+  // this integrity value as a signed browser request header instead.
+  return { uploadUrl: await getSignedUrl(client, command, { expiresIn: seconds, unhoistableHeaders: new Set(["x-amz-meta-sha256"]) }), headers: { "Content-Type": contentType, "x-amz-meta-sha256": checksum }, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
 }
 
 export async function createPrivateReadUrl(key: string, expiresSeconds = PRIVATE_READ_SECONDS) {
@@ -55,11 +54,6 @@ export async function headPrivateObject(key: string): Promise<HeadObjectCommandO
   return client.send(new HeadObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
 }
 
-export async function getPrivateObject(key: string): Promise<GetObjectCommandOutput> {
-  const { bucket, client } = privateConfig();
-  return client.send(new GetObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
-}
-
 export async function copyPrivateObject(sourceKey: string, destinationKey: string) {
   const { bucket, client } = privateConfig();
   await client.send(new CopyObjectCommand({ Bucket: bucket, Key: validObjectKey(destinationKey), CopySource: `${bucket}/${validObjectKey(sourceKey).split("/").map(encodeURIComponent).join("/")}`, MetadataDirective: "COPY" }));
@@ -67,21 +61,6 @@ export async function copyPrivateObject(sourceKey: string, destinationKey: strin
 
 export async function deletePrivateObject(key: string) {
   const { bucket, client } = privateConfig();
-  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
-}
-
-export async function putPublicObject(key: string, body: Uint8Array, input: { contentType: "image/webp"; cacheControl: string; metadata: Record<string, string> }) {
-  const { bucket, client } = publicConfig();
-  await client.send(new PutObjectCommand({ Bucket: bucket, Key: validObjectKey(key), Body: body, ContentLength: body.byteLength, ContentType: input.contentType, CacheControl: input.cacheControl, Metadata: input.metadata }));
-}
-
-export async function headPublicObject(key: string): Promise<HeadObjectCommandOutput> {
-  const { bucket, client } = publicConfig();
-  return client.send(new HeadObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
-}
-
-export async function deletePublicObject(key: string) {
-  const { bucket, client } = publicConfig();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
 }
 
@@ -95,16 +74,6 @@ export function publicMediaUrl(key: string) {
   const url = new URL(valid.split("/").map(encodeURIComponent).join("/"), `${baseUrl.toString().replace(/\/$/, "")}/`);
   if (url.origin !== baseUrl.origin) throw new Error("MEDIA_INVALID_OBJECT_KEY");
   return url.toString();
-}
-
-export async function purgePublicUrls(keys: string[]) {
-  if (!keys.length) return;
-  const zoneId = process.env.CLOUDFLARE_ZONE_ID;
-  const token = process.env.CLOUDFLARE_CACHE_PURGE_TOKEN;
-  if (!zoneId || !token) throw new Error("CACHE_PURGE_FAILED");
-  const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zoneId)}/purge_cache`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ files: keys.map(publicMediaUrl) }) });
-  const result = response.ok ? await response.json() as { success?: boolean } : null;
-  if (!result?.success) throw new Error("CACHE_PURGE_FAILED");
 }
 
 // Compatibility aliases during the dual-read rollout.
