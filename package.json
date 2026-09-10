@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "all": "npm run build:workers && concurrently --kill-others-on-fail --names next,dispatcher,worker-1,worker-2 --prefix name \"npm run dev\" \"npm run worker:dispatcher\" \"npm run worker:media\" \"npm run worker:media\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -19,12 +20,14 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
     "@aws-sdk/s3-request-presigner": "^3.1127.0",
+    "@types/qrcode.react": "^1.0.5",
     "bullmq": "^6.3.4",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",
     "ioredis": "^6.0.0",
     "lucide-react": "^1.40.0",
     "next": "16.3.3",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sharp": "^0.35.4"
@@ -34,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",

@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+For Docker, VPS, worker, Firebase, and troubleshooting commands, see the [Helpkey command library](docs/commands.md).
+
+To start Next.js and all local media processes together, run `npm run dev:all`.
+
 ## Getting Started
 
 Create a local `.env.local` with the Firebase and WhatsApp credentials used by authentication:

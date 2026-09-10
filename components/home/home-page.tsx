@@ -7,6 +7,11 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { TravelSearch } from "@/components/search/travel-search";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { LoginModal } from "../auth/login-modal";
+import { GlobalReachSection } from "./global-reach-map";
+import { DestinationsCarousel } from "./destinations-carousel";
+import { FeaturedStaysTabs } from "./featured-stays-tabs";
+import { PromotionsCarousel } from "./promotions-carousel";
+import { AppPromoWidget } from "./app-promo-widget";
 
 type IconProps = {
   className?: string;
@@ -208,14 +213,25 @@ export function HomePage() {
           loyaltyCta="Sign In / Register"
           onLoginClick={() => setIsLoginOpen(true)}
         />
-        <TrustSection />
-        <RecommendedSection properties={catalog?.recommendations ?? []} loading={catalog === null} />
-        <HubsSection cities={catalog?.cities ?? []} />
+        
+        {/* Agoda-style Destinations Carousel */}
+        <DestinationsCarousel />
+
+        {/* Agoda-style Featured Stays with City Tabs & Rating Badges */}
+        <FeaturedStaysTabs />
+
+        {/* Agoda-style Accommodation Promotions Banner Carousel */}
+        <PromotionsCarousel />
+
+        {/* OYO-style Global Reach Map & Live Stats */}
+        <GlobalReachSection />
+
         <CollectionsSection />
         <AppSection />
         <NewsletterSection />
       </main>
       <SiteFooter />
+      <AppPromoWidget />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   );
@@ -515,158 +531,7 @@ function SearchChipButton({ chip, active, onClick }: { chip: SearchChip; active:
   );
 }
 
-function TrustSection() {
-  const items = [
-    {
-      title: "Best Price Guarantee",
-      description:
-        "We match any lower price found online for the same premium stay.",
-      icon: ShieldIcon,
-    },
-    {
-      title: "Flexible Bookings",
-      description:
-        "Enjoy free cancellation on most of our corporate partner rooms.",
-      icon: CalendarCheckIcon,
-    },
-    {
-      title: "Executive Quality",
-      description:
-        "Every hotel is vetted for business-ready amenities and comfort.",
-      icon: StarBadgeIcon,
-    },
-    {
-      title: "24/7 Concierge",
-      description:
-        "Dedicated support around the clock for all your travel needs.",
-      icon: SupportIcon,
-    },
-  ];
 
-  return (
-    <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4">
-        {items.map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <div key={item.title} className="flex flex-col items-center text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(196,198,206,0.55)] bg-white shadow-sm">
-                <Icon className="h-8 w-8 text-[var(--hk-navy-strong)]" />
-              </div>
-              <h3 className="text-[18px] font-semibold text-[var(--hk-ink)]">
-                {item.title}
-              </h3>
-              <p className="mt-2 text-[15px] leading-6 text-[var(--hk-muted)]">
-                {item.description}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function RecommendedSection({ properties, loading }: { properties: LiveProperty[]; loading: boolean }) {
-  return (
-    <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-[30px] font-bold tracking-[-0.03em] text-[var(--hk-ink)] sm:text-[32px]">
-            Recommended stays
-          </h2>
-          <p className="mt-2 text-[16px] text-[var(--hk-muted)]">
-            Handpicked premium properties for your next trip.
-          </p>
-        </div>
-        <Link
-          href="/search"
-          className="inline-flex items-center gap-1 text-[14px] font-medium text-[var(--hk-navy-strong)] hover:text-[var(--hk-gold-strong)]"
-        >
-          View all
-          <ArrowRightIcon className="h-4 w-4" />
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {properties.map((stay) => (
-          <article
-            key={stay.id}
-            className="group flex flex-col overflow-hidden rounded-[16px] border border-[rgba(196,198,206,0.55)] bg-white shadow-sm transition-all hover:shadow-md sm:flex-row"
-          >
-            <div className="relative h-[240px] shrink-0 overflow-hidden sm:h-auto sm:w-[260px]">
-              {stay.coverImageUrl ? <PublicMediaImage src={stay.coverImageUrl} srcSet={stay.coverImageSrcSet} alt={stay.name} sizes="(min-width: 640px) 260px, 100vw" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center bg-[var(--hk-surface-muted)] text-sm font-semibold text-[var(--hk-muted)]">Photo coming soon</div>}
-              <div className="absolute left-3 top-3 flex flex-col gap-2">
-                <span className="inline-flex items-center rounded-[6px] bg-[var(--hk-success)] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">Verified stay</span>
-              </div>
-              <button
-                aria-label={`Save ${stay.name}`}
-                className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md transition-colors hover:bg-white/40"
-              >
-                <HeartIcon className="h-5 w-5 drop-shadow-md" />
-              </button>
-            </div>
-
-            <div className="flex flex-1 flex-col justify-between p-5">
-              <div>
-                <div className="flex items-start justify-between gap-4">
-                  <h3 className="text-[20px] font-bold leading-tight tracking-[-0.02em] text-[var(--hk-ink)]">
-                    {stay.name}
-                  </h3>
-                  <div className="flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--hk-navy-strong)] px-2 py-1 text-white">
-                    <span className="text-[14px] font-bold">{stay.ratingAverage ? stay.ratingAverage.toFixed(1) : "New"}</span>
-                  </div>
-                </div>
-                
-                <p className="mt-1.5 flex items-center gap-1 text-[13px] text-[var(--hk-navy-strong)]">
-                  <PinIcon className="h-3.5 w-3.5" />
-                  <span className="font-medium underline decoration-[var(--hk-navy-strong)]/30 underline-offset-2 hover:decoration-[var(--hk-navy-strong)]">
-                    {stay.city || "Location pending"}
-                  </span>
-                  <span className="mx-1 text-[var(--hk-muted)]">•</span>
-                  <span className="text-[var(--hk-muted)]">0.5 miles from center</span>
-                </p>
-
-                <div className="mt-4 flex flex-col gap-1.5 border-l-2 border-[var(--hk-success)] pl-3">
-                  <span className="flex items-center gap-2 text-[12px] font-bold text-[var(--hk-success)]">
-                    Verified stay
-                  </span>
-                  {stay.freeCancellation && (
-                    <span className="flex items-center gap-2 text-[12px] font-bold text-[var(--hk-success)]">
-                      Free cancellation
-                    </span>
-                  )}
-                  <span className="flex items-center gap-2 text-[12px] font-bold text-[var(--hk-success)]">
-                    No prepayment needed
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-5 flex items-end justify-between border-t border-gray-100 pt-4">
-                <div className="flex flex-col">
-                  <span className="text-[11px] text-[var(--hk-muted)]">From</span>
-                  <span className="text-[24px] font-extrabold tracking-tight text-[var(--hk-ink)]">
-                    {formatPrice(stay.minimumPricePaise, stay.currency)}
-                  </span>
-                  <span className="text-[11px] text-[var(--hk-muted)]">per night, before taxes</span>
-                </div>
-                <Link
-                  href={`/hotels/${stay.slug}`}
-                  className="rounded-[8px] bg-[var(--hk-navy-strong)] px-5 py-2.5 text-[14px] font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5 hover:bg-[var(--hk-primary)]"
-                >
-                  See availability
-                </Link>
-              </div>
-            </div>
-          </article>
-        ))}
-        {!loading && !properties.length && <div className="rounded-[16px] border border-dashed border-[var(--hk-border-strong)] bg-white p-10 text-center text-[var(--hk-muted)] lg:col-span-2">New premium stays will appear here once they are approved and ready to book.</div>}
-        {loading && <div className="rounded-[16px] border border-[var(--hk-border-strong)] bg-white p-10 text-center text-[var(--hk-muted)] lg:col-span-2">Loading recommended stays…</div>}
-      </div>
-    </section>
-  );
-}
 
 function HubsSection({ cities }: { cities: Array<{ city: string; propertyCount: number }> }) {
   return (
