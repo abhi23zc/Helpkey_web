@@ -168,7 +168,7 @@ const collections: Collection[] = [
     description:
       "Hotels featuring ultra-fast Wi-Fi, 24/7 business centers, and fully-equipped meeting rooms.",
     image:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuA-NH71Pn0hJd0vWcr68bSZCy5Adl6STGc9PAJtkbMjScN1pUlrtCA3BtW7U99Mn-KC94Zn5sZP50DnQcO_1yoTYRwf0RqDaZD6IEooahcvaN7DCWyRAwexDMnFm2Cm8TztXFS6LOtMPFtVAsanSy9Hmymq1P3WGrSKseIc63Q4-9YJq9zBq8huTuT12Uc7N3yo8dG-Yu-_DHzS5aSozH2XH4jXSe1KxpqbUkTWZ4G6-Brh1dHZlUFPMg",
+      "/images/business-essentials.png",
   },
   {
     tag: "Collection",
@@ -176,7 +176,7 @@ const collections: Collection[] = [
     description:
       "Unwind after hours in five-star suites with premium spa facilities and world-class dining.",
     image:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAOFfM8cEEOkwT7HJKb_BE2S6EQ11_8EpodH5TabYUDsphOdDZ9eQ9Bq2Tvq75lFo2H-NPlg1biGJDPH_LCsA1-Dz4soTJDyjSXcb3QpVZSTSb_6n1gc99NPFGesVWVm2SiMxGwK3NJsP-kK5fNut0mMyjxNSd9muutOSeIK_VCUSnS-rZg9V816BJ5Ney2u7xaoXDV6uE860NVCLGrIfgUpL1HJYcp09qbOCFOZDoNC6sAjCnKyUIXtA",
+      "/images/luxury-escapes.png",
   },
 ];
 
@@ -617,33 +617,17 @@ function CollectionsSection() {
 function AppSection() {
   return (
     <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
-      <div className="overflow-hidden rounded-[24px] bg-[var(--hk-navy-panel)] md:grid md:grid-cols-2">
-        <div className="p-8 sm:p-10 lg:p-16">
-          <h2 className="text-[34px] font-bold leading-tight tracking-[-0.03em] text-white lg:text-[40px]">
-            Book faster with
-            <br />
-            the Helpkey app
-          </h2>
-          <p className="mt-4 max-w-[460px] text-[16px] leading-7 text-white/80 sm:text-[18px]">
-            Manage reservations, access exclusive mobile rates, and message
-            concierge directly from your phone.
-          </p>
-          <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-            <StoreButton label="App Store" caption="Download on the" icon={AppleIcon} />
-            <StoreButton label="Google Play" caption="Get it on" icon={PlayIcon} />
-          </div>
-        </div>
-
-        <div className="relative min-h-[320px]">
-          <Image
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsGLsH_Ou4umKJiGmIZolQ64HMDdE1eAtnOiz1Pjc4x1Q7L2aiZYIAXSSKfF1aca565z1Y0lne1MslNBeO-KlMQgh8QZFbAc7uSrWct4IrO78hsNu8p1J3cHMY6oFbeNT77EO7ii9PyT-ehpcHxNOVVwFAe-UsVvALr_PpanaToDQ2GKywjuRta4IycGTkD4DQSp07_nZxhs-SvVmgaXIBpHkVyzOaVhrBExua15paJSdtpPmj4Xhm9A"
-            alt="Helpkey mobile app preview"
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover object-left-top opacity-80 mix-blend-luminosity"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--hk-navy-panel)] to-transparent" />
-        </div>
+      <div className="relative overflow-hidden rounded-[24px] shadow-lg border border-[#0b1f3a]/10 bg-[#071633]">
+        <Image
+          src="/images/helpkey-app-banner.jpeg"
+          alt="Your Stay, Right When You Need It. Save stays, keep booking details close, and get help whenever plans change."
+          width={1920}
+          height={640}
+          unoptimized
+          quality={100}
+          className="w-full h-auto object-cover rounded-[24px]"
+          priority
+        />
       </div>
     </section>
   );
@@ -674,29 +658,7 @@ function StoreButton({
 function NewsletterSection() {
   return (
     <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
-      <div className="mx-auto max-w-4xl rounded-[16px] border border-[rgba(196,198,206,0.55)] bg-white p-8 text-center shadow-[0_4px_20px_rgba(11,31,58,0.02)] sm:p-10">
-        <MailIcon className="mx-auto mb-4 h-10 w-10 text-[var(--hk-gold-strong)]" />
-        <h2 className="text-[30px] font-bold tracking-[-0.03em] text-[var(--hk-ink)] sm:text-[32px]">
-          Get exclusive executive deals
-        </h2>
-        <p className="mx-auto mt-3 max-w-[560px] text-[16px] leading-7 text-[var(--hk-muted)]">
-          Sign up for our newsletter and receive insider access to unpublished
-          corporate rates and travel tips.
-        </p>
-        <form className="mx-auto mt-8 flex max-w-md flex-col gap-4 sm:flex-row">
-          <input
-            type="email"
-            placeholder="Your business email"
-            className="flex-1 rounded-[8px] border border-[var(--hk-border-strong)] bg-[var(--hk-ivory)] px-4 py-3 text-[15px] text-[var(--hk-ink)] outline-none focus:border-[var(--hk-navy-strong)] focus:ring-2 focus:ring-[rgba(11,31,58,0.12)]"
-          />
-          <button
-            type="submit"
-            className="rounded-[8px] bg-[var(--hk-navy-strong)] px-8 py-3 text-[14px] font-semibold text-white hover:bg-[var(--hk-navy-panel)]"
-          >
-            Subscribe
-          </button>
-        </form>
-      </div>
+     
     </section>
   );
 }

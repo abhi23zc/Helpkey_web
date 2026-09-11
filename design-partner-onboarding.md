@@ -1,5 +1,17 @@
 # Helpkey partner onboarding — redesign brief
 
+## Updated visual target
+
+The onboarding entry page should follow the provided reference mock: a premium partner workspace rather than a minimal form.
+
+- Use a full-width dark navy header with the Helpkey logo, partner education links, help, and sign-in/dashboard access.
+- Keep the first viewport focused on one onboarding task: resume the latest draft when present, then start or continue the listing setup.
+- Use a two-column desktop layout: primary setup card on the left and a guidance rail on the right.
+- The setup card should show `Step 1 of 6`, a named stepper, property basics fields, a primary `Continue` action, secondary `Save as draft`, and an explicit save reassurance.
+- The guidance rail should include `What you will need`, time estimate, review reassurance, and partner support.
+- Benefit cards should sit below the main workspace with restrained iconography and short operational value copy.
+- The first screen should feel dense, professional, and dashboard-like: compact cards, 8px radius, navy primary actions, champagne accent icons, and warm off-white page background.
+
 ## Purpose
 
 Redesign the partner onboarding experience so a hotel owner can confidently start, resume, complete, and submit a listing without needing to understand the underlying setup model.

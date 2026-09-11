@@ -1,4 +1,5 @@
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
+import { ZodError } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner, propertyPatchSchema } from "@/lib/partner/service";
@@ -18,6 +19,34 @@ async function safeReadUrl(objectKey: unknown): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function fieldLabel(path: Array<PropertyKey>) {
+  const key = String(path[0] ?? "field");
+  return ({
+    name: "Property name",
+    description: "Description",
+    publicPhone: "Public phone",
+    publicEmail: "Public email",
+    checkInTime: "Check-in time",
+    checkOutTime: "Check-out time",
+    floors: "Floors",
+    totalPhysicalRooms: "Total rooms",
+    address: "Address",
+    googlePlaceId: "Map location",
+    timezone: "Timezone",
+  } as Record<string, string>)[key] ?? key;
+}
+
+function validationMessage(error: unknown) {
+  if (!(error instanceof ZodError)) return error instanceof Error ? error.message : "Unable to save property.";
+  const issue = error.issues[0];
+  if (!issue) return "Check the highlighted details and try again.";
+  const label = fieldLabel(issue.path);
+  if (issue.path[0] === "publicPhone") return "Enter the public phone in international format, for example +919876543210.";
+  if (issue.path[0] === "publicEmail") return "Enter a valid public email address.";
+  if (issue.path[0] === "description") return "Add a description of at least 20 characters.";
+  return `${label}: ${issue.message}`;
 }
 
 export async function GET(_: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]">) {
@@ -163,6 +192,6 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/par
     await ref.update(update);
     return Response.json({ ok: true, property: { ...patch, updatedAt: new Date().toISOString() } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to save property." }, { status: 422 });
+    return Response.json({ error: validationMessage(error) }, { status: 422 });
   }
 }

@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ChevronLeft, CircleHelp, CircleCheck, Loader2, LockKeyhole, MapPin, Search, Sparkles } from "lucide-react";
-import { placesLibrary } from "@/lib/google/maps-loader";
+import { ArrowRight, BedDouble, Building, Building2, Check, CheckCircle2, ChevronLeft, CircleCheck, CircleHelp, Home, Hotel, Loader2, LockKeyhole, MapPin, Search, Sparkles, Trees, Users, Warehouse } from "lucide-react";
+import { loadGoogleMaps, placesLibrary } from "@/lib/google/maps-loader";
 
 const steps = ["Property type", "Location", "Property details", "Rooms & rates", "Facilities", "Photos", "Verification", "Review"];
-const input = "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-100";
-const button = "rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60";
+const input = "mt-2 w-full rounded-xl border border-slate-300/80 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:border-[#092442] focus:ring-4 focus:ring-[#092442]/10";
+const button = "rounded-xl bg-[#092442] px-5 py-2.5 text-xs sm:text-sm font-extrabold text-white shadow-md transition-all hover:bg-[#061633] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60";
 const propertyPhotoCategories = [
   { value: "exterior", label: "Exterior / facade" },
   { value: "reception", label: "Reception / common area" },
@@ -16,6 +16,8 @@ const propertyPhotoCategories = [
   { value: "bathroom", label: "Bathroom" },
   { value: "additional", label: "Additional spaces" },
 ] as const;
+const allowedPropertyPhotoTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maxPropertyPhotoBytes = 12 * 1024 * 1024;
 const kycDocumentTypes = [
   { value: "pan", label: "PAN card", required: true, accept: ".jpg,.jpeg,.png,.pdf" },
   { value: "government_id_front", label: "Government ID front", required: true, accept: ".jpg,.jpeg,.png,.pdf" },
@@ -60,14 +62,15 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     void load().catch((error) => setNote(error.message));
   }, [propertyId, searchParams]);
 
-  const saveStep = async (patch: any) => {
+  const saveStep = async (patch: any): Promise<boolean> => {
     setSaving(true);
     setNote("");
     try {
-      await Promise.all([
-        request(`/api/partner/properties/${propertyId}`, patch, "PATCH"),
-        request(`/api/partner/properties/${propertyId}/steps`, { step }),
-      ]);
+      // The property write must finish before we mark a step complete.  Running
+      // these independently can leave a draft on the next step when its fields
+      // were rejected by validation or a transient write failure.
+      await request(`/api/partner/properties/${propertyId}`, patch, "PATCH");
+      await request(`/api/partner/properties/${propertyId}/steps`, { step });
       setListing((current) => current ? {
         ...current,
         property: {
@@ -82,8 +85,10 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
       } : current);
       setStep((current) => Math.min(current + 1, 8));
       setSavedAt("Saved just now");
+      return true;
     } catch (error) {
       setNote(error instanceof Error ? `We couldn’t save your changes. Your previous saved information is safe. ${error.message}` : "We couldn’t save your changes. Your previous saved information is safe.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -104,51 +109,15 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     }
   };
 
-  if (!listing) return <main className="min-h-screen bg-slate-50 p-10 text-center">{note || "Loading your listing..."}</main>;
+  if (!listing) return <main className="min-h-screen bg-[#f6f3ed] p-10 text-center text-sm font-medium text-slate-600">{note || "Loading your listing..."}</main>;
 
   const property = listing.property;
   let body: React.ReactNode;
 
   if (step === 1) body = <TypeStep selected={property.propertyType} onSave={(type) => saveStep({ propertyType: type })} saving={saving} />;
   else if (step === 2) body = <LocationStep property={property} saving={saving} onSave={saveStep} />;
-  else if (step === 3) {
-    body = (
-      <form
-        action={(formData) =>
-          void saveStep({
-            name: formData.get("name"),
-            description: formData.get("description"),
-            publicPhone: formData.get("phone"),
-            publicEmail: formData.get("email"),
-            checkInTime: formData.get("checkin"),
-            checkOutTime: formData.get("checkout"),
-            floors: Number(formData.get("floors")),
-            totalPhysicalRooms: Number(formData.get("totalRooms")),
-          })
-        }
-      >
-        <Heading title="Property details" text="The information guests use to choose your hotel." />
-        <Field name="name" label="Property name" value={property.name} />
-        <label className="block text-sm font-medium">
-          Description
-          <textarea required minLength={20} name="description" defaultValue={property.description} className={input} />
-        </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="phone" label="Public phone" value={property.publicPhone} />
-          <Field name="email" label="Public email" value={property.publicEmail} type="email" />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="checkin" label="Check-in" value={property.checkInTime} type="time" />
-          <Field name="checkout" label="Check-out" value={property.checkOutTime} type="time" />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="floors" label="Floors" value={property.floors} type="number" />
-          <Field name="totalRooms" label="Total rooms" value={property.totalPhysicalRooms} type="number" />
-        </div>
-        <Save saving={saving} />
-      </form>
-    );
-  } else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} onContinue={completeCurrentStep} saving={saving} />;
+  else if (step === 3) body = <DetailsStep property={property} saving={saving} onSave={saveStep} />;
+  else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} onContinue={completeCurrentStep} saving={saving} />;
   else if (step === 5) body = <Facilities onSave={saveStep} saving={saving} selected={property.amenityIds ?? []} />;
   else if (step === 6) body = <PhotoStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
   else if (step === 7) body = <KycStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
@@ -165,25 +134,146 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     );
   }
 
+  const completedStepsCount = listing.property.onboarding?.completedSteps?.length ?? Math.max(0, step - 1);
+  const progressPercent = Math.round((completedStepsCount / steps.length) * 100);
+
   return (
-    <main className="min-h-screen bg-[#f7f8fa] pb-24">
-      <header className="sticky top-0 z-20 border-b border-[#e5e1d8] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <Link href="/partner/onboarding" className="inline-flex items-center gap-1 text-sm font-bold text-[#0b1f3a] hover:text-[#9a6b18]"><ChevronLeft className="h-4 w-4" /> Save & exit</Link>
-          <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 sm:flex" aria-live="polite">{saving ? <><Sparkles className="h-4 w-4 animate-pulse text-[#9a6b18]" /> Saving…</> : savedAt ? <><CircleCheck className="h-4 w-4 text-emerald-600" /> {savedAt}</> : "Your work saves when you continue"}</div>
-          <Link href="/help" className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-[#0b1f3a]"><CircleHelp className="h-4 w-4" /> Help</Link>
-        </div>
-        <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
-          <div className="flex items-center justify-between"><p className="truncate text-sm font-extrabold text-[#0b1f3a]">{listing.property.name}</p><span className="text-sm font-bold text-[#0b1f3a]">Step {step} of {steps.length}</span></div>
-          <div className="mt-3 flex gap-1.5" aria-label={`Step ${step} of ${steps.length}`}>{steps.map((item, index) => { const value = index + 1; const enabled = value <= (listing.property.onboarding?.currentStep ?? 1); return <button key={item} type="button" disabled={!enabled || value === step} onClick={() => setStep(value)} aria-current={value === step ? "step" : undefined} title={item} className={`h-1.5 flex-1 rounded-full transition ${value < step ? "bg-emerald-600" : value === step ? "bg-[#0b1f3a]" : "bg-slate-200"} disabled:cursor-default`} />; })}</div>
-          <div className="mt-2 hidden justify-between lg:flex">{steps.map((item, index) => <span key={item} className={`w-full text-[10px] font-bold ${index + 1 === step ? "text-[#0b1f3a]" : "text-slate-400"}`}>{item}</span>)}</div>
+    <main className="min-h-screen bg-[#f8f6f0] pb-12 text-[#071633]">
+      <header className="sticky top-0 z-30 border-b border-[#ded8cf] bg-white/95 shadow-[0_4px_20px_rgba(7,22,51,0.04)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          {/* Left: Save & Exit + Brand Logo */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <Link
+              href="/partner/onboarding"
+              className="group flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3.5 py-2 text-xs sm:text-sm font-bold text-[#092442] shadow-xs transition hover:border-[#092442] hover:bg-[#092442] hover:text-white"
+            >
+              <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+              <span>Save & exit</span>
+            </Link>
+            <div className="hidden h-5 w-[1px] bg-slate-200 sm:block" />
+            <div className="hidden items-center gap-2 sm:flex">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#092442] text-amber-400 shadow-xs">
+                <Hotel className="h-4 w-4" />
+              </span>
+              <div className="flex flex-col leading-none">
+                <span className="text-xs font-extrabold tracking-tight text-[#092442]">Helpkey</span>
+                <span className="text-[10px] font-bold text-[#bb8525]">Partner Portal</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Actions, Auto-save, Property Name & Help */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Auto-Save Indicator Badge */}
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200/80 bg-slate-50/80 px-3.5 py-1.5 text-xs font-semibold text-slate-600 shadow-xs sm:flex" aria-live="polite">
+              {saving ? (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 animate-pulse text-amber-500" />
+                  <span className="font-medium text-amber-700">Saving changes...</span>
+                </>
+              ) : savedAt ? (
+                <>
+                  <CircleCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="font-medium text-slate-700">{savedAt}</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-slate-500">Auto-saves on continue</span>
+                </>
+              )}
+            </div>
+
+            {/* Step Count Badge */}
+            <div className="flex items-center gap-1.5 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-1.5 text-xs font-extrabold text-[#092442]">
+              <span className="text-[#bb8525]">Step {step} of {steps.length}</span>
+            </div>
+
+            {/* Property Name Tag */}
+            <div className="hidden items-center gap-2 rounded-xl bg-[#092442]/5 border border-[#092442]/10 px-3 py-1.5 text-xs font-bold text-[#092442] md:flex">
+              <span className="max-w-[140px] truncate font-black">{listing.property.name}</span>
+            </div>
+
+            {/* Help Link */}
+            <Link
+              href="/help"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-700 shadow-xs transition hover:border-[#092442] hover:text-[#092442]"
+            >
+              <CircleHelp className="h-4 w-4 text-slate-500" />
+              <span className="hidden sm:inline">Help</span>
+            </Link>
+          </div>
         </div>
       </header>
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:px-6">
-        <div><p className="mb-4 text-xs font-extrabold uppercase tracking-[.18em] text-[#9a6b18]">{steps[step - 1]}</p><section className="rounded-3xl border border-[#e5e1d8] bg-white p-5 shadow-[0_12px_32px_rgba(11,31,58,0.05)] sm:p-8">{body}</section>{note && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">{note}</p>}</div>
-        <aside className="hidden h-fit rounded-3xl border border-[#e5e1d8] bg-white p-5 lg:block"><p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#9a6b18]">Your listing</p><p className="mt-3 text-3xl font-extrabold text-[#0b1f3a]">{listing.property.onboarding?.completedSteps?.length ?? Math.max(0, step - 1)}/8</p><p className="mt-1 text-sm text-slate-600">steps complete</p><div className="mt-5 rounded-2xl bg-[#f7f8fa] p-4"><LockKeyhole className="h-4 w-4 text-[#9a6b18]" /><p className="mt-2 text-sm font-bold text-[#0b1f3a]">Need help?</p><p className="mt-1 text-xs leading-5 text-slate-600">Your draft stays private until you submit it for review.</p><Link href="/help" className="mt-3 inline-block text-xs font-bold text-[#0b1f3a] underline">Visit Help Centre</Link></div></aside>
+
+      {/* Main Content & Sidebar Grid */}
+      <div className="mx-auto grid max-w-[1240px] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:px-8">
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#bb8525]" />
+            <p className="text-[11px] font-extrabold uppercase tracking-[.22em] text-[#bb8525]">Step {step} — {steps[step - 1]}</p>
+          </div>
+          <section className="rounded-2xl border border-[#ded8cf] bg-white p-6 shadow-[0_8px_30px_rgba(7,22,51,0.04)] sm:p-8">
+            {body}
+          </section>
+          {note && <p role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed font-medium text-rose-900 shadow-xs">{note}</p>}
+        </div>
+
+        {/* Sidebar Summary Card */}
+        <aside className="hidden h-fit rounded-2xl border border-[#ded8cf] bg-white p-6 shadow-[0_8px_30px_rgba(7,22,51,0.04)] lg:block">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <p className="text-[11px] font-extrabold uppercase tracking-[.18em] text-[#bb8525]">Your listing</p>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 border border-emerald-200/60">Draft mode</span>
+          </div>
+
+          <div className="mt-4 flex items-baseline justify-between">
+            <div>
+              <p className="text-3xl font-black text-[#092442]">
+                {completedStepsCount}
+                <span className="text-lg font-bold text-slate-400">/8</span>
+              </p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">steps complete</p>
+            </div>
+            <div className="text-right">
+              <p className="text-base font-black text-[#bb8525]">{progressPercent}%</p>
+            </div>
+          </div>
+
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full bg-[#092442] transition-all duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          <div className="mt-6 rounded-xl border border-amber-200/70 bg-amber-50/60 p-4">
+            <div className="flex items-center gap-2 text-[#092442]">
+              <LockKeyhole className="h-4 w-4 text-[#bb8525]" />
+              <p className="text-sm font-extrabold">Need help?</p>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">Your draft stays completely private until you submit for final review.</p>
+            <Link href="/help" className="mt-3 inline-flex items-center gap-1 text-xs font-extrabold text-[#092442] hover:underline">
+              Visit Help Centre <ChevronLeft className="h-3 w-3 rotate-180" />
+            </Link>
+          </div>
+        </aside>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[#e5e1d8] bg-white/95 p-3 backdrop-blur"><div className="mx-auto flex max-w-6xl"><button type="button" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1 || saving} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-slate-300 px-4 text-sm font-bold text-[#0b1f3a] disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Back</button><span className="ml-auto self-center text-xs font-medium text-slate-500 sm:hidden" aria-live="polite">{saving ? "Saving…" : savedAt || "Saves on continue"}</span></div></nav>
+
+      {/* Bottom Navigation */}
+      <nav className="mx-auto flex max-w-[1240px] items-center justify-between px-4 pb-8 sm:px-6 lg:px-8">
+        <button
+          type="button"
+          onClick={() => setStep((current) => Math.max(1, current - 1))}
+          disabled={step === 1 || saving}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white px-5 text-sm font-extrabold text-[#092442] shadow-xs transition hover:border-[#092442] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span>Back</span>
+        </button>
+        <span className="text-xs font-semibold text-slate-500 sm:hidden" aria-live="polite">
+          {saving ? "Saving..." : savedAt || "Saves on continue"}
+        </span>
+      </nav>
     </main>
   );
 }
@@ -197,12 +287,37 @@ type PlaceSelection = {
   address: { line1: string; city: string; state: string; postalCode: string };
 };
 
-function locationComponent(components: google.maps.places.AddressComponent[] | undefined, types: string[]) {
-  return components?.find((component) => types.some((type) => component.types.includes(type)))?.longText ?? "";
+const defaultMapCenter = { lat: 22.9734, lng: 78.6569 };
+
+function locationComponent(components: Array<{ types: string[]; longText?: string | null; shortText?: string | null; long_name?: string; short_name?: string }> | undefined, types: string[]) {
+  const component = components?.find((item) => types.some((type) => item.types.includes(type)));
+  return component?.longText ?? component?.long_name ?? component?.shortText ?? component?.short_name ?? "";
 }
 
-function LocationStep({ property, saving, onSave }: { property: any; saving: boolean; onSave: (patch: any) => Promise<void> }) {
-  const [query, setQuery] = useState("");
+function selectionFromGeocode(result: google.maps.GeocoderResult, latLng: google.maps.LatLngLiteral, fallbackName: string): PlaceSelection {
+  const components = result.address_components;
+  const streetNumber = locationComponent(components, ["street_number"]);
+  const route = locationComponent(components, ["route"]);
+  const premise = locationComponent(components, ["premise", "establishment", "point_of_interest"]);
+  const locality = locationComponent(components, ["sublocality_level_1", "sublocality"]);
+  const city = locationComponent(components, ["locality", "administrative_area_level_3", "postal_town"]);
+  const state = locationComponent(components, ["administrative_area_level_1"]);
+  const postalCode = locationComponent(components, ["postal_code"]);
+  const street = [streetNumber, route].filter(Boolean).join(" ");
+  const line1 = [premise || fallbackName, street, locality].filter(Boolean).join(", ") || result.formatted_address || fallbackName;
+
+  return {
+    googlePlaceId: result.place_id,
+    name: premise || fallbackName || city || "Pinned location",
+    formattedAddress: result.formatted_address,
+    latitude: latLng.lat,
+    longitude: latLng.lng,
+    address: { line1, city, state, postalCode },
+  };
+}
+
+function LocationStep({ property, saving, onSave }: { property: any; saving: boolean; onSave: (patch: any) => Promise<boolean> }) {
+  const [query, setQuery] = useState(property.address?.city ?? "");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [suggestions, setSuggestions] = useState<google.maps.places.PlacePrediction[]>([]);
@@ -215,6 +330,13 @@ function LocationStep({ property, saving, onSave }: { property: any; saving: boo
     address: { line1: property.address?.line1 ?? "", city: property.address?.city ?? "", state: property.address?.state ?? "", postalCode: property.address?.postalCode ?? "" },
   } : null);
   const requestId = useRef(0);
+
+  const updateSelection = (next: PlaceSelection) => {
+    setSelected(next);
+    setQuery(next.formattedAddress || next.name);
+    setSuggestions([]);
+    setMessage("");
+  };
 
   useEffect(() => {
     const value = query.trim();
@@ -259,49 +381,355 @@ function LocationStep({ property, saving, onSave }: { property: any; saving: boo
           postalCode: locationComponent(place.addressComponents, ["postal_code"]),
         },
       };
-      setSelected(next); setQuery(next.name); setSuggestions([]);
+      updateSelection(next);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "We could not use that location.");
     } finally { setLoading(false); }
   };
 
-  return <form action={() => {
+  const submit = async () => {
     if (!selected) { setMessage("Search for and select your property from Google Maps first."); return; }
     if (!selected.address.line1 || !selected.address.city || !selected.address.state || !selected.address.postalCode) { setMessage("Complete the visible address fields before saving."); return; }
-    void onSave({ googlePlaceId: selected.googlePlaceId, latitude: selected.latitude, longitude: selected.longitude, timezone: property.timezone || "Asia/Kolkata", address: { ...selected.address, line2: null, landmark: null, district: null, countryCode: "IN" } });
-  }}>
+    await onSave({ googlePlaceId: selected.googlePlaceId, latitude: selected.latitude, longitude: selected.longitude, timezone: property.timezone || "Asia/Kolkata", address: { ...selected.address, line2: null, landmark: null, district: null, countryCode: "IN" } });
+  };
+
+  return <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <Heading title="Where is your property?" text="Search Google Maps, then confirm the guest-facing address. We use the precise location privately for bookings and verification." />
     <label className="block text-sm font-bold text-[#0b1f3a]">Search your property
       <span className="relative mt-2 block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => { setQuery(event.target.value); setMessage(""); }} placeholder="Property name, address, or landmark" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm outline-none focus:border-[#0b1f3a] focus:ring-4 focus:ring-[#0b1f3a]/10" />{(loading || suggestions.length > 0) && <div role="listbox" className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">{loading && <p className="px-3 py-2 text-sm text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Finding places…</p>}{suggestions.map((suggestion, index) => <button key={`${suggestion.text.toString()}-${index}`} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => void choose(suggestion)} className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-slate-50"><span className="block text-sm font-bold text-[#0b1f3a]">{suggestion.text.toString()}</span>{suggestion.secondaryText && <span className="mt-0.5 block text-xs text-slate-500">{suggestion.secondaryText.toString()}</span>}</button>)}</div>}</span>
     </label>
+    <LocationMapPicker
+      city={property.address?.city}
+      propertyName={property.name}
+      selected={selected}
+      onPick={updateSelection}
+      onBusy={setLoading}
+      onMessage={setMessage}
+    />
     {selected && <div className="mt-5 rounded-2xl border border-[#e5e1d8] bg-[#f7f8fa] p-4"><div className="flex gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fbf3df] text-[#9a6b18]"><MapPin className="h-5 w-5" /></span><div><p className="font-bold text-[#0b1f3a]">{selected.name}</p><p className="mt-1 text-sm leading-6 text-slate-600">{selected.formattedAddress}</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-700 sm:col-span-2">Address shown to guests<input required value={selected.address.line1} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, line1: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">City<input required value={selected.address.city} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, city: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">State<input required value={selected.address.state} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, state: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">PIN code<input required value={selected.address.postalCode} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, postalCode: event.target.value } } : current)} className={input} /></label></div></div>}
     {message && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">{message}</p>}
     <Save saving={saving} />
   </form>;
 }
 
+function LocationMapPicker({
+  city,
+  propertyName,
+  selected,
+  onPick,
+  onBusy,
+  onMessage,
+}: {
+  city?: string;
+  propertyName: string;
+  selected: PlaceSelection | null;
+  onPick: (selection: PlaceSelection) => void;
+  onBusy: (busy: boolean) => void;
+  onMessage: (message: string) => void;
+}) {
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const [mapError, setMapError] = useState("");
+  const [pinning, setPinning] = useState(false);
+
+  const markerTitle = selected ? selected.name : propertyName;
+  const center = selected ? { lat: selected.latitude, lng: selected.longitude } : defaultMapCenter;
+
+  const moveMarker = (position: google.maps.LatLngLiteral) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setCenter(position);
+    map.setZoom(selected ? 17 : 15);
+
+    if (!markerRef.current) {
+      markerRef.current = new google.maps.Marker({
+        map,
+        position,
+        title: markerTitle,
+        draggable: true,
+        animation: google.maps.Animation.DROP,
+      });
+      markerRef.current.addListener("dragend", () => {
+        const position = markerRef.current?.getPosition();
+        if (position) void pinFromLatLng({ lat: position.lat(), lng: position.lng() });
+      });
+      return;
+    }
+
+    markerRef.current.setPosition(position);
+    markerRef.current.setTitle(markerTitle);
+  };
+
+  async function reverseGeocode(position: google.maps.LatLngLiteral) {
+    setPinning(true);
+    onBusy(true);
+    onMessage("");
+    try {
+      const maps = await loadGoogleMaps();
+      geocoderRef.current ??= new maps.Geocoder();
+      const result = await new Promise<google.maps.GeocoderResult>((resolve, reject) => {
+        geocoderRef.current?.geocode({ location: position }, (results, status) => {
+          if (status === "OK" && results?.[0]) resolve(results[0]);
+          else reject(new Error(status === "ZERO_RESULTS" ? "No address was found for this pinned location." : "Could not read the address for this pin."));
+        });
+      });
+      onPick(selectionFromGeocode(result, position, propertyName));
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "We could not use that pinned location.");
+    } finally {
+      setPinning(false);
+      onBusy(false);
+    }
+  }
+
+  function pinFromLatLng(position: google.maps.LatLngLiteral) {
+    moveMarker(position);
+    return reverseGeocode(position);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initializeMap() {
+      if (!mapHostRef.current) return;
+      try {
+        const maps = await loadGoogleMaps();
+        if (cancelled || !mapHostRef.current) return;
+        geocoderRef.current = new maps.Geocoder();
+        const initialCenter = selected ? { lat: selected.latitude, lng: selected.longitude } : defaultMapCenter;
+        const map = new maps.Map(mapHostRef.current, {
+          center: initialCenter,
+          zoom: selected ? 16 : 5,
+          clickableIcons: false,
+          fullscreenControl: false,
+          mapTypeControl: false,
+          streetViewControl: false,
+          styles: [
+            { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+            { featureType: "transit", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+          ],
+        });
+        mapRef.current = map;
+        map.addListener("click", (event: google.maps.MapMouseEvent) => {
+          if (event.latLng) void pinFromLatLng({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+        });
+        if (selected) moveMarker(initialCenter);
+        else if (city) {
+          geocoderRef.current.geocode({ address: city, componentRestrictions: { country: "IN" } }, (results, status) => {
+            if (status === "OK" && results?.[0]?.geometry.location) {
+              const position = { lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() };
+              map.setCenter(position);
+              map.setZoom(12);
+            }
+          });
+        }
+      } catch (error) {
+        setMapError(error instanceof Error ? error.message : "Map could not be loaded.");
+      }
+    }
+
+    void initializeMap();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (selected) moveMarker({ lat: selected.latitude, lng: selected.longitude });
+  }, [selected?.latitude, selected?.longitude]);
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      onMessage("Your browser does not support current-location detection. Click the map to pin manually.");
+      return;
+    }
+    setPinning(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => void pinFromLatLng({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => {
+        setPinning(false);
+        onMessage("We could not access your current location. You can still click the map to pin your property.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-2xl border border-[#e5e1d8] bg-white shadow-xs">
+      <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-extrabold text-[#071633]">Pin exact location on map</h2>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">Click the map or drag the pin. Address details fill automatically.</p>
+        </div>
+        <button type="button" onClick={useCurrentLocation} disabled={pinning} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#d8c7a4] bg-[#fff9ed] px-3 py-2 text-xs font-extrabold text-[#8a5d10] transition hover:bg-[#fbf3df] disabled:cursor-not-allowed disabled:opacity-60">
+          {pinning ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+          Use my current location
+        </button>
+      </div>
+      <div className="relative h-[300px] w-full bg-[#edf2f7] sm:h-[360px]">
+        {mapError ? (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <MapPin className="h-8 w-8 text-slate-400" />
+            <p className="mt-3 text-sm font-bold text-slate-700">Map is unavailable</p>
+            <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">{mapError} Search above still works.</p>
+          </div>
+        ) : (
+          <div ref={mapHostRef} className="h-full w-full" aria-label="Map for choosing the property location" />
+        )}
+        {!selected && !mapError && (
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 rounded-xl bg-white/95 p-3 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur">
+            Search a place above, or click the map to place your property pin.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function formValue(formData: FormData, key: string) {
+  return String(formData.get(key) ?? "").trim();
+}
+
+function DetailsStep({ property, saving, onSave }: { property: any; saving: boolean; onSave: (patch: any) => Promise<boolean> }) {
+  const [message, setMessage] = useState("");
+
+  const submit = async (formData: FormData) => {
+    const name = formValue(formData, "name");
+    const description = formValue(formData, "description");
+    const publicPhone = formValue(formData, "phone");
+    const publicEmail = formValue(formData, "email");
+    const checkInTime = formValue(formData, "checkin");
+    const checkOutTime = formValue(formData, "checkout");
+    const floors = Number(formData.get("floors") ?? 0);
+    const totalPhysicalRooms = Number(formData.get("totalRooms") ?? 1);
+
+    if (name.length < 2) {
+      setMessage("Enter the property name.");
+      return;
+    }
+    if (description.length < 20) {
+      setMessage("Add a description of at least 20 characters so guests understand the property.");
+      return;
+    }
+    if (!/^\+\d{6,15}$/.test(publicPhone)) {
+      setMessage("Enter the public phone in international format, for example +919876543210.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(publicEmail)) {
+      setMessage("Enter a valid public email address.");
+      return;
+    }
+    if (!checkInTime || !checkOutTime) {
+      setMessage("Choose both check-in and check-out times.");
+      return;
+    }
+    if (!Number.isInteger(floors) || floors < 0 || floors > 200) {
+      setMessage("Enter a valid floor count between 0 and 200.");
+      return;
+    }
+    if (!Number.isInteger(totalPhysicalRooms) || totalPhysicalRooms < 1 || totalPhysicalRooms > 500) {
+      setMessage("Enter the total rooms between 1 and 500.");
+      return;
+    }
+
+    setMessage("");
+    await onSave({
+      name,
+      description,
+      publicPhone,
+      publicEmail: publicEmail.toLowerCase(),
+      checkInTime,
+      checkOutTime,
+      floors,
+      totalPhysicalRooms,
+    });
+  };
+
+  return (
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit(new FormData(event.currentTarget));
+      }}
+    >
+      <Heading title="Property details" text="Add the information guests use to choose and contact your property." />
+      <Field name="name" label="Property name" value={property.name} />
+      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+        Description
+        <textarea
+          required
+          minLength={20}
+          name="description"
+          defaultValue={property.description}
+          placeholder="Tell guests about the location, rooms, service, and what makes the stay comfortable."
+          className={`${input} min-h-28 resize-y leading-relaxed`}
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="phone" label="Public phone" value={property.publicPhone} placeholder="+919876543210" inputMode="tel" />
+        <Field name="email" label="Public email" value={property.publicEmail} type="email" placeholder="reservations@example.com" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="checkin" label="Check-in" value={property.checkInTime} type="time" />
+        <Field name="checkout" label="Check-out" value={property.checkOutTime} type="time" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="floors" label="Floors" value={property.floors} type="number" />
+        <Field name="totalRooms" label="Total rooms" value={property.totalPhysicalRooms} type="number" />
+      </div>
+      {message && <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</p>}
+      <Save saving={saving} />
+    </form>
+  );
+}
+
+const propertyTypeDetails: Record<string, { label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = {
+  hotel: { label: "Hotel", description: "Standard hotel with private rooms & services", icon: Hotel },
+  apartment: { label: "Apartment", description: "Self-contained living unit with kitchen", icon: Building2 },
+  villa: { label: "Villa", description: "Standalone luxury home with garden or pool", icon: Home },
+  resort: { label: "Resort", description: "Full-service vacation retreat with leisure amenities", icon: Trees },
+  hostel: { label: "Hostel", description: "Budget lodging with shared dorms or private rooms", icon: Users },
+  guest_house: { label: "Guest House", description: "Informal, cozy lodging hosted locally", icon: BedDouble },
+  homestay: { label: "Homestay", description: "Residential property offering local stay experiences", icon: Building },
+  other: { label: "Other", description: "Unique stays, farmhouses, or boutique lodging", icon: Warehouse },
+};
+
 function Heading({ title, text }: { title: string; text: string }) {
   return (
-    <div className="mb-7">
-      <h1 className="text-2xl font-bold tracking-tight text-slate-950">{title}</h1>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
+    <div className="mb-6">
+      <h1 className="text-2xl font-extrabold tracking-tight text-[#071633] sm:text-3xl">{title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">{text}</p>
     </div>
   );
 }
 
-function Field({ name, label, value, type = "text" }: { name: string; label: string; value?: any; type?: string }) {
+function Field({ name, label, value, type = "text", placeholder, inputMode }: { name: string; label: string; value?: any; type?: string; placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"] }) {
   return (
-    <label className="block text-sm font-medium">
+    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 sm:text-xs">
       {label}
-      <input required name={name} type={type} step={type === "number" ? "any" : undefined} defaultValue={value ?? ""} className={input} />
+      <input required name={name} type={type} step={type === "number" ? "1" : undefined} min={type === "number" ? 0 : undefined} defaultValue={value ?? ""} placeholder={placeholder} inputMode={inputMode} className={input} />
     </label>
   );
 }
 
 function Save({ saving }: { saving: boolean }) {
   return (
-    <button disabled={saving} className="mt-7 w-full rounded-xl bg-slate-900 p-3 font-semibold text-white">
-      {saving ? "Saving..." : "Save and continue"}
+    <button
+      disabled={saving}
+      className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#092442] px-5 py-3 text-sm font-extrabold text-white shadow-md transition-all hover:bg-[#061633] hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {saving ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+          <span>Saving updates...</span>
+        </>
+      ) : (
+        <>
+          <span>Save and continue</span>
+          <ArrowRight className="h-4 w-4" />
+        </>
+      )}
     </button>
   );
 }
@@ -312,21 +740,71 @@ function TypeStep({ selected, onSave, saving }: { selected: string; onSave: (typ
 
   return (
     <>
-      <Heading title="What kind of property is this?" text="Pick the closest category. This updates instantly and is saved when you continue." />
-      <div className="grid grid-cols-2 gap-3">
-        {types.map((item) => (
-          <button
-            type="button"
-            onClick={() => setType(item)}
-            key={item}
-            className={`rounded-xl border p-4 text-left text-sm font-semibold capitalize transition ${type === item ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 hover:border-slate-400"}`}
-          >
-            {item.replace("_", " ")}
-          </button>
-        ))}
+      <Heading
+        title="What kind of property is this?"
+        text="Pick the category that best describes your property. This updates instantly and is saved when you continue."
+      />
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        {types.map((item) => {
+          const info = propertyTypeDetails[item] || { label: item.replace("_", " "), description: "", icon: Hotel };
+          const Icon = info.icon;
+          const isSelected = type === item;
+
+          return (
+            <button
+              type="button"
+              onClick={() => setType(item)}
+              key={item}
+              className={`group relative flex flex-col justify-between rounded-2xl border p-4.5 text-left transition-all duration-200 ${
+                isSelected
+                  ? "border-[#092442] bg-[#092442] text-white shadow-lg ring-2 ring-[#092442]/20"
+                  : "border-slate-200/90 bg-white text-slate-800 hover:border-amber-500/50 hover:bg-slate-50/80 hover:shadow-md"
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+                      isSelected
+                        ? "bg-amber-400 text-[#092442]"
+                        : "bg-slate-100 text-[#092442] group-hover:bg-amber-100 group-hover:text-amber-800"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  {isSelected && (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-[#092442] shadow-xs">
+                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <h3 className={`mt-3.5 text-base font-extrabold capitalize ${isSelected ? "text-white" : "text-[#092442]"}`}>
+                  {info.label}
+                </h3>
+                <p className={`mt-1 text-xs leading-relaxed ${isSelected ? "text-slate-200" : "text-slate-500"}`}>
+                  {info.description}
+                </p>
+              </div>
+            </button>
+          );
+        })}
       </div>
-      <button disabled={saving} onClick={() => onSave(type)} className="mt-7 w-full rounded-xl bg-slate-900 p-3 font-semibold text-white">
-        Save and continue
+      <button
+        disabled={saving}
+        onClick={() => onSave(type)}
+        className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#092442] px-5 py-3 text-sm font-extrabold text-white shadow-md transition-all hover:bg-[#061633] hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {saving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+            <span>Saving updates...</span>
+          </>
+        ) : (
+          <>
+            <span>Save and continue</span>
+            <ArrowRight className="h-4 w-4" />
+          </>
+        )}
       </button>
     </>
   );
@@ -347,8 +825,10 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
       }
       await onChanged();
       setNotice(kind === "room" ? "Room type added." : kind === "policy" ? "Cancellation policy added." : "Rate plan added.");
+      return true;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not save.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -358,7 +838,7 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
     <>
       <Heading title="Rooms and rates" text="Create a room type, then give it a price and cancellation promise. A room becomes ready only when all three are saved." />
       <div className="grid gap-5 lg:grid-cols-2">
-        <form action={(formData) => void add("room", formData)} className="rounded-2xl border border-slate-200 p-5">
+        <form onSubmit={(event) => { event.preventDefault(); void add("room", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-bold">1. Add a room type</h2>
           <p className="mt-1 text-sm text-slate-500">For example: Deluxe Double.</p>
           <Field name="name" label="Room name" />
@@ -374,7 +854,7 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
             Add room type
           </button>
         </form>
-        <form action={(formData) => void add("policy", formData)} className="rounded-2xl border border-slate-200 p-5">
+        <form onSubmit={(event) => { event.preventDefault(); void add("policy", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-bold">2. Set cancellation</h2>
           <p className="mt-1 text-sm text-slate-500">Guests see this before booking.</p>
           <Field name="policyName" label="Policy name" />
@@ -391,7 +871,7 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
           </button>
         </form>
       </div>
-      {listing.roomTypes.length > 0 && <form action={(formData) => void add("rate", formData)} className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold">3. Add a sellable rate</h2><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium">Room type<select required name="roomTypeId" className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><Field name="rateName" label="Rate name" /><Field name="code" label="Rate code" /><Field name="price" label="Price per night (INR)" type="number" /></div><button disabled={busy} className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Add rate</button></form>}
+      {listing.roomTypes.length > 0 && <form onSubmit={(event) => { event.preventDefault(); void add("rate", new FormData(event.currentTarget)); }} className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold">3. Add a sellable rate</h2><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium">Room type<select required name="roomTypeId" className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><Field name="rateName" label="Rate name" /><Field name="code" label="Rate code" /><Field name="price" label="Price per night (INR)" type="number" /></div><button disabled={busy} className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Add rate</button></form>}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <Summary title="Room types" count={listing.roomTypes.length} items={listing.roomTypes.map((room) => room.name)} />
         <Summary title="Policies" count={listing.policies.length} items={listing.policies.map((policy) => policy.name)} />
@@ -431,6 +911,8 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const photoCount = listing.media.length;
 
   useEffect(() => {
@@ -449,25 +931,48 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
     return () => { cancelled = true; };
   }, [propertyId, listing.media]);
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
+  const handleFiles = async (selectedFiles: File[]) => {
+    if (!selectedFiles.length) return;
+    const invalidFile = selectedFiles.find((file) => !allowedPropertyPhotoTypes.has(file.type) || file.size <= 0 || file.size > maxPropertyPhotoBytes);
+    if (invalidFile) {
+      setStatus(`“${invalidFile.name}” was not uploaded. Use a JPG, PNG, or WebP image no larger than 12 MB.`);
+      return;
+    }
+
     setUploading(true);
-    setStatus(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}...`);
+    setStatus(`Preparing ${selectedFiles.length} photo${selectedFiles.length > 1 ? "s" : ""}...`);
+    let uploadedCount = 0;
+    let uploadFailure: unknown = null;
 
     try {
-      for (const file of Array.from(files)) {
+      for (const [index, file] of selectedFiles.entries()) {
+        setStatus(`Uploading photo ${index + 1} of ${selectedFiles.length}: ${file.name}`);
         const checksum = await sha256Hex(file);
         const signed = await postJson(`/api/partner/properties/${propertyId}/media/upload-url`, { fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum, category });
         await putFile(signed.uploadUrl, signed.headers, file);
         await postJson(`/api/partner/properties/${propertyId}/media/finalize`, { uploadId: signed.uploadId });
+        uploadedCount += 1;
       }
-
-      await onChanged();
-      setStatus("Photos uploaded. They are private and pending review.");
     } catch (error) {
-      setStatus(uploadErrorMessage(error));
+      uploadFailure = error;
     } finally {
+      // A later file may fail after earlier files were finalized. Re-read the
+      // listing so those successful uploads are immediately visible and never
+      // look as though they were lost.
+      if (uploadedCount > 0) {
+        try {
+          await onChanged();
+        } catch {
+          setStatus(`${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded, but the gallery could not refresh. Reloading the page will show them.`);
+        }
+      }
       setUploading(false);
+      if (uploadFailure) {
+        const completed = uploadedCount ? `${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded successfully. ` : "";
+        setStatus(`${completed}${uploadErrorMessage(uploadFailure)}`);
+      } else {
+        setStatus(`${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded. They are private and pending review.`);
+      }
     }
   };
 
@@ -482,12 +987,44 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
               {propertyPhotoCategories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
-          <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
+          <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
             <span className="text-base font-semibold text-slate-900">Choose JPG, PNG, or WebP images</span>
             <span className="mt-2 text-sm text-slate-500">Up to 12 MB each. You can upload multiple files at once.</span>
-            <span className="mt-5 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Select photos</span>
-            <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" disabled={uploading} onChange={(event) => { const files = event.target.files; event.currentTarget.value = ""; void handleFiles(files); }} />
-          </label>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="mt-5 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#092442] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploading ? "Uploading photos…" : "Select photos"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="sr-only"
+              disabled={uploading}
+              onChange={(event) => {
+                // FileList is owned by the browser and can be cleared when the
+                // input is reset. Copy it before starting asynchronous work.
+                const selectedFiles = Array.from(event.currentTarget.files ?? []);
+                event.currentTarget.value = "";
+                if (!selectedFiles.length) {
+                  setStatus("No photos were selected.");
+                  return;
+                }
+                setSelectedFileNames(selectedFiles.map((file) => file.name));
+                setStatus(`${selectedFiles.length} photo${selectedFiles.length === 1 ? "" : "s"} selected. Preparing upload…`);
+                void handleFiles(selectedFiles);
+              }}
+            />
+          </div>
+          {selectedFileNames.length > 0 && (
+            <p className="mt-3 truncate text-xs font-medium text-slate-600" title={selectedFileNames.join(", ")}>
+              Selected: {selectedFileNames.slice(0, 2).join(", ")}{selectedFileNames.length > 2 ? ` +${selectedFileNames.length - 2} more` : ""}
+            </p>
+          )}
           {status && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{status}</p>}
           <button type="button" disabled={uploading || photoCount < 6} onClick={onContinue} className={`mt-5 w-full ${button}`}>
             {photoCount < 6 ? `Add ${6 - photoCount} more photo${6 - photoCount === 1 ? "" : "s"} to continue` : "Continue"}
