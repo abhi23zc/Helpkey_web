@@ -149,6 +149,27 @@ input {
   animation: shake 0.4s ease-in-out;
 }
 
+@keyframes phoneShake {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  2%, 6%, 10%, 14%, 18% {
+    transform: rotate(-14deg);
+  }
+  4%, 8%, 12%, 16% {
+    transform: rotate(14deg);
+  }
+  20% {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-phone-shake {
+  animation: phoneShake 2.5s ease-in-out infinite;
+  transform-origin: center;
+  display: inline-block;
+}
+
 @keyframes hkLoadingBar {
   0% { transform: translateX(-100%); }
   50% { transform: translateX(180%); }

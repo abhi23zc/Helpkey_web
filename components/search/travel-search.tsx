@@ -87,6 +87,104 @@ const DEFAULT_SUGGESTIONS = [
   },
 ];
 
+type DestinationItem = {
+  name: string;
+  count: string;
+  tags: string;
+  image: string;
+  query: string;
+};
+
+const DOMESTIC_DESTINATIONS: DestinationItem[] = [
+  {
+    name: "Hyderabad",
+    count: "2,735",
+    tags: "Sightseeing, food & culture",
+    image: "https://images.unsplash.com/photo-1605379399642-870262d3d051?auto=format&fit=crop&w=160&q=80",
+    query: "Hyderabad",
+  },
+  {
+    name: "Mumbai",
+    count: "4,177",
+    tags: "Shopping, nightlife & dining",
+    image: "https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=160&q=80",
+    query: "Mumbai",
+  },
+  {
+    name: "Chennai",
+    count: "2,832",
+    tags: "Shopping, beaches & temples",
+    image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=160&q=80",
+    query: "Chennai",
+  },
+  {
+    name: "New Delhi",
+    count: "12,786",
+    tags: "Sightseeing, heritage & shopping",
+    image: "https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=160&q=80",
+    query: "New Delhi",
+  },
+  {
+    name: "Goa",
+    count: "9,254",
+    tags: "Beaches, nightlife & resorts",
+    image: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=160&q=80",
+    query: "Goa",
+  },
+  {
+    name: "Bangalore",
+    count: "5,372",
+    tags: "Shopping, business & parks",
+    image: "https://images.unsplash.com/photo-1596176530529-78163a4f7af2?auto=format&fit=crop&w=160&q=80",
+    query: "Bangalore",
+  },
+];
+
+const INTERNATIONAL_DESTINATIONS: DestinationItem[] = [
+  {
+    name: "Dubai",
+    count: "19,464",
+    tags: "Shopping, luxury & architecture",
+    image: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=160&q=80",
+    query: "Dubai",
+  },
+  {
+    name: "Bangkok",
+    count: "12,048",
+    tags: "Shopping, temples & street food",
+    image: "https://images.unsplash.com/photo-1508009603885-50cf7c579365?auto=format&fit=crop&w=160&q=80",
+    query: "Bangkok",
+  },
+  {
+    name: "Pattaya",
+    count: "11,909",
+    tags: "Nightlife, beaches & resorts",
+    image: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=160&q=80",
+    query: "Pattaya",
+  },
+  {
+    name: "London",
+    count: "8,420",
+    tags: "History, museums & theatre",
+    image: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=160&q=80",
+    query: "London",
+  },
+  {
+    name: "Paris",
+    count: "7,150",
+    tags: "Romance, art & fashion",
+    image: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=160&q=80",
+    query: "Paris",
+  },
+  {
+    name: "Tokyo",
+    count: "6,920",
+    tags: "Culture, food & tech",
+    image: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=160&q=80",
+    query: "Tokyo",
+  },
+];
+
 export function TravelSearch({ initial, amenities = [], compact = false }: Props) {
   const router = useRouter();
   const listId = useId();
@@ -100,6 +198,7 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
   const [adults, setAdults] = useState(Number(initial?.get("adults") ?? 2));
   const [children, setChildren] = useState(Number(initial?.get("children") ?? 0));
   const [infants, setInfants] = useState(Number(initial?.get("infants") ?? 0));
+  const [stayType, setStayType] = useState<"overnight" | "dayuse">("overnight");
 
   const [helpkey, setHelpkey] = useState<HelpkeySuggestion[]>([]);
   const [google, setGoogle] = useState<GoogleSuggestion[]>([]);
@@ -148,8 +247,6 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
           const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
             input: destination,
             includedRegionCodes: ["IN"],
-            // The current Autocomplete Data API accepts up to five primary types.
-            // These keep the travel picker focused on destinations and accommodation.
             includedPrimaryTypes: ["locality", "sublocality", "administrative_area_level_2", "lodging"],
             sessionToken: token.current,
           });
@@ -257,323 +354,397 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
   const isSearching = destination.trim().length >= 2;
 
   return (
-    <div
-      ref={root}
-      className={
-        compact
-          ? "relative"
-          : "relative rounded-[20px] border border-white/70 bg-white/95 p-4 shadow-[0_12px_40px_rgba(11,31,58,0.14)] backdrop-blur-md sm:p-5"
-      }
-    >
-      <div className="grid gap-3 md:grid-cols-[1.15fr_1.1fr_1fr_auto]">
-        {/* DESTINATION FIELD */}
-        <div className="relative">
-          <div
-            onClick={() => {
-              setOpen("destination");
-              inputRef.current?.focus();
-            }}
-            className={`group relative flex w-full flex-col justify-center rounded-[14px] border px-4 py-3 text-left transition-all cursor-text ${
-              open === "destination"
-                ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/15 shadow-sm"
-                : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
+    <>
+      {/* AGODA-STYLE FADED BACKDROP OVERLAY */}
+      {open && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-[3px] transition-opacity duration-300 animate-in fade-in"
+          onClick={() => setOpen(null)}
+        />
+      )}
+
+      <div
+        ref={root}
+        className={
+          compact
+            ? "relative"
+            : `relative transition-all duration-300 rounded-[24px] bg-white p-4 sm:p-6 ${
+                open
+                  ? "z-[70] shadow-[0_30px_90px_rgba(15,23,42,0.32)] ring-2 ring-[var(--hk-navy-strong)]/20 scale-[1.015] -translate-y-2"
+                  : "z-20 border border-white/80 shadow-[0_12px_40px_rgba(11,31,58,0.14)]"
+              }`
+        }
+      >
+        {/* AGODA-STYLE STAY TYPE TABS */}
+        <div className="mb-4 flex items-center gap-3 border-b border-slate-100 pb-3.5">
+          <button
+            type="button"
+            onClick={() => setStayType("overnight")}
+            className={`flex items-center justify-center rounded-full px-5 py-2.5 text-[13px] sm:text-[14px] font-bold transition-all duration-200 ${
+              stayType === "overnight"
+                ? "border-2 border-[var(--hk-primary)] bg-[var(--hk-primary)]/10 text-[var(--hk-primary)] shadow-xs"
+                : "border border-slate-200/80 bg-slate-50/80 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
-            <label
-              htmlFor="destination-input"
-              className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase cursor-pointer"
+            <span>Overnight Stays</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStayType("dayuse")}
+            className={`flex items-center justify-center rounded-full px-5 py-2.5 text-[13px] sm:text-[14px] font-bold transition-all duration-200 ${
+              stayType === "dayuse"
+                ? "border-2 border-[var(--hk-primary)] bg-[var(--hk-primary)]/10 text-[var(--hk-primary)] shadow-xs"
+                : "border border-slate-200/80 bg-slate-50/80 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <span>Day Use Stays</span>
+          </button>
+        </div>
+
+        {/* 4 SEARCH INPUTS GRID */}
+        <div className="grid gap-3 md:grid-cols-[1.25fr_1.1fr_1fr_auto]">
+          {/* DESTINATION FIELD */}
+          <div className="relative">
+            <div
+              onClick={() => {
+                setOpen("destination");
+                inputRef.current?.focus();
+              }}
+              className={`group relative flex w-full flex-col justify-center rounded-[16px] border px-4 py-3.5 text-left transition-all cursor-text ${
+                open === "destination"
+                  ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/20 shadow-md"
+                  : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
+              }`}
             >
-              DESTINATION
-            </label>
-            <div className="mt-0.5 flex items-center gap-2">
-              <MapPin className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]/80" />
-              <input
-                ref={inputRef}
-                id="destination-input"
-                type="text"
-                value={destination}
-                onFocus={() => setOpen("destination")}
-                onChange={(e) => {
-                  setPlace(null);
-                  setDestination(e.target.value);
-                  setActive(-1);
-                  setMapsError("");
-                  if (open !== "destination") setOpen("destination");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setOpen(null);
-                  if (isSearching && options.length > 0) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setActive((x) => Math.min(x + 1, options.length - 1));
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setActive((x) => Math.max(x - 1, 0));
-                    }
-                    if (e.key === "Enter" && active >= 0) {
-                      e.preventDefault();
-                      const o = options[active];
-                      if (o.kind === "h") chooseHelpkey(o.value);
-                      else void chooseGoogle(o.value);
-                    }
-                  } else if (!isSearching && DEFAULT_SUGGESTIONS.length > 0) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setActive((x) => Math.min(x + 1, DEFAULT_SUGGESTIONS.length - 1));
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setActive((x) => Math.max(x - 1, 0));
-                    }
-                    if (e.key === "Enter" && active >= 0) {
-                      e.preventDefault();
-                      const def = DEFAULT_SUGGESTIONS[active];
-                      setDestination(def.query);
-                      setOpen(null);
-                    }
-                  }
-                }}
-                placeholder="City or property"
-                className="w-full bg-transparent text-[15px] font-semibold text-[var(--hk-ink)] placeholder:text-[var(--hk-muted)]/70 outline-none"
-              />
-              {destination && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDestination("");
+              <label
+                htmlFor="destination-input"
+                className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase cursor-pointer"
+              >
+                DESTINATION
+              </label>
+              <div className="mt-1 flex items-center gap-2">
+                <Search className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]" />
+                <input
+                  ref={inputRef}
+                  id="destination-input"
+                  type="text"
+                  value={destination}
+                  onFocus={() => setOpen("destination")}
+                  onChange={(e) => {
                     setPlace(null);
-                    inputRef.current?.focus();
+                    setDestination(e.target.value);
+                    setActive(-1);
+                    setMapsError("");
+                    if (open !== "destination") setOpen("destination");
                   }}
-                  className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setOpen(null);
+                    if (isSearching && options.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActive((x) => Math.min(x + 1, options.length - 1));
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActive((x) => Math.max(x - 1, 0));
+                      }
+                      if (e.key === "Enter" && active >= 0) {
+                        e.preventDefault();
+                        const o = options[active];
+                        if (o.kind === "h") chooseHelpkey(o.value);
+                        else void chooseGoogle(o.value);
+                      }
+                    }
+                  }}
+                  placeholder="Enter a destination or property"
+                  className="w-full bg-transparent text-[15px] font-semibold text-[var(--hk-ink)] placeholder:text-[var(--hk-muted)]/70 outline-none"
+                />
+                {destination && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDestination("");
+                      setPlace(null);
+                      inputRef.current?.focus();
+                    }}
+                    className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* SUGGESTIONS POPOVER */}
-          {open === "destination" && (
-            <div
-              id={listId}
-              role="listbox"
-              className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-slate-100/80 bg-white p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.12)] animate-in fade-in slide-in-from-top-2 duration-150"
+          {/* DATES FIELD */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={open === "dates"}
+              onClick={() => setOpen(open === "dates" ? null : "dates")}
+              className={`group relative flex w-full flex-col justify-center rounded-[14px] border px-4 py-3 text-left transition-all ${
+                open === "dates"
+                  ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/15 shadow-sm"
+                  : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
+              }`}
             >
-              {!isSearching ? (
-                /* DEFAULT SUGGESTED DESTINATIONS */
-                <div>
-                  <h4 className="px-1 pb-2 text.xs font-semibold text-slate-800">
-                    Suggested destinations
-                  </h4>
-                  <div className="max-h-[300px] space-y-1 overflow-y-auto pr-1">
-                    {DEFAULT_SUGGESTIONS.map((item, idx) => {
-                      const IconComp = item.icon;
-                      return (
+              <span className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase">
+                DATES
+              </span>
+              <span className="mt-0.5 flex items-center gap-2 text-[15px] font-semibold text-[var(--hk-ink)]">
+                <Calendar className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]/80" />
+                <span className="truncate">
+                  {checkIn && checkOut ? `${readable(checkIn)} – ${readable(checkOut)}` : "Select dates"}
+                </span>
+              </span>
+            </button>
+            {open === "dates" && (
+              <CalendarPopover
+                checkIn={checkIn}
+                checkOut={checkOut}
+                onPick={pickDate}
+                onClear={() => {
+                  setCheckIn("");
+                  setCheckOut("");
+                }}
+              />
+            )}
+          </div>
+
+          {/* GUESTS FIELD */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={open === "guests"}
+              onClick={() => setOpen(open === "guests" ? null : "guests")}
+              className={`group relative flex w-full flex-col justify-center rounded-[14px] border px-4 py-3 text-left transition-all ${
+                open === "guests"
+                  ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/15 shadow-sm"
+                  : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
+              }`}
+            >
+              <span className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase">
+                GUESTS
+              </span>
+              <span className="mt-0.5 flex items-center gap-2 text-[15px] font-semibold text-[var(--hk-ink)] truncate">
+                <Users className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]/80" />
+                <span className="truncate">
+                  {adults} adult{adults !== 1 ? "s" : ""}
+                  {children ? `, ${children} child${children !== 1 ? "ren" : ""}` : ""}
+                  {infants ? `, ${infants} infant${infants !== 1 ? "s" : ""}` : ""}
+                </span>
+              </span>
+            </button>
+            {open === "guests" && (
+              <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-72 rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_20px_45px_rgba(11,31,58,0.18)]">
+                <Counter label="Adults" note="Ages 13+" value={adults} min={1} max={12} onChange={setAdults} />
+                <Counter label="Children" note="Ages 2–12" value={children} min={0} max={10} onChange={setChildren} />
+                <Counter label="Infants" note="Under 2" value={infants} min={0} max={10} onChange={setInfants} />
+                <button
+                  type="button"
+                  onClick={() => setOpen(null)}
+                  className="mt-4 w-full rounded-[12px] bg-[var(--hk-navy-strong)] py-2.5 text-sm font-bold text-white transition hover:bg-[var(--hk-primary)]"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* SEARCH BUTTON */}
+          <button
+            type="button"
+            onClick={search}
+            className="flex items-center justify-center gap-2 rounded-[14px] bg-[var(--hk-navy-strong)] px-6 py-3.5 font-bold text-white shadow-md transition-all hover:bg-[var(--hk-primary)] hover:shadow-lg active:scale-[0.99]"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search hotels</span>
+          </button>
+        </div>
+
+        {/* FULL-WIDTH DESTINATION POPOVER ATTACHED TO ROOT CARD (AGODA STYLE) */}
+        {open === "destination" && (
+          <div
+            id={listId}
+            role="listbox"
+            className="absolute left-0 right-0 top-[calc(100%+12px)] z-[80] w-full overflow-hidden rounded-[24px] border border-slate-200/90 bg-white p-6 sm:p-7 shadow-[0_30px_80px_rgba(15,23,42,0.24)] animate-in fade-in slide-in-from-top-2 duration-200"
+          >
+            {!isSearching ? (
+              /* DEFAULT AGODA-STYLE 2-COLUMN DESTINATIONS GRID WITH REAL PHOTOS */
+              <div>
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 tracking-tight">Popular Destinations</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Explore top cities in India and worldwide with verified stays</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          () => { setDestination("Nearby"); setOpen(null); },
+                          () => { setDestination("Nearby"); setOpen(null); }
+                        );
+                      } else {
+                        setDestination("Nearby");
+                        setOpen(null);
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-full bg-blue-50/90 border border-blue-200/60 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition"
+                  >
+                    <Navigation className="h-4 w-4" />
+                    <span>Find Nearby Stays</span>
+                  </button>
+                </div>
+
+                <div className="grid gap-8 md:grid-cols-2">
+                  {/* DOMESTIC DESTINATIONS */}
+                  <div>
+                    <h4 className="mb-3.5 text-xs font-extrabold uppercase tracking-wider text-slate-400 px-1">
+                      Popular cities in India
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {DOMESTIC_DESTINATIONS.map((item) => (
                         <button
                           type="button"
-                          key={item.title}
-                          role="option"
-                          aria-selected={active === idx}
+                          key={item.name}
                           onClick={() => {
-                            if (item.title === "Nearby" && navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition(
-                                () => {
-                                  setDestination("Nearby");
-                                  setOpen(null);
-                                },
-                                () => {
-                                  setDestination("Nearby");
-                                  setOpen(null);
-                                }
-                              );
-                            } else {
-                              setDestination(item.query);
-                              setOpen(null);
-                            }
+                            setDestination(item.query);
+                            setOpen(null);
                           }}
-                          className={`flex w-full items-center gap-3.5 rounded-[16px] p-2 text-left transition-colors ${
-                            active === idx ? "bg-slate-100" : "hover:bg-slate-50"
-                          }`}
+                          className="flex items-center gap-3.5 rounded-[18px] p-2.5 text-left transition-all hover:bg-slate-50 border border-slate-100/80 hover:border-slate-200/90 group hover:shadow-xs"
                         >
-                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] ${item.badgeClass}`}>
-                            <IconComp className="h-5 w-5" strokeWidth={1.75} />
-                          </div>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="h-12 w-12 shrink-0 rounded-[12px] object-cover shadow-xs group-hover:scale-105 transition-transform duration-200"
+                          />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.title}</p>
-                            <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">{item.subtitle}</p>
+                            <p className="text-[14px] font-bold text-slate-900 leading-snug truncate">
+                              {item.name} <span className="text-[12px] font-semibold text-slate-400">({item.count})</span>
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-0.5 truncate leading-tight font-medium">{item.tags}</p>
                           </div>
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* INTERNATIONAL DESTINATIONS */}
+                  <div className="border-t border-slate-100 pt-6 md:border-t-0 md:border-l md:border-slate-100 md:pl-8 md:pt-0">
+                    <h4 className="mb-3.5 text-xs font-extrabold uppercase tracking-wider text-slate-400 px-1">
+                      International destinations
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {INTERNATIONAL_DESTINATIONS.map((item) => (
+                        <button
+                          type="button"
+                          key={item.name}
+                          onClick={() => {
+                            setDestination(item.query);
+                            setOpen(null);
+                          }}
+                          className="flex items-center gap-3.5 rounded-[18px] p-2.5 text-left transition-all hover:bg-slate-50 border border-slate-100/80 hover:border-slate-200/90 group hover:shadow-xs"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="h-12 w-12 shrink-0 rounded-[12px] object-cover shadow-xs group-hover:scale-105 transition-transform duration-200"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[14px] font-bold text-slate-900 leading-snug truncate">
+                              {item.name} <span className="text-[12px] font-semibold text-slate-400">({item.count})</span>
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-0.5 truncate leading-tight font-medium">{item.tags}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              ) : (
-                /* DYNAMIC SEARCH RESULTS MATCHING REFERENCE IMAGE 2 */
-                <div>
-                  {loading && <p className="px-2 py-3 text-xs font-medium text-slate-500">Finding destinations…</p>}
-                  
-                  <div className="max-h-[310px] space-y-3 overflow-y-auto pr-1">
-                    {helpkey.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Stays on Helpkey</p>
-                        {helpkey.map((item, i) => (
-                      <button
-                        role="option"
-                        type="button"
-                        aria-selected={active === i}
-                        key={`${item.type}-${item.label}`}
-                        onClick={() => chooseHelpkey(item)}
-                        className={`flex w-full items-center gap-3.5 rounded-[16px] p-2 text-left transition-colors ${
-                          active === i ? "bg-slate-100" : "hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#F4F4F6] text-slate-800">
-                          <Building2 className="h-5 w-5" strokeWidth={1.75} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.label}</p>
-                          <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">
-                            {item.city ? `${item.city} · ` : ""}{item.type === "property" ? "Hotel" : "Destination"}
-                          </p>
-                        </div>
-                      </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {google.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Places in India</p>
-                        {google.map((item, i) => {
-                      const isNeighborhood = item.secondary?.toLowerCase().includes("neighbourhood") || item.secondary?.toLowerCase().includes("locality");
-                      const IconComponent = item.isHotel ? Building2 : isNeighborhood ? Home : MapPin;
-                      return (
+              </div>
+            ) : (
+              /* DYNAMIC SEARCH RESULTS */
+              <div>
+                {loading && <p className="px-2 py-3 text-xs font-medium text-slate-500">Finding destinations…</p>}
+                
+                <div className="max-h-[340px] space-y-3 overflow-y-auto pr-1">
+                  {helpkey.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Stays on Helpkey</p>
+                      {helpkey.map((item, i) => (
                         <button
                           role="option"
                           type="button"
-                          aria-selected={active === i + helpkey.length}
-                          key={`${item.label}-${i}`}
-                          onClick={() => void chooseGoogle(item)}
-                          className={`flex w-full items-center gap-3.5 rounded-[16px] p-2 text-left transition-colors ${
-                            active === i + helpkey.length ? "bg-slate-100" : "hover:bg-slate-50"
+                          aria-selected={active === i}
+                          key={`${item.type}-${item.label}`}
+                          onClick={() => chooseHelpkey(item)}
+                          className={`flex w-full items-center gap-3.5 rounded-[16px] p-2.5 text-left transition-colors ${
+                            active === i ? "bg-slate-100" : "hover:bg-slate-50"
                           }`}
                         >
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#F4F4F6] text-slate-800">
-                            <IconComponent className="h-5 w-5" strokeWidth={1.75} />
+                            <Building2 className="h-5 w-5" strokeWidth={1.75} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.label}</p>
-                            <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">{item.secondary || (item.isHotel ? "Hotel" : "Destination")}</p>
+                            <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">
+                              {item.city ? `${item.city} · ` : ""}{item.type === "property" ? "Hotel" : "Destination"}
+                            </p>
                           </div>
                         </button>
-                      );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  )}
 
-                  {mapsError && <p className="mx-1 mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{mapsError}</p>}
-                  {!loading && !options.length && (
-                    <p className="px-2 py-4 text-center text-xs font-medium text-slate-500">
-                      No suggested stay or destination found. Press Search to explore stays in &quot;{destination}&quot;.
-                    </p>
+                  {google.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Places in India</p>
+                      {google.map((item, i) => {
+                        const isNeighborhood = item.secondary?.toLowerCase().includes("neighbourhood") || item.secondary?.toLowerCase().includes("locality");
+                        const IconComponent = item.isHotel ? Building2 : isNeighborhood ? Home : MapPin;
+                        return (
+                          <button
+                            role="option"
+                            type="button"
+                            aria-selected={active === i + helpkey.length}
+                            key={`${item.label}-${i}`}
+                            onClick={() => void chooseGoogle(item)}
+                            className={`flex w-full items-center gap-3.5 rounded-[16px] p-2.5 text-left transition-colors ${
+                              active === i + helpkey.length ? "bg-slate-100" : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#F4F4F6] text-slate-800">
+                              <IconComponent className="h-5 w-5" strokeWidth={1.75} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.label}</p>
+                              <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">{item.secondary || (item.isHotel ? "Hotel" : "Destination")}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* DATES FIELD */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-expanded={open === "dates"}
-            onClick={() => setOpen(open === "dates" ? null : "dates")}
-            className={`group relative flex w-full flex-col justify-center rounded-[14px] border px-4 py-3 text-left transition-all ${
-              open === "dates"
-                ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/15 shadow-sm"
-                : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
-            }`}
-          >
-            <span className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase">
-              DATES
-            </span>
-            <span className="mt-0.5 flex items-center gap-2 text-[15px] font-semibold text-[var(--hk-ink)]">
-              <Calendar className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]/80" />
-              <span className="truncate">
-                {checkIn && checkOut ? `${readable(checkIn)} – ${readable(checkOut)}` : "Select dates"}
-              </span>
-            </span>
-          </button>
-          {open === "dates" && (
-            <CalendarPopover
-              checkIn={checkIn}
-              checkOut={checkOut}
-              onPick={pickDate}
-              onClear={() => {
-                setCheckIn("");
-                setCheckOut("");
-              }}
-            />
-          )}
-        </div>
+                {mapsError && <p className="mx-1 mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{mapsError}</p>}
+                {!loading && !options.length && (
+                  <p className="px-2 py-4 text-center text-xs font-medium text-slate-500">
+                    No suggested stay or destination found. Press Search to explore stays in &quot;{destination}&quot;.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* GUESTS FIELD */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-expanded={open === "guests"}
-            onClick={() => setOpen(open === "guests" ? null : "guests")}
-            className={`group relative flex w-full flex-col justify-center rounded-[14px] border px-4 py-3 text-left transition-all ${
-              open === "guests"
-                ? "border-[var(--hk-navy-strong)] bg-white ring-2 ring-[var(--hk-navy-strong)]/15 shadow-sm"
-                : "border-[rgba(196,198,206,0.72)] bg-white hover:border-[var(--hk-navy-strong)]"
-            }`}
-          >
-            <span className="block text-[10px] font-bold tracking-wider text-[var(--hk-muted)] uppercase">
-              GUESTS
-            </span>
-            <span className="mt-0.5 flex items-center gap-2 text-[15px] font-semibold text-[var(--hk-ink)] truncate">
-              <Users className="h-4 w-4 shrink-0 text-[var(--hk-navy-strong)]/80" />
-              <span className="truncate">
-                {adults} adult{adults !== 1 ? "s" : ""}
-                {children ? `, ${children} child${children !== 1 ? "ren" : ""}` : ""}
-                {infants ? `, ${infants} infant${infants !== 1 ? "s" : ""}` : ""}
-              </span>
-            </span>
-          </button>
-          {open === "guests" && (
-            <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-72 rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_20px_45px_rgba(11,31,58,0.18)]">
-              <Counter label="Adults" note="Ages 13+" value={adults} min={1} max={12} onChange={setAdults} />
-              <Counter label="Children" note="Ages 2–12" value={children} min={0} max={10} onChange={setChildren} />
-              <Counter label="Infants" note="Under 2" value={infants} min={0} max={10} onChange={setInfants} />
-              <button
-                type="button"
-                onClick={() => setOpen(null)}
-                className="mt-4 w-full rounded-[12px] bg-[var(--hk-navy-strong)] py-2.5 text-sm font-bold text-white transition hover:bg-[var(--hk-primary)]"
-              >
-                Done
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* SEARCH BUTTON */}
-        <button
-          type="button"
-          onClick={search}
-          className="flex items-center justify-center gap-2 rounded-[14px] bg-[var(--hk-navy-strong)] px-6 py-3.5 font-bold text-white shadow-md transition-all hover:bg-[var(--hk-primary)] hover:shadow-lg active:scale-[0.99]"
-        >
-          <Search className="h-4 w-4" />
-          <span>Search hotels</span>
-        </button>
+        {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       </div>
-
-      {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-    </div>
+    </>
   );
 }
 

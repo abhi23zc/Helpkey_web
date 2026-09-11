@@ -12,17 +12,17 @@ export function AppPromoWidget() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#0b1f3a] px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-[0_8px_25px_rgba(11,31,58,0.4)]  transition-transform "
+        className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 sm:gap-3 rounded-full bg-[#0b1f3a] px-4.5 py-2.5 sm:px-5 sm:py-3 text-sm sm:text-base font-bold text-white shadow-[0_10px_30px_rgba(11,31,58,0.45)] transition-all hover:bg-[#061224] hover:scale-105 active:scale-95 cursor-pointer"
       >
-        <Smartphone className="h-4 w-4 text-amber-400" />
-        <span>Save 10% on App!</span>
-        <ChevronRight className="h-4 w-4 text-slate-300" />
+        <Smartphone className="h-5 w-5 sm:h-[22px] sm:w-[22px] text-amber-400 animate-phone-shake inline-block origin-center shrink-0" />
+        <span className="tracking-tight">Save 10% on App!</span>
+        <ChevronRight className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-slate-300 shrink-0" />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 w-[260px] sm:w-[275px]">
+    <div className="fixed bottom-5 right-5 z-40 w-[260px] sm:w-[275px]">
       {/* Outer Wrapper for White Card + Bottom Floating Close Button */}
       <div className="flex flex-col">
         {/* Main White Card Container */}

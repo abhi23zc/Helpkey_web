@@ -480,7 +480,7 @@ function SearchPanel({
   const showLoyalty = !mounted || !appUser;
 
   return (
-    <section className="relative z-20 mx-auto -mt-32 mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
+    <section className="relative z-30 mx-auto -mt-32 mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
       {showLoyalty ? (
         <LoyaltyBanner
           loyaltyLead={loyaltyLead}
