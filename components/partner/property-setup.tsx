@@ -1,8 +1,10 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Check, ChevronLeft, CircleHelp, CircleCheck, Loader2, LockKeyhole, MapPin, Search, Sparkles } from "lucide-react";
+import { placesLibrary } from "@/lib/google/maps-loader";
 
 const steps = ["Property type", "Location", "Property details", "Rooms & rates", "Facilities", "Photos", "Verification", "Review"];
 const input = "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-100";
@@ -29,6 +31,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
   const [step, setStep] = useState(1);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const request = async (url: string, body?: unknown, method = "POST") => {
     const response = await fetch(url, {
@@ -46,9 +49,10 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     const json = await response.json();
     if (!response.ok) throw new Error(json.error);
     setListing(json);
-    // Deep-link support: /partner/properties/{id}?step=N jumps straight to a step.
+    // A draft can revisit saved work but cannot skip required setup stages.
     const requested = Number(searchParams.get("step"));
-    const target = Number.isInteger(requested) && requested >= 1 && requested <= 8 ? requested : json.property.onboarding?.currentStep ?? 1;
+    const current = json.property.onboarding?.currentStep ?? 1;
+    const target = Number.isInteger(requested) && requested >= 1 && requested <= current ? requested : current;
     setStep(target);
   };
 
@@ -58,17 +62,43 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
 
   const saveStep = async (patch: any) => {
     setSaving(true);
-    const next = Math.min(step + 1, 8);
-    setListing((current) => (current ? { ...current, property: { ...current.property, ...patch } } : current));
-    setStep(next);
+    setNote("");
     try {
       await Promise.all([
         request(`/api/partner/properties/${propertyId}`, patch, "PATCH"),
         request(`/api/partner/properties/${propertyId}/steps`, { step }),
       ]);
-      setNote("Saved");
+      setListing((current) => current ? {
+        ...current,
+        property: {
+          ...current.property,
+          ...patch,
+          onboarding: {
+            ...(current.property.onboarding ?? {}),
+            currentStep: Math.min(step + 1, 8),
+            completedSteps: [...new Set([...(current.property.onboarding?.completedSteps ?? []), step])],
+          },
+        },
+      } : current);
+      setStep((current) => Math.min(current + 1, 8));
+      setSavedAt("Saved just now");
     } catch (error) {
-      setNote(error instanceof Error ? error.message : "Could not save.");
+      setNote(error instanceof Error ? `We couldn’t save your changes. Your previous saved information is safe. ${error.message}` : "We couldn’t save your changes. Your previous saved information is safe.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const completeCurrentStep = async () => {
+    setSaving(true);
+    setNote("");
+    try {
+      await request(`/api/partner/properties/${propertyId}/steps`, { step });
+      setListing((current) => current ? { ...current, property: { ...current.property, onboarding: { ...(current.property.onboarding ?? {}), currentStep: Math.min(step + 1, 8), completedSteps: [...new Set([...(current.property.onboarding?.completedSteps ?? []), step])] } } } : current);
+      setStep((current) => Math.min(current + 1, 8));
+      setSavedAt("Saved just now");
+    } catch (error) {
+      setNote(error instanceof Error ? `We couldn’t save your progress. ${error.message}` : "We couldn’t save your progress.");
     } finally {
       setSaving(false);
     }
@@ -77,51 +107,11 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
   if (!listing) return <main className="min-h-screen bg-slate-50 p-10 text-center">{note || "Loading your listing..."}</main>;
 
   const property = listing.property;
-  const showFixedNext = step === 4;
   let body: React.ReactNode;
 
   if (step === 1) body = <TypeStep selected={property.propertyType} onSave={(type) => saveStep({ propertyType: type })} saving={saving} />;
-  else if (step === 2) {
-    body = (
-      <form
-        action={(formData) =>
-          void saveStep({
-            googlePlaceId: formData.get("place"),
-            latitude: Number(formData.get("lat")),
-            longitude: Number(formData.get("lng")),
-            timezone: formData.get("timezone"),
-            address: {
-              line1: formData.get("address"),
-              line2: null,
-              landmark: null,
-              city: formData.get("city"),
-              district: null,
-              state: formData.get("state"),
-              postalCode: formData.get("pin"),
-              countryCode: "IN",
-            },
-          })
-        }
-      >
-        <Heading title="Find your property" text="Confirm the location and address guests will see." />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="place" label="Google Place ID" value={property.googlePlaceId} />
-          <Field name="timezone" label="Timezone" value={property.timezone || "Asia/Kolkata"} />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="lat" label="Latitude" value={property.latitude} type="number" />
-          <Field name="lng" label="Longitude" value={property.longitude} type="number" />
-        </div>
-        <Field name="address" label="Address" value={property.address?.line1} />
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field name="city" label="City" value={property.address?.city} />
-          <Field name="state" label="State" value={property.address?.state} />
-          <Field name="pin" label="PIN code" value={property.address?.postalCode} />
-        </div>
-        <Save saving={saving} />
-      </form>
-    );
-  } else if (step === 3) {
+  else if (step === 2) body = <LocationStep property={property} saving={saving} onSave={saveStep} />;
+  else if (step === 3) {
     body = (
       <form
         action={(formData) =>
@@ -158,14 +148,15 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
         <Save saving={saving} />
       </form>
     );
-  } else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} />;
+  } else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} onContinue={completeCurrentStep} saving={saving} />;
   else if (step === 5) body = <Facilities onSave={saveStep} saving={saving} selected={property.amenityIds ?? []} />;
-  else if (step === 6) body = <PhotoStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void saveStep({})} />;
-  else if (step === 7) body = <KycStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void saveStep({})} />;
+  else if (step === 6) body = <PhotoStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
+  else if (step === 7) body = <KycStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
   else {
     body = (
       <Review
         listing={listing}
+        onFix={(target) => setStep(target)}
         onSubmit={async () => {
           await request(`/api/partner/properties/${propertyId}/submit`);
           router.replace("/partner/dashboard");
@@ -175,35 +166,118 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8fa] pb-28">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
-          <Link href="/partner/dashboard" className="text-sm font-semibold">
-            Save & close
-          </Link>
-          <span className="text-sm font-medium">Step {step} of 8</span>
+    <main className="min-h-screen bg-[#f7f8fa] pb-24">
+      <header className="sticky top-0 z-20 border-b border-[#e5e1d8] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <Link href="/partner/onboarding" className="inline-flex items-center gap-1 text-sm font-bold text-[#0b1f3a] hover:text-[#9a6b18]"><ChevronLeft className="h-4 w-4" /> Save & exit</Link>
+          <div className="hidden items-center gap-2 text-xs font-semibold text-slate-500 sm:flex" aria-live="polite">{saving ? <><Sparkles className="h-4 w-4 animate-pulse text-[#9a6b18]" /> Saving…</> : savedAt ? <><CircleCheck className="h-4 w-4 text-emerald-600" /> {savedAt}</> : "Your work saves when you continue"}</div>
+          <Link href="/help" className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-[#0b1f3a]"><CircleHelp className="h-4 w-4" /> Help</Link>
         </div>
-        <div className="mx-auto flex max-w-3xl gap-1 px-4 pb-3">
-          {steps.map((_, index) => (
-            <div key={index} className={`h-1 flex-1 rounded ${index < step ? "bg-slate-900" : "bg-slate-200"}`} />
-          ))}
+        <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
+          <div className="flex items-center justify-between"><p className="truncate text-sm font-extrabold text-[#0b1f3a]">{listing.property.name}</p><span className="text-sm font-bold text-[#0b1f3a]">Step {step} of {steps.length}</span></div>
+          <div className="mt-3 flex gap-1.5" aria-label={`Step ${step} of ${steps.length}`}>{steps.map((item, index) => { const value = index + 1; const enabled = value <= (listing.property.onboarding?.currentStep ?? 1); return <button key={item} type="button" disabled={!enabled || value === step} onClick={() => setStep(value)} aria-current={value === step ? "step" : undefined} title={item} className={`h-1.5 flex-1 rounded-full transition ${value < step ? "bg-emerald-600" : value === step ? "bg-[#0b1f3a]" : "bg-slate-200"} disabled:cursor-default`} />; })}</div>
+          <div className="mt-2 hidden justify-between lg:flex">{steps.map((item, index) => <span key={item} className={`w-full text-[10px] font-bold ${index + 1 === step ? "text-[#0b1f3a]" : "text-slate-400"}`}>{item}</span>)}</div>
         </div>
       </header>
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="mb-4 text-xs font-bold uppercase tracking-[.18em] text-amber-600">{steps[step - 1]}</p>
-        <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-8">{body}</section>
-        {note && <p className="mt-3 text-sm text-slate-600">{note}</p>}
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:px-6">
+        <div><p className="mb-4 text-xs font-extrabold uppercase tracking-[.18em] text-[#9a6b18]">{steps[step - 1]}</p><section className="rounded-3xl border border-[#e5e1d8] bg-white p-5 shadow-[0_12px_32px_rgba(11,31,58,0.05)] sm:p-8">{body}</section>{note && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">{note}</p>}</div>
+        <aside className="hidden h-fit rounded-3xl border border-[#e5e1d8] bg-white p-5 lg:block"><p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#9a6b18]">Your listing</p><p className="mt-3 text-3xl font-extrabold text-[#0b1f3a]">{listing.property.onboarding?.completedSteps?.length ?? Math.max(0, step - 1)}/8</p><p className="mt-1 text-sm text-slate-600">steps complete</p><div className="mt-5 rounded-2xl bg-[#f7f8fa] p-4"><LockKeyhole className="h-4 w-4 text-[#9a6b18]" /><p className="mt-2 text-sm font-bold text-[#0b1f3a]">Need help?</p><p className="mt-1 text-xs leading-5 text-slate-600">Your draft stays private until you submit it for review.</p><Link href="/help" className="mt-3 inline-block text-xs font-bold text-[#0b1f3a] underline">Visit Help Centre</Link></div></aside>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-3">
-        <div className="mx-auto flex max-w-3xl gap-3">
-          <button type="button" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1} className="rounded-xl border border-slate-300 px-5 py-3 font-medium disabled:opacity-40">
-            Back
-          </button>
-          {showFixedNext && <button type="button" onClick={() => setStep(5)} className="flex-1 rounded-xl bg-slate-900 py-3 font-semibold text-white">Continue to facilities</button>}
-        </div>
-      </nav>
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[#e5e1d8] bg-white/95 p-3 backdrop-blur"><div className="mx-auto flex max-w-6xl"><button type="button" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={step === 1 || saving} className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-slate-300 px-4 text-sm font-bold text-[#0b1f3a] disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Back</button><span className="ml-auto self-center text-xs font-medium text-slate-500 sm:hidden" aria-live="polite">{saving ? "Saving…" : savedAt || "Saves on continue"}</span></div></nav>
     </main>
   );
+}
+
+type PlaceSelection = {
+  googlePlaceId: string;
+  name: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  address: { line1: string; city: string; state: string; postalCode: string };
+};
+
+function locationComponent(components: google.maps.places.AddressComponent[] | undefined, types: string[]) {
+  return components?.find((component) => types.some((type) => component.types.includes(type)))?.longText ?? "";
+}
+
+function LocationStep({ property, saving, onSave }: { property: any; saving: boolean; onSave: (patch: any) => Promise<void> }) {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [suggestions, setSuggestions] = useState<google.maps.places.PlacePrediction[]>([]);
+  const [selected, setSelected] = useState<PlaceSelection | null>(() => property.googlePlaceId && typeof property.latitude === "number" && typeof property.longitude === "number" ? {
+    googlePlaceId: property.googlePlaceId,
+    name: property.name,
+    formattedAddress: [property.address?.line1, property.address?.city, property.address?.state, property.address?.postalCode].filter(Boolean).join(", "),
+    latitude: property.latitude,
+    longitude: property.longitude,
+    address: { line1: property.address?.line1 ?? "", city: property.address?.city ?? "", state: property.address?.state ?? "", postalCode: property.address?.postalCode ?? "" },
+  } : null);
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const value = query.trim();
+    if (value.length < 2) { setSuggestions([]); return; }
+    const currentRequest = ++requestId.current;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const { AutocompleteSuggestion } = await placesLibrary();
+        const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({ input: value, includedRegionCodes: ["IN"] });
+        if (currentRequest === requestId.current) setSuggestions(response.suggestions.map((item) => item.placePrediction).filter((item): item is google.maps.places.PlacePrediction => Boolean(item)));
+      } catch (error) {
+        if (currentRequest === requestId.current) setMessage(error instanceof Error ? error.message : "Google place search is unavailable. Please try again.");
+      } finally {
+        if (currentRequest === requestId.current) setLoading(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const choose = async (prediction: google.maps.places.PlacePrediction) => {
+    setLoading(true); setMessage("");
+    try {
+      const place = prediction.toPlace();
+      await place.fetchFields({ fields: ["id", "displayName", "formattedAddress", "location", "addressComponents"] });
+      if (!place.id || !place.location) throw new Error("Choose a result with a confirmed location.");
+      const streetNumber = locationComponent(place.addressComponents, ["street_number"]);
+      const route = locationComponent(place.addressComponents, ["route"]);
+      const premise = locationComponent(place.addressComponents, ["premise", "establishment"]);
+      const locality = locationComponent(place.addressComponents, ["sublocality_level_1", "sublocality"]);
+      const line1 = [premise || place.displayName, [streetNumber, route].filter(Boolean).join(" "), locality].filter(Boolean).join(", ") || place.formattedAddress || "";
+      const next: PlaceSelection = {
+        googlePlaceId: place.id,
+        name: place.displayName ?? property.name,
+        formattedAddress: place.formattedAddress ?? line1,
+        latitude: place.location.lat(),
+        longitude: place.location.lng(),
+        address: {
+          line1,
+          city: locationComponent(place.addressComponents, ["locality", "administrative_area_level_3", "postal_town"]),
+          state: locationComponent(place.addressComponents, ["administrative_area_level_1"]),
+          postalCode: locationComponent(place.addressComponents, ["postal_code"]),
+        },
+      };
+      setSelected(next); setQuery(next.name); setSuggestions([]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "We could not use that location.");
+    } finally { setLoading(false); }
+  };
+
+  return <form action={() => {
+    if (!selected) { setMessage("Search for and select your property from Google Maps first."); return; }
+    if (!selected.address.line1 || !selected.address.city || !selected.address.state || !selected.address.postalCode) { setMessage("Complete the visible address fields before saving."); return; }
+    void onSave({ googlePlaceId: selected.googlePlaceId, latitude: selected.latitude, longitude: selected.longitude, timezone: property.timezone || "Asia/Kolkata", address: { ...selected.address, line2: null, landmark: null, district: null, countryCode: "IN" } });
+  }}>
+    <Heading title="Where is your property?" text="Search Google Maps, then confirm the guest-facing address. We use the precise location privately for bookings and verification." />
+    <label className="block text-sm font-bold text-[#0b1f3a]">Search your property
+      <span className="relative mt-2 block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => { setQuery(event.target.value); setMessage(""); }} placeholder="Property name, address, or landmark" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm outline-none focus:border-[#0b1f3a] focus:ring-4 focus:ring-[#0b1f3a]/10" />{(loading || suggestions.length > 0) && <div role="listbox" className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">{loading && <p className="px-3 py-2 text-sm text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Finding places…</p>}{suggestions.map((suggestion, index) => <button key={`${suggestion.text.toString()}-${index}`} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => void choose(suggestion)} className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-slate-50"><span className="block text-sm font-bold text-[#0b1f3a]">{suggestion.text.toString()}</span>{suggestion.secondaryText && <span className="mt-0.5 block text-xs text-slate-500">{suggestion.secondaryText.toString()}</span>}</button>)}</div>}</span>
+    </label>
+    {selected && <div className="mt-5 rounded-2xl border border-[#e5e1d8] bg-[#f7f8fa] p-4"><div className="flex gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fbf3df] text-[#9a6b18]"><MapPin className="h-5 w-5" /></span><div><p className="font-bold text-[#0b1f3a]">{selected.name}</p><p className="mt-1 text-sm leading-6 text-slate-600">{selected.formattedAddress}</p></div></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-700 sm:col-span-2">Address shown to guests<input required value={selected.address.line1} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, line1: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">City<input required value={selected.address.city} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, city: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">State<input required value={selected.address.state} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, state: event.target.value } } : current)} className={input} /></label><label className="text-sm font-semibold text-slate-700">PIN code<input required value={selected.address.postalCode} onChange={(event) => setSelected((current) => current ? { ...current, address: { ...current.address, postalCode: event.target.value } } : current)} className={input} /></label></div></div>}
+    {message && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">{message}</p>}
+    <Save saving={saving} />
+  </form>;
 }
 
 function Heading({ title, text }: { title: string; text: string }) {
@@ -258,7 +332,7 @@ function TypeStep({ selected, onSave, saving }: { selected: string; onSave: (typ
   );
 }
 
-function RoomsRates({ propertyId, listing, request, onChanged }: { propertyId: string; listing: Listing; request: any; onChanged: () => Promise<void> }) {
+function RoomsRates({ propertyId, listing, request, onChanged, onContinue, saving }: { propertyId: string; listing: Listing; request: any; onChanged: () => Promise<void>; onContinue: () => Promise<void>; saving: boolean }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -282,7 +356,7 @@ function RoomsRates({ propertyId, listing, request, onChanged }: { propertyId: s
 
   return (
     <>
-      <Heading title="Rooms and rates" text="Set up your room inventory, cancellation promise, and nightly price. Each saved item appears below immediately." />
+      <Heading title="Rooms and rates" text="Create a room type, then give it a price and cancellation promise. A room becomes ready only when all three are saved." />
       <div className="grid gap-5 lg:grid-cols-2">
         <form action={(formData) => void add("room", formData)} className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-bold">1. Add a room type</h2>
@@ -324,6 +398,9 @@ function RoomsRates({ propertyId, listing, request, onChanged }: { propertyId: s
         <Summary title="Rates" count={listing.ratePlans.length} items={listing.ratePlans.map((rate) => rate.name)} />
       </div>
       {notice && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm">{notice}</p>}
+      <button type="button" disabled={saving || busy || !listing.roomTypes.length || !listing.policies.length || !listing.roomTypes.every((room) => listing.ratePlans.some((rate) => rate.roomTypeId === room.id && rate.cancellationPolicyId))} onClick={() => void onContinue()} className="mt-7 w-full rounded-xl bg-[#0b1f3a] p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        {!listing.roomTypes.length || !listing.policies.length || !listing.roomTypes.every((room) => listing.ratePlans.some((rate) => rate.roomTypeId === room.id && rate.cancellationPolicyId)) ? "Add a room, policy, and matching rate to continue" : saving ? "Saving…" : "Continue to facilities"}
+      </button>
     </>
   );
 }
@@ -487,18 +564,18 @@ function KycStep({ propertyId, listing, onChanged, onContinue }: { propertyId: s
   );
 }
 
-function Review({ listing, onSubmit }: { listing: Listing; onSubmit: () => Promise<void> }) {
+function Review({ listing, onSubmit, onFix }: { listing: Listing; onSubmit: () => Promise<void>; onFix: (step: number) => void }) {
   const docs = new Set(listing.documents.map((document) => document.documentType));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const roomIdsWithRates = new Set(listing.ratePlans.filter((rate) => rate.cancellationPolicyId).map((rate) => rate.roomTypeId));
-  const rows = [
-    ["Property details", Boolean(listing.property.description && listing.property.checkInTime && listing.property.checkOutTime && listing.property.publicPhone)],
-    ["Confirmed location", Boolean(listing.property.address?.city && listing.property.googlePlaceId)],
-    ["Facilities and policies", Boolean(listing.property.amenityIds?.length)],
-    ["Rooms, prices and cancellation", listing.roomTypes.length > 0 && listing.policies.length > 0 && listing.roomTypes.every((room) => roomIdsWithRates.has(room.id))],
-    ["Six photos", listing.media.length >= 6],
-    ["Identity documents", ["pan", "government_id_front", "government_id_back"].every((item) => docs.has(item))],
+  const rows: Array<[string, boolean, number]> = [
+    ["Property details", Boolean(listing.property.description && listing.property.checkInTime && listing.property.checkOutTime && listing.property.publicPhone), 3],
+    ["Confirmed location", Boolean(listing.property.address?.city && listing.property.googlePlaceId), 2],
+    ["Facilities and policies", Boolean(listing.property.amenityIds?.length), 5],
+    ["Rooms, prices and cancellation", listing.roomTypes.length > 0 && listing.policies.length > 0 && listing.roomTypes.every((room) => roomIdsWithRates.has(room.id)), 4],
+    ["Six photos", listing.media.length >= 6, 6],
+    ["Identity documents", ["pan", "government_id_front", "government_id_back"].every((item) => docs.has(item)), 7],
   ];
   const complete = rows.every(([, isComplete]) => isComplete);
 
@@ -517,7 +594,7 @@ function Review({ listing, onSubmit }: { listing: Listing; onSubmit: () => Promi
     <>
       <Heading title="Ready for review?" text="The listing only goes live after all required items are reviewed and approved." />
       <div className="space-y-3">
-        {rows.map(([label, isComplete]) => <div key={String(label)} className="flex justify-between rounded-xl bg-slate-50 p-4"><span>{label}</span><span className={isComplete ? "text-emerald-700" : "text-amber-700"}>{isComplete ? "Complete" : "Needs attention"}</span></div>)}
+        {rows.map(([label, isComplete, target]) => <div key={String(label)} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-4"><span className="font-medium">{label}</span>{isComplete ? <span className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700"><Check className="h-4 w-4" /> Complete</span> : <button type="button" onClick={() => onFix(target)} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-[#0b1f3a] shadow-sm ring-1 ring-slate-200 hover:bg-slate-100">Fix</button>}</div>)}
       </div>
       {error && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">{error}</p>}
       {!complete && <p className="mt-5 text-sm text-slate-600">Finish each item marked “Needs attention” before submitting.</p>}

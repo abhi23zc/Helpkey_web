@@ -29,7 +29,10 @@ export function usePartnerDashboardData() {
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY);
   const [user, setUser] = useState<DashboardUser | null>(null);
-  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("propertyId") ?? "";
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [reportingDate, setReportingDateState] = useState(() => {
@@ -56,7 +59,9 @@ export function usePartnerDashboardData() {
         setBusinessName(data.businessName);
         setCurrency(data.currency);
         setUser(data.user);
-        setSelectedPropertyId((current) => current || data.properties[0]?.id || "");
+        setSelectedPropertyId((current) =>
+          data.properties.some((property) => property.id === current) ? current : data.properties[0]?.id || "",
+        );
       })
       .catch((cause) => {
         if (cancelled) return;

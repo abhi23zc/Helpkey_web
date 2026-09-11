@@ -11,7 +11,6 @@ import { GlobalReachSection } from "./global-reach-map";
 import { DestinationsCarousel } from "./destinations-carousel";
 import { FeaturedStaysTabs } from "./featured-stays-tabs";
 import { PromotionsCarousel } from "./promotions-carousel";
-import { AppPromoWidget } from "./app-promo-widget";
 import { WorldMapGraphic } from "../join/world-map";
 
 type IconProps = {
@@ -232,7 +231,6 @@ export function HomePage() {
         <NewsletterSection />
       </main>
       <SiteFooter />
-      <AppPromoWidget />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   );
