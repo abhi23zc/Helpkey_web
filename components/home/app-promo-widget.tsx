@@ -1,123 +1,104 @@
 "use client";
 
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { X, ChevronRight, Smartphone, MapPin } from "lucide-react";
 
 export function AppPromoWidget() {
   const [isOpen, setIsOpen] = useState(true);
-  const [isMinimized, setIsMinimized] = useState(true);
 
-  if (!isOpen) return null;
-
-  if (isMinimized) {
+  if (!isOpen) {
     return (
       <button
         type="button"
-        onClick={() => setIsMinimized(false)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-5 py-3 text-sm font-bold text-white shadow-2xl transition-transform hover:bg-[var(--hk-navy-panel)] hover:scale-105 active:scale-95"
+        onClick={() => setIsOpen(true)}
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#0b1f3a] px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-[0_8px_25px_rgba(11,31,58,0.4)] ring-1 ring-amber-400/40 transition-transform hover:scale-105 hover:bg-[#061224]"
       >
-        <svg className="h-4 w-4 text-[var(--hk-gold-light)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-        </svg>
-        <span>Save more on App!</span>
+        <Smartphone className="h-4 w-4 text-amber-400" />
+        <span>Save 10% on App!</span>
+        <ChevronRight className="h-4 w-4 text-slate-300" />
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[310px] sm:w-[340px] rounded-3xl border border-[rgba(196,198,206,0.7)] bg-white p-5 shadow-[0_20px_50px_rgba(11,31,58,0.22)] transition-all duration-300">
-      {/* Close & Minimize buttons */}
-      <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-2.5 w-2.5 rounded-full bg-[var(--hk-gold-strong)]" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--hk-navy-strong)]">
-            Save 10% Instant Discount
-          </span>
+    <div className="fixed bottom-5 right-5 z-50 w-[260px] sm:w-[275px]">
+      {/* Outer Wrapper for White Card + Bottom Floating Close Button */}
+      <div className="flex flex-col">
+        {/* Main White Card Container */}
+        <div className="relative overflow-hidden rounded-[20px] bg-white p-4.5 pb-0 pt-5 text-center shadow-[0_10px_35px_rgba(0,0,0,0.16)]">
+          {/* Subtle World Map Dot Matrix Pattern Background */}
+          <div 
+            className="absolute inset-0 pointer-events-none opacity-[0.08]" 
+            style={{
+              backgroundImage: `radial-gradient(#0b1f3a 1.2px, transparent 1.2px)`,
+              backgroundSize: '12px 12px'
+            }} 
+          />
+
+
+
+          {/* Main Headline */}
+          <h3 className="relative z-10 text-[16px] sm:text-[17px] font-bold tracking-tight text-[#222831] leading-tight">
+            Save 10% on your 1st app booking!
+          </h3>
+
+          {/* Subtitle */}
+          <p className="relative z-10 mt-1 text-[11px] sm:text-xs text-[#535b66] font-normal leading-normal">
+            Just scan the QR code for instant savings
+          </p>
+
+          {/* Premium Device Bezel Frame (Agoda Style) */}
+          <div className="relative z-10 mx-auto mt-3.5 w-[180px] overflow-hidden rounded-t-[30px] border-[3px] border-[#9ba9bf] border-b-0 bg-white pt-0 px-2.5 shadow-xs">
+            {/* Flush Phone Top Notch */}
+            <div className="mx-auto mb-2.5 h-2.5 w-20 rounded-b-lg bg-[#9ba9bf]" />
+
+            {/* Phone Screen Content */}
+            <div className="flex flex-col items-center pb-1">
+              {/* Helpkey Brand Logo + Colored Dots */}
+              <div className="mb-2 flex flex-col items-center">
+                <span className="text-[13px] font-extrabold tracking-tight text-[#222831] font-sans">
+                  helpkey
+                </span>
+                <div className="mt-0.5 flex items-center justify-center gap-0.5">
+                  <span className="h-1 w-1 rounded-full bg-[#ff4b4b]" />
+                  <span className="h-1 w-1 rounded-full bg-[#f59e0b]" />
+                  <span className="h-1 w-1 rounded-full bg-[#10b981]" />
+                  <span className="h-1 w-1 rounded-full bg-[#8b5cf6]" />
+                  <span className="h-1 w-1 rounded-full bg-[#3b82f6]" />
+                </div>
+              </div>
+
+              {/* Scannable Vector QR Code */}
+              <div className="relative flex items-center justify-center bg-white p-1">
+                <QRCodeSVG
+                  value="https://helpkey.in/download-app?utm_source=agoda_promo"
+                  size={115}
+                  bgColor="#ffffff"
+                  fgColor="#222831"
+                  level="H"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Speech Bubble Pointer Triangle at Bottom Right of White Card */}
+          <div className="absolute -bottom-2 right-[20px] h-0 w-0 border-l-[8px] border-r-[8px] border-t-[8px] border-l-transparent border-r-transparent border-t-white z-20" />
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setIsMinimized(true)}
-            aria-label="Minimize app offer"
-            className="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-          >
-            _
-          </button>
+
+        {/* Bottom Floating Deep Navy Close Button (Right Aligned under Speech Bubble Tail) */}
+        <div className="mt-2 flex justify-end pr-1.5">
           <button
             type="button"
             onClick={() => setIsOpen(false)}
-            aria-label="Close app offer"
-            className="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            aria-label="Close promotion"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0b1f3a] text-white shadow-[0_5px_15px_rgba(11,31,58,0.4)] ring-1 ring-white/20 hover:bg-[#061224]"
           >
-            ✕
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="mt-4 text-center">
-        <h3 className="text-lg font-black tracking-tight text-[var(--hk-ink)]">
-          Save 10% on your 1st app booking!
-        </h3>
-        <p className="mt-1 text-xs text-[var(--hk-muted)]">
-          Just scan the QR code for instant savings &amp; secret rates.
-        </p>
-
-        {/* QR Code Phone Frame */}
-        <div className="my-4 mx-auto relative flex h-48 w-40 flex-col items-center justify-center rounded-3xl border-4 border-slate-300 bg-slate-50 p-3 shadow-inner">
-          <div className="absolute top-2.5 h-1.5 w-12 rounded-full bg-slate-300" />
-          
-          <div className="mb-2 mt-2 flex items-center gap-1 text-[10px] font-extrabold text-[var(--hk-navy-strong)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--hk-gold-strong)]" />
-            <span>Helpkey App</span>
-          </div>
-
-          <div className="relative flex h-28 w-28 items-center justify-center rounded-xl bg-white p-2 shadow-sm border border-gray-200">
-            <svg viewBox="0 0 100 100" className="h-full w-full">
-              <rect x="0" y="0" width="100" height="100" fill="white" />
-              <rect x="5" y="5" width="25" height="25" fill="#000615" />
-              <rect x="10" y="10" width="15" height="15" fill="white" />
-              <rect x="13" y="13" width="9" height="9" fill="#000615" />
-
-              <rect x="70" y="5" width="25" height="25" fill="#000615" />
-              <rect x="75" y="10" width="15" height="15" fill="white" />
-              <rect x="78" y="13" width="9" height="9" fill="#000615" />
-
-              <rect x="5" y="70" width="25" height="25" fill="#000615" />
-              <rect x="10" y="75" width="15" height="15" fill="white" />
-              <rect x="13" y="78" width="9" height="9" fill="#000615" />
-
-              <rect x="35" y="10" width="8" height="8" fill="#141b2b" />
-              <rect x="48" y="10" width="8" height="8" fill="#141b2b" />
-              <rect x="35" y="25" width="8" height="8" fill="#785d1c" />
-              <rect x="55" y="25" width="8" height="8" fill="#141b2b" />
-
-              <rect x="10" y="40" width="8" height="8" fill="#141b2b" />
-              <rect x="25" y="45" width="8" height="8" fill="#141b2b" />
-              <rect x="40" y="40" width="8" height="8" fill="#785d1c" />
-              <rect x="60" y="45" width="8" height="8" fill="#141b2b" />
-              <rect x="80" y="40" width="8" height="8" fill="#785d1c" />
-
-              <rect x="40" y="60" width="8" height="8" fill="#141b2b" />
-              <rect x="60" y="60" width="8" height="8" fill="#141b2b" />
-              <rect x="75" y="65" width="8" height="8" fill="#785d1c" />
-
-              <rect x="35" y="75" width="8" height="8" fill="#141b2b" />
-              <rect x="50" y="80" width="8" height="8" fill="#785d1c" />
-              <rect x="70" y="75" width="8" height="8" fill="#141b2b" />
-              <rect x="82" y="82" width="8" height="8" fill="#141b2b" />
-            </svg>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center gap-2">
-          <button
-            type="button"
-            className="w-full rounded-xl bg-[var(--hk-navy-strong)] py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[var(--hk-navy-panel)] active:scale-95"
-          >
-            Get App Download Link
+            <X className="h-5 w-5 stroke-[2.5]" />
           </button>
         </div>
       </div>
     </div>
   );
 }
+

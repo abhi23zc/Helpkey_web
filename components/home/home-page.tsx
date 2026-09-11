@@ -12,6 +12,7 @@ import { DestinationsCarousel } from "./destinations-carousel";
 import { FeaturedStaysTabs } from "./featured-stays-tabs";
 import { PromotionsCarousel } from "./promotions-carousel";
 import { AppPromoWidget } from "./app-promo-widget";
+import { WorldMapGraphic } from "../join/world-map";
 
 type IconProps = {
   className?: string;
