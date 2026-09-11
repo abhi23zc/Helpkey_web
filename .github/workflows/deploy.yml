@@ -49,7 +49,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: helpkey-image.tar.gz
-          target: /tmp/helpkey-image.tar.gz
+          target: /tmp/
           overwrite: true
 
       - name: Deploy and restart
