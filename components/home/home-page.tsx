@@ -389,8 +389,8 @@ function HeroSection({
     <section className="relative overflow-hidden">
       <div className="relative h-[480px] md:h-[560px]">
         <Image
-          src="https://lh3.googleusercontent.com/aida-public/AB6AXuAn6KL5v1NYV9J9S3mFScL2n-4j6_0NXIQRndJn8zT6QNUqzxNj_lq4yFJqNwA60_2tVQJl6fYTD4s0CKxZtSOicR2hN0logWowiWq2WUwNRaPwVbKL2-0whbMadZZN2cQgoMW5JicZQTVqGkHYCLH_xSOaFFM87QfU1aoCVoxfh23o2vGe-LstLXMfK4yXGStbfRFoUih085duSxL5CuJ4lOGeRJtezdyZUV5ekNd_PqW796XinpY99A"
-          alt="Luxury hotel suite with city skyline"
+          src="/images/hero-bg.png"
+          alt="Find your perfect business stay"
           fill
           priority
           sizes="100vw"

@@ -12,7 +12,7 @@ export function AppPromoWidget() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#0b1f3a] px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-[0_8px_25px_rgba(11,31,58,0.4)] ring-1 ring-amber-400/40 transition-transform hover:scale-105 hover:bg-[#061224]"
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#0b1f3a] px-3.5 py-2 text-xs sm:text-sm font-bold text-white shadow-[0_8px_25px_rgba(11,31,58,0.4)]  transition-transform "
       >
         <Smartphone className="h-4 w-4 text-amber-400" />
         <span>Save 10% on App!</span>

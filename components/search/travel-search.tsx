@@ -24,7 +24,7 @@ import {
 import { placesLibrary } from "@/lib/google/maps-loader";
 
 type HelpkeySuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
-type GoogleSuggestion = { label: string; secondary: string; prediction: any };
+type GoogleSuggestion = { label: string; secondary: string; isHotel: boolean; prediction: any };
 type Place = { id: string; name: string; address: string; lat: number; lng: number; city: string };
 type Props = { initial?: URLSearchParams; amenities?: string[]; compact?: boolean };
 
@@ -107,6 +107,7 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
   const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [mapsError, setMapsError] = useState("");
   const [place, setPlace] = useState<Place | null>(null);
 
   const token = useRef<any>(null);
@@ -128,33 +129,56 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
     const id = ++request.current;
     setLoading(true);
     const timer = setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/search/suggestions?q=${encodeURIComponent(destination)}`);
-        const data = await response.json();
-        if (id !== request.current) return;
-        setHelpkey(data.suggestions ?? []);
-
-        const { AutocompleteSuggestion, AutocompleteSessionToken } = (await placesLibrary()) as any;
-        token.current ??= new AutocompleteSessionToken();
-        const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: destination,
-          includedRegionCodes: ["IN"],
-          includedPrimaryTypes: ["(cities)"],
-          sessionToken: token.current,
+      const helpkeyTask = fetch(`/api/search/suggestions?q=${encodeURIComponent(destination)}`)
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Could not load Helpkey suggestions.");
+          return response.json() as Promise<{ suggestions?: HelpkeySuggestion[] }>;
+        })
+        .then((data) => {
+          if (id === request.current) setHelpkey(data.suggestions ?? []);
+        })
+        .catch(() => {
+          if (id === request.current) setHelpkey([]);
         });
-        if (id === request.current) {
+
+      const googleTask = (async () => {
+        try {
+          const { AutocompleteSuggestion, AutocompleteSessionToken } = (await placesLibrary()) as any;
+          token.current ??= new AutocompleteSessionToken();
+          const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: destination,
+            includedRegionCodes: ["IN"],
+            // The current Autocomplete Data API accepts up to five primary types.
+            // These keep the travel picker focused on destinations and accommodation.
+            includedPrimaryTypes: ["locality", "sublocality", "administrative_area_level_2", "lodging"],
+            sessionToken: token.current,
+          });
+          if (id !== request.current) return;
           setGoogle(
             (result.suggestions ?? [])
-              .map((item: any) => ({
-                label: item.placePrediction?.text?.text ?? "",
-                secondary: item.placePrediction?.secondaryText?.text ?? "",
-                prediction: item.placePrediction,
-              }))
-              .filter((item: GoogleSuggestion) => item.label)
+              .map((item: any) => {
+                const prediction = item.placePrediction;
+                const types = prediction?.types ?? [];
+                return {
+                  label: prediction?.text?.text ?? "",
+                  secondary: prediction?.secondaryText?.text ?? "",
+                  isHotel: types.includes("lodging"),
+                  prediction,
+                };
+              })
+              .filter((item: GoogleSuggestion) => item.label && item.prediction)
           );
+          if (id === request.current) setMapsError("");
+        } catch {
+          if (id === request.current) {
+            setGoogle([]);
+            setMapsError("Google location suggestions are temporarily unavailable. You can still search Helpkey stays or enter a destination.");
+          }
         }
-      } catch {
-        /* Helpkey suggestions remain usable when Maps is unavailable. */
+      })();
+
+      try {
+        await Promise.all([helpkeyTask, googleTask]);
       } finally {
         if (id === request.current) setLoading(false);
       }
@@ -273,6 +297,7 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                   setPlace(null);
                   setDestination(e.target.value);
                   setActive(-1);
+                  setMapsError("");
                   if (open !== "destination") setOpen("destination");
                 }}
                 onKeyDown={(e) => {
@@ -389,8 +414,11 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                 <div>
                   {loading && <p className="px-2 py-3 text-xs font-medium text-slate-500">Finding destinations…</p>}
                   
-                  <div className="max-h-[310px] space-y-1 overflow-y-auto pr-1">
-                    {helpkey.map((item, i) => (
+                  <div className="max-h-[310px] space-y-3 overflow-y-auto pr-1">
+                    {helpkey.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Stays on Helpkey</p>
+                        {helpkey.map((item, i) => (
                       <button
                         role="option"
                         type="button"
@@ -411,11 +439,16 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                           </p>
                         </div>
                       </button>
-                    ))}
+                        ))}
+                      </div>
+                    )}
 
-                    {google.map((item, i) => {
+                    {google.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Places in India</p>
+                        {google.map((item, i) => {
                       const isNeighborhood = item.secondary?.toLowerCase().includes("neighbourhood") || item.secondary?.toLowerCase().includes("locality");
-                      const IconComponent = isNeighborhood ? Home : MapPin;
+                      const IconComponent = item.isHotel ? Building2 : isNeighborhood ? Home : MapPin;
                       return (
                         <button
                           role="option"
@@ -432,16 +465,19 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.label}</p>
-                            <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">{item.secondary || "Destination"}</p>
+                            <p className="truncate text-[13px] font-normal text-slate-500 mt-0.5">{item.secondary || (item.isHotel ? "Hotel" : "Destination")}</p>
                           </div>
                         </button>
                       );
-                    })}
+                        })}
+                      </div>
+                    )}
                   </div>
 
+                  {mapsError && <p className="mx-1 mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{mapsError}</p>}
                   {!loading && !options.length && (
                     <p className="px-2 py-4 text-center text-xs font-medium text-slate-500">
-                      No exact match found. Press Search to explore stays in &quot;{destination}&quot;.
+                      No suggested stay or destination found. Press Search to explore stays in &quot;{destination}&quot;.
                     </p>
                   )}
                 </div>
@@ -706,4 +742,3 @@ function Month({ month, today, max, checkIn, checkOut, onPick }: any) {
     </div>
   );
 }
-

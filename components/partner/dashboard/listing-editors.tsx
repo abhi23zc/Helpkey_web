@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { AlertTriangle, CheckCircle2, ImageIcon, Loader2, MapPin, Navigation, Plus, Search, Star, Upload, X } from "lucide-react";
 import { formatPaise, toPaise } from "@/lib/currency";
 import { requestJson, putFile, putFileWithProgress, sha256Hex, uploadErrorMessage } from "@/lib/partner/upload-client";
+import { mapsLibrary, markerLibrary, placesLibrary } from "@/lib/google/maps-loader";
 import type { ListingMutations, ListingProperty, ListingResponse } from "./use-property-listing";
 
 /** Minimum time a loading state stays visible so spinners never just flash. */
@@ -189,102 +190,27 @@ type SelectedPlace = {
   address: AddressDraft;
 };
 
-type GoogleLatLng = { lat: () => number; lng: () => number };
 type GoogleLatLngLiteral = { lat: number; lng: number };
-type GoogleBounds = unknown;
-type GooglePlaceComponent = { long_name: string; short_name: string; types: string[] };
-type GooglePlace = {
-  place_id?: string;
-  name?: string;
-  formatted_address?: string;
-  address_components?: GooglePlaceComponent[];
-  geometry?: {
-    location?: GoogleLatLng;
-    viewport?: GoogleBounds;
-  };
-};
-type GoogleListener = { remove: () => void };
-type GoogleAutocomplete = {
-  getPlace: () => GooglePlace;
-  addListener: (eventName: "place_changed", callback: () => void) => GoogleListener;
-};
-type GoogleMap = {
-  setCenter: (center: GoogleLatLngLiteral) => void;
-  setZoom: (zoom: number) => void;
-  fitBounds: (bounds: GoogleBounds) => void;
-};
-type GoogleMarker = {
-  setPosition: (position: GoogleLatLngLiteral) => void;
-  setMap: (map: GoogleMap | null) => void;
-};
-type GoogleMapsNamespace = {
-  maps: {
-    Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMap;
-    Marker: new (options: Record<string, unknown>) => GoogleMarker;
-    places: {
-      Autocomplete: new (input: HTMLInputElement, options: Record<string, unknown>) => GoogleAutocomplete;
-    };
-    event: {
-      clearInstanceListeners: (instance: unknown) => void;
-    };
-  };
-};
-
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    google?: any;
-    __helpkeyGoogleMapsPromise?: Promise<GoogleMapsNamespace>;
-  }
-}
-
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+type PartnerSuggestion = { label: string; secondary: string; prediction: google.maps.places.PlacePrediction };
 const INDIA_CENTER: GoogleLatLngLiteral = { lat: 20.5937, lng: 78.9629 };
 
-function loadGoogleMaps(): Promise<GoogleMapsNamespace> {
-  if (typeof window === "undefined") return Promise.reject(new Error("Google Maps is only available in the browser."));
-  if (window.google?.maps?.places) return Promise.resolve(window.google);
-  if (window.__helpkeyGoogleMapsPromise) return window.__helpkeyGoogleMapsPromise;
-  if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error("Google Maps API key is missing."));
-
-  window.__helpkeyGoogleMapsPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-helpkey-google-maps="true"]');
-    if (existing) {
-      existing.addEventListener("load", () => window.google ? resolve(window.google) : reject(new Error("Google Maps failed to load.")), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Google Maps failed to load.")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    script.dataset.helpkeyGoogleMaps = "true";
-    script.onload = () => window.google ? resolve(window.google) : reject(new Error("Google Maps failed to load."));
-    script.onerror = () => reject(new Error("Google Maps failed to load."));
-    document.head.appendChild(script);
-  });
-
-  return window.__helpkeyGoogleMapsPromise;
-}
-
-function componentValue(components: GooglePlaceComponent[] | undefined, types: string[], short = false): string {
+function componentValue(components: google.maps.places.AddressComponent[] | undefined, types: string[], short = false): string {
   const component = components?.find((item) => types.some((type) => item.types.includes(type)));
-  return component ? (short ? component.short_name : component.long_name) : "";
+  return component ? (short ? component.shortText ?? "" : component.longText ?? "") : "";
 }
 
-function addressFromPlace(place: GooglePlace): AddressDraft {
-  const streetNumber = componentValue(place.address_components, ["street_number"]);
-  const route = componentValue(place.address_components, ["route"]);
-  const premise = componentValue(place.address_components, ["premise", "establishment"]);
-  const sublocality = componentValue(place.address_components, ["sublocality_level_1", "sublocality"]);
-  const city = componentValue(place.address_components, ["locality", "administrative_area_level_3", "postal_town"]);
-  const state = componentValue(place.address_components, ["administrative_area_level_1"]);
-  const postalCode = componentValue(place.address_components, ["postal_code"]);
-  const lineParts = [premise || place.name, [streetNumber, route].filter(Boolean).join(" "), sublocality].filter(Boolean);
+function addressFromPlace(place: google.maps.places.Place): AddressDraft {
+  const streetNumber = componentValue(place.addressComponents, ["street_number"]);
+  const route = componentValue(place.addressComponents, ["route"]);
+  const premise = componentValue(place.addressComponents, ["premise", "establishment"]);
+  const sublocality = componentValue(place.addressComponents, ["sublocality_level_1", "sublocality"]);
+  const city = componentValue(place.addressComponents, ["locality", "administrative_area_level_3", "postal_town"]);
+  const state = componentValue(place.addressComponents, ["administrative_area_level_1"]);
+  const postalCode = componentValue(place.addressComponents, ["postal_code"]);
+  const lineParts = [premise || place.displayName, [streetNumber, route].filter(Boolean).join(" "), sublocality].filter(Boolean);
 
   return {
-    line1: lineParts.join(", ") || place.formatted_address || "",
+    line1: lineParts.join(", ") || place.formattedAddress || "",
     city,
     state,
     postalCode,
@@ -317,13 +243,21 @@ function existingPlaceFromProperty(property: ListingProperty): SelectedPlace | n
 
 export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
   const p = listing.property;
+  const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
+  const mapConfigError = !mapId ? "Map preview needs NEXT_PUBLIC_GOOGLE_MAP_ID. Search and location selection still work, but configure a production Map ID to show the pin." : "";
   const { saving, error, saved, run } = useSave({ onBusyChange });
   const searchRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<GoogleMap | null>(null);
-  const markerInstance = useRef<GoogleMarker | null>(null);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markerInstance = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const suggestionRequest = useRef(0);
+  const sessionToken = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const [mapsStatus, setMapsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [mapsError, setMapsError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<PartnerSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [selectedPlace, setSelectedPlace] = useState<SelectedPlace | null>(() => existingPlaceFromProperty(p));
   const [address, setAddress] = useState<AddressDraft>(() => existingPlaceFromProperty(p)?.address ?? {
     line1: p.address?.line1 ?? "",
@@ -340,66 +274,29 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
 
   useEffect(() => {
     let cancelled = false;
-    let autocomplete: GoogleAutocomplete | null = null;
 
     const setup = async () => {
-      if (!mapRef.current || !searchRef.current) return;
+      if (!mapRef.current) return;
       setMapsStatus("loading");
-      setMapsError("");
 
       try {
-        const google = await loadGoogleMaps();
-        if (cancelled || !mapRef.current || !searchRef.current) return;
-
+        const [maps, marker] = await Promise.all([mapsLibrary(), markerLibrary()]);
+        if (cancelled || !mapRef.current) return;
         const center = selectedPosition ?? INDIA_CENTER;
-        mapInstance.current = new google.maps.Map(mapRef.current, {
+        mapInstance.current = new maps.Map(mapRef.current, {
           center,
           zoom: selectedPosition ? 15 : 5,
+          mapId: mapId,
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: true,
           clickableIcons: false,
         });
 
-        markerInstance.current = new google.maps.Marker({
+        markerInstance.current = new marker.AdvancedMarkerElement({
           map: selectedPosition ? mapInstance.current : null,
           position: selectedPosition ?? INDIA_CENTER,
           title: p.name,
-        });
-
-        autocomplete = new google.maps.places.Autocomplete(searchRef.current, {
-          componentRestrictions: { country: "in" },
-          fields: ["place_id", "name", "formatted_address", "geometry", "address_components"],
-          types: ["establishment", "geocode"],
-        });
-
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete?.getPlace();
-          const location = place?.geometry?.location;
-          if (!place?.place_id || !location) {
-            setMapsError("Select a result from Google suggestions so we can confirm the map location.");
-            return;
-          }
-
-          const nextPosition = { lat: location.lat(), lng: location.lng() };
-          const nextAddress = addressFromPlace(place);
-          const nextPlace: SelectedPlace = {
-            googlePlaceId: place.place_id,
-            name: place.name ?? p.name,
-            formattedAddress: place.formatted_address ?? nextAddress.line1,
-            latitude: nextPosition.lat,
-            longitude: nextPosition.lng,
-            address: nextAddress,
-          };
-
-          setSelectedPlace(nextPlace);
-          setAddress(nextAddress);
-          setMapsError("");
-          mapInstance.current?.setCenter(nextPosition);
-          mapInstance.current?.setZoom(16);
-          if (place.geometry?.viewport) mapInstance.current?.fitBounds(place.geometry.viewport);
-          markerInstance.current?.setMap(mapInstance.current);
-          markerInstance.current?.setPosition(nextPosition);
         });
 
         setMapsStatus("ready");
@@ -412,7 +309,7 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
     void setup();
     return () => {
       cancelled = true;
-      if (autocomplete && window.google?.maps?.event) window.google.maps.event.clearInstanceListeners(autocomplete);
+      if (markerInstance.current) markerInstance.current.map = null;
     };
   // Initialize Google Maps and autocomplete once for this editor. The selected
   // location is updated by the effect below; re-running this setup on every
@@ -424,9 +321,87 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
   useEffect(() => {
     if (!mapInstance.current || !markerInstance.current || !selectedPosition) return;
     mapInstance.current.setCenter(selectedPosition);
-    markerInstance.current.setMap(mapInstance.current);
-    markerInstance.current.setPosition(selectedPosition);
+    markerInstance.current.map = mapInstance.current;
+    markerInstance.current.position = selectedPosition;
   }, [selectedPosition]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      suggestionRequest.current += 1;
+      sessionToken.current = null;
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+    const requestId = ++suggestionRequest.current;
+    setSuggestionsLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { AutocompleteSuggestion, AutocompleteSessionToken } = await placesLibrary();
+        sessionToken.current ??= new AutocompleteSessionToken();
+        const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: query,
+          includedRegionCodes: ["IN"],
+          sessionToken: sessionToken.current,
+        });
+        if (requestId !== suggestionRequest.current) return;
+        setSuggestions(results
+          .map((item) => item.placePrediction)
+          .filter((prediction): prediction is google.maps.places.PlacePrediction => Boolean(prediction))
+          .map((prediction) => ({
+            label: prediction.text.toString(),
+            secondary: prediction.secondaryText?.toString() ?? "",
+            prediction,
+          })));
+      } catch (cause) {
+        if (requestId === suggestionRequest.current) {
+          setSuggestions([]);
+          setMapsError(cause instanceof Error ? cause.message : "Google place suggestions are unavailable.");
+        }
+      } finally {
+        if (requestId === suggestionRequest.current) setSuggestionsLoading(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const selectSuggestion = async (item: PartnerSuggestion) => {
+    try {
+      setSuggestionsLoading(true);
+      const place = item.prediction.toPlace();
+      await place.fetchFields({ fields: ["id", "displayName", "formattedAddress", "location", "addressComponents", "viewport"] });
+      const location = place.location;
+      if (!place.id || !location) throw new Error("Choose a Google result with a confirmed location.");
+      const nextPosition = { lat: location.lat(), lng: location.lng() };
+      const nextAddress = addressFromPlace(place);
+      const nextPlace: SelectedPlace = {
+        googlePlaceId: place.id,
+        name: place.displayName ?? p.name,
+        formattedAddress: place.formattedAddress ?? nextAddress.line1,
+        latitude: nextPosition.lat,
+        longitude: nextPosition.lng,
+        address: nextAddress,
+      };
+      setSelectedPlace(nextPlace);
+      setAddress(nextAddress);
+      setSearchQuery(nextPlace.name);
+      setSuggestions([]);
+      setMapsError("");
+      mapInstance.current?.setCenter(nextPosition);
+      mapInstance.current?.setZoom(16);
+      if (place.viewport) mapInstance.current?.fitBounds(place.viewport);
+      if (markerInstance.current && mapInstance.current) {
+        markerInstance.current.map = mapInstance.current;
+        markerInstance.current.position = nextPosition;
+      }
+    } catch (cause) {
+      setMapsError(cause instanceof Error ? cause.message : "Could not use that Google location.");
+    } finally {
+      sessionToken.current = null;
+      setSuggestionsLoading(false);
+    }
+  };
 
   const submit = () =>
     run(async () => {
@@ -481,9 +456,53 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
             <input
               ref={searchRef}
               type="search"
+              value={searchQuery}
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls="partner-place-suggestions"
+              aria-autocomplete="list"
               placeholder="Start typing property name, address, or landmark"
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setActiveSuggestion(-1);
+                setMapsError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setSuggestions([]);
+                  setActiveSuggestion(-1);
+                } else if (event.key === "ArrowDown" && suggestions.length > 0) {
+                  event.preventDefault();
+                  setActiveSuggestion((current) => Math.min(current + 1, suggestions.length - 1));
+                } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+                  event.preventDefault();
+                  setActiveSuggestion((current) => Math.max(current - 1, 0));
+                } else if (event.key === "Enter" && activeSuggestion >= 0) {
+                  event.preventDefault();
+                  void selectSuggestion(suggestions[activeSuggestion]);
+                }
+              }}
               className="h-12 w-full rounded-xl border border-[#E6E2DA] bg-white pl-10 pr-3 text-sm font-semibold text-[#06142B] outline-none transition-colors placeholder:text-slate-400 focus:border-[#D8B46A] focus:ring-2 focus:ring-[#D8B46A]/20"
             />
+            {(suggestionsLoading || suggestions.length > 0) && (
+              <div id="partner-place-suggestions" role="listbox" className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[#E6E2DA] bg-white p-1.5 shadow-lg">
+                {suggestionsLoading && <p className="px-3 py-2 text-xs font-medium text-slate-500">Finding places…</p>}
+                {suggestions.map((item, index) => (
+                  <button
+                    key={`${item.label}-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={activeSuggestion === index}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void selectSuggestion(item)}
+                    className={`block w-full rounded-lg px-3 py-2 text-left transition-colors ${activeSuggestion === index ? "bg-amber-50" : "hover:bg-slate-50"}`}
+                  >
+                    <span className="block truncate text-sm font-semibold text-[#06142B]">{item.label}</span>
+                    {item.secondary && <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">{item.secondary}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
           </span>
         </label>
         <p className="mt-2 text-xs font-medium text-slate-500">
@@ -491,10 +510,10 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
         </p>
       </div>
 
-      {mapsError && (
+      {(mapConfigError || mapsError) && (
         <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{mapsError === "Google Maps API key is missing." ? "Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to your environment and restart the dev server." : mapsError}</span>
+          <span>{mapConfigError || mapsError}</span>
         </div>
       )}
 

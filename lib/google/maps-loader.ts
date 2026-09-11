@@ -1,28 +1,56 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type MapsWithImportLibrary = { importLibrary: (library: string) => Promise<unknown> };
-declare global { interface Window { google?: any; } }
-let mapsPromise: Promise<MapsWithImportLibrary> | null = null;
+declare global {
+  interface Window {
+    __helpkeyGoogleMapsReady?: () => void;
+  }
+}
+let mapsPromise: Promise<typeof google.maps> | null = null;
 
-/** Loads the current Maps JavaScript library once. Places is imported with importLibrary. */
-export function loadGoogleMaps() {
+function loadedMaps(): typeof google.maps | undefined {
+  return (window as unknown as { google?: typeof google }).google?.maps;
+}
+
+/** Load Google Maps once, then import individual libraries on demand. */
+export function loadGoogleMaps(): Promise<typeof google.maps> {
   if (typeof window === "undefined") return Promise.reject(new Error("Google Maps is only available in the browser."));
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  if (!key) return Promise.reject(new Error("Location suggestions are unavailable because Google Maps is not configured."));
-  if (window.google?.maps) return Promise.resolve(window.google.maps as unknown as MapsWithImportLibrary);
+  if (!key) return Promise.reject(new Error("Google Maps is not configured. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild the app."));
+  const loaded = loadedMaps();
+  if (loaded?.importLibrary) return Promise.resolve(loaded);
   if (mapsPromise) return mapsPromise;
+
   mapsPromise = new Promise((resolve, reject) => {
+    const callbackName = "__helpkeyGoogleMapsReady";
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async`;
+    const fail = (message: string) => {
+      delete window[callbackName];
+      script.remove();
+      mapsPromise = null;
+      reject(new Error(message));
+    };
+    window[callbackName] = () => {
+      const maps = loadedMaps();
+      delete window[callbackName];
+      script.remove();
+      if (maps?.importLibrary) resolve(maps);
+      else fail("Google Maps did not initialize.");
+    };
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=${callbackName}`;
     script.async = true;
-    script.onload = () => window.google?.maps ? resolve(window.google.maps as unknown as MapsWithImportLibrary) : reject(new Error("Google Maps did not load."));
-    script.onerror = () => reject(new Error("Unable to load Google Maps."));
+    script.onerror = () => fail("Unable to load Google Maps. Check your network and API key referrer restrictions.");
     document.head.appendChild(script);
   });
   return mapsPromise;
 }
 
-export async function placesLibrary() {
-  const maps = await loadGoogleMaps();
-  return maps.importLibrary("places");
+export async function mapsLibrary(): Promise<google.maps.MapsLibrary> {
+  return (await loadGoogleMaps()).importLibrary("maps") as Promise<google.maps.MapsLibrary>;
+}
+
+export async function markerLibrary(): Promise<google.maps.MarkerLibrary> {
+  return (await loadGoogleMaps()).importLibrary("marker") as Promise<google.maps.MarkerLibrary>;
+}
+
+export async function placesLibrary(): Promise<google.maps.PlacesLibrary> {
+  return (await loadGoogleMaps()).importLibrary("places") as Promise<google.maps.PlacesLibrary>;
 }

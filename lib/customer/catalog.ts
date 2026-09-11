@@ -251,8 +251,12 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
     return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const };
   }).filter((item) => `${item.label} ${item.city}`.toLocaleLowerCase().includes(term))
     .sort((a, b) => Number(b.label.toLocaleLowerCase().startsWith(term)) - Number(a.label.toLocaleLowerCase().startsWith(term)) || a.label.localeCompare(b.label));
-  const cities = [...new Set(matches.map((item) => item.city).filter(Boolean))].map((city) => ({ label: city, city, slug: null, type: "city" as const }));
-  return [...matches, ...cities].slice(0, 5);
+  const cities = [...new Set(matches.map((item) => item.city).filter(Boolean))]
+    .sort((a, b) => Number(b.toLocaleLowerCase().startsWith(term)) - Number(a.toLocaleLowerCase().startsWith(term)) || a.localeCompare(b))
+    .map((city) => ({ label: city, city, slug: null, type: "city" as const }));
+  // Keep both useful property matches and city shortcuts visible; a city with many
+  // hotels should not make its city suggestion disappear behind the first five cards.
+  return [...matches.slice(0, 5), ...cities.slice(0, 3)];
 }
 
 export async function homeCatalog() {
