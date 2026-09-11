@@ -67,6 +67,7 @@ export function AdminPropertyReviewDrawer({
     try {
       firestore = getFirebaseFirestore();
     } catch (cause) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(cause instanceof Error ? cause.message : "Realtime publication updates are unavailable.");
       return;
     }

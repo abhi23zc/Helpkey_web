@@ -43,7 +43,7 @@ jobs:
         run: docker save helpkey:${{ github.sha }} | gzip > helpkey-image.tar.gz
 
       - name: Deploy to VPS
-        uses: appleboy/scp-action@v0.1.8
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}

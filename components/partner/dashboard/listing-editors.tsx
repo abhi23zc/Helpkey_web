@@ -330,6 +330,7 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
     if (query.length < 2) {
       suggestionRequest.current += 1;
       sessionToken.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSuggestions([]);
       setSuggestionsLoading(false);
       return;

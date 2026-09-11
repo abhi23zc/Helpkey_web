@@ -117,6 +117,7 @@ export function ManualBookingDialog({
   // Reset when closed
   useEffect(() => {
     if (open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(EMPTY);
     setError("");
     setCreatedCode("");

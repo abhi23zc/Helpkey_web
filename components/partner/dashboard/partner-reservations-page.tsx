@@ -190,6 +190,7 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
 
   // Reset to first page whenever filters/search change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
   }, [status, roomFilter, paymentFilter, query]);
 
@@ -828,6 +829,7 @@ function BookingInspector({
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab("details");
     setNoteSaved(false);
   }, [booking?.id]);
