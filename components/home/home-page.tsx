@@ -266,6 +266,8 @@ export function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
 
   const showUser = mounted && Boolean(appUser);
   const showLoading = mounted && loading;
+  const isPartner = mounted && Boolean(appUser?.roles?.includes("partner"));
+  const visibleNavItems = isPartner ? navItems.filter((item) => item.label !== "For Business") : navItems;
   const userLabel = appUser?.fullName.split(" ")[0] || appUser?.fullName || "Account";
 
   return (
@@ -280,7 +282,7 @@ export function SiteHeader({ onLoginClick }: { onLoginClick: () => void }) {
             Helpkey
           </Link>
           <nav className="hidden items-center gap-6 md:flex">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}

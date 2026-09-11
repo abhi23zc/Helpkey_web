@@ -74,3 +74,19 @@ export function useAuth() {
 
   return value;
 }
+
+/**
+ * Returns true only after client-side hydration once the signed-in user has the
+ * "partner" role. Guarded by `mounted` to avoid SSR/CSR hydration mismatches
+ * when used to conditionally render navigation items.
+ */
+export function useIsPartner() {
+  const { appUser } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return mounted && Boolean(appUser?.roles?.includes("partner"));
+}

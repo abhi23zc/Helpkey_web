@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { MainNavLinks } from "@/components/shared/main-nav-links";
 
 type IconProps = {
   className?: string;
@@ -174,21 +175,18 @@ function WishlistHeader() {
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          {navItems.map((item) => (
-              <Link
-                key={item}
-                href={
-                  item === "Find Stays"
-                    ? "/search"
-                    : item === "Help"
-                      ? "/help"
-                      : "/profile"
-                }
-              className="text-[15px] font-medium text-[var(--hk-ink)] hover:text-black"
-            >
-              {item}
-            </Link>
-          ))}
+          <MainNavLinks
+            items={navItems.map((item) => ({
+              label: item,
+              href:
+                item === "Find Stays"
+                  ? "/search"
+                  : item === "Help"
+                    ? "/help"
+                    : "/profile",
+              className: "text-[15px] font-medium text-[var(--hk-ink)] hover:text-black",
+            }))}
+          />
         </nav>
 
         <div className="flex items-center gap-4">

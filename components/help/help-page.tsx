@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MainNavLinks } from "@/components/shared/main-nav-links";
 
 type IconProps = {
   className?: string;
@@ -90,25 +91,22 @@ function HelpHeader() {
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          {navItems.map((item) => (
-            <Link
-              key={item}
-              href={
+          <MainNavLinks
+            items={navItems.map((item) => ({
+              label: item,
+              href:
                 item === "Find Stays"
                   ? "/search"
                   : item === "Help"
                     ? "/help"
-                    : "#"
-              }
-              className={`text-[15px] font-medium ${
+                    : "#",
+              className: `text-[15px] font-medium ${
                 item === "Help"
                   ? "border-b-2 border-[var(--hk-navy-strong)] pb-1 text-[var(--hk-navy-strong)]"
                   : "text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]"
-              }`}
-            >
-              {item}
-            </Link>
-          ))}
+              }`,
+            }))}
+          />
         </nav>
 
         <div className="flex items-center gap-4">

@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { LoginModal } from "@/components/auth/login-modal";
+import { AuthCard } from "@/components/auth/auth-card";
 import { WorldMapGraphic } from "./world-map";
 
 export function JoinPage() {
@@ -222,7 +223,7 @@ function HeroSection({
           <div className="mb-10 flex flex-wrap gap-4">
             <button
               onClick={onLoginClick}
-              className="rounded-lg bg-[var(--hk-gold)] px-8 py-4 text-[15px] font-bold text-[var(--hk-primary-dark)] shadow-md transition-all hover:-translate-y-0.5 hover:bg-[#e3c27b] hover:shadow-lg"
+              className="cursor-pointer rounded-lg bg-[#e3c27bdb]  hover:bg-[#e3c27b] px-8 py-4 text-[15px] font-bold text-[var(--hk-primary-dark)] shadow-md transition-all   hover:shadow-lg"
             >
               Register for free
             </button>
@@ -258,66 +259,9 @@ function HeroSection({
           </ul>
         </div>
 
-        {/* Right Form Card */}
+        {/* Right Auth & Sign Up Card */}
         <div className="lg:col-span-5">
-          <div className="rounded-2xl border border-white/20 bg-white p-8 text-[var(--hk-ink)] shadow-2xl backdrop-blur-md">
-            <h2 className="mb-6 text-[24px] font-bold tracking-[-0.02em] text-[var(--hk-primary-dark)]">
-              Get started now
-            </h2>
-            <form onSubmit={onStartListing} className="space-y-5">
-              <div>
-                <label className="mb-2 block text-[13px] font-semibold text-[var(--hk-ink)]">
-                  Property type
-                </label>
-                <select
-                  value={propertyType}
-                  onChange={(e) => onPropertyTypeChange(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--hk-border)] bg-[var(--hk-background-warm)] p-3.5 text-[15px] text-[var(--hk-ink)] outline-none transition-all focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.1)]"
-                >
-                  <option value="Hotel">Hotel</option>
-                  <option value="Apartment">Apartment</option>
-                  <option value="Villa">Villa</option>
-                  <option value="Resort">Resort</option>
-                  <option value="Boutique Stay">Boutique Stay</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[13px] font-semibold text-[var(--hk-ink)]">
-                  Property location
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={location}
-                  onChange={(e) => onLocationChange(e.target.value)}
-                  placeholder="e.g. London, UK or Mumbai, India"
-                  className="w-full rounded-lg border border-[var(--hk-border)] bg-[var(--hk-background-warm)] p-3.5 text-[15px] text-[var(--hk-ink)] outline-none transition-all placeholder:text-gray-400 focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.1)]"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-[13px] font-semibold text-[var(--hk-ink)]">
-                  Number of rooms
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={rooms}
-                  onChange={(e) => onRoomsChange(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full rounded-lg border border-[var(--hk-border)] bg-[var(--hk-background-warm)] p-3.5 text-[15px] text-[var(--hk-ink)] outline-none transition-all focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.1)]"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="mt-4 w-full rounded-lg bg-[var(--hk-primary-dark)] py-4 text-[15px] font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[var(--hk-primary)] hover:shadow-lg"
-              >
-                Start listing
-              </button>
-            </form>
-          </div>
+          <AuthCard mode="embedded" initialTab="signup" />
         </div>
       </div>
     </section>

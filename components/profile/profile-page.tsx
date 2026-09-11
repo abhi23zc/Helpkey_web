@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AppUser } from "@/types/auth";
+import { MainNavLinks } from "@/components/shared/main-nav-links";
 
 type IconProps = {
   className?: string;
@@ -70,21 +71,19 @@ function ProfileHeader({ user }: { user: AppUser }) {
             Helpkey
           </Link>
           <nav className="hidden items-center gap-8 md:flex">
-            {navItems.map((item) => (
-              <Link
-                key={item}
-                href={
+            <MainNavLinks
+              items={navItems.map((item) => ({
+                label: item,
+                href:
                   item === "Find Stays"
                     ? "/search"
                     : item === "Help"
                       ? "/help"
-                      : "/profile"
-                }
-                className="text-[15px] font-medium text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]"
-              >
-                {item}
-              </Link>
-            ))}
+                      : "/profile",
+                className:
+                  "text-[15px] font-medium text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]",
+              }))}
+            />
           </nav>
         </div>
 

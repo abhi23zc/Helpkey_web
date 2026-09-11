@@ -24,4 +24,4 @@ jobs:
             cd /opt/helpkey/Helpkey_web
             git pull origin main
             docker compose --env-file .env.local up --build -d
-            docker compose --env-file .env.local logs -f
+
