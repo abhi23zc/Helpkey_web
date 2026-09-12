@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type IconProps = {
   className?: string;
@@ -98,7 +99,7 @@ const reviews: Review[] = [
 export function HotelDetailPage({ hotelId }: { hotelId: string }) {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <DetailHeader />
+      <SiteHeader activeHref="/search" />
       <main className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10">
         <Breadcrumbs />
         <HotelHero />
@@ -114,51 +115,6 @@ export function HotelDetailPage({ hotelId }: { hotelId: string }) {
       </main>
       <DetailFooter />
     </div>
-  );
-}
-
-function DetailHeader() {
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--hk-border)] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10">
-        <div className="flex items-center gap-7">
-          <Link href="/" className="flex items-center gap-2 text-[18px] font-bold text-black sm:text-[22px]">
-            <HotelIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />
-            Helpkey
-          </Link>
-          <nav className="hidden items-center gap-6 md:flex">
-            <Link href="/search" className="text-[13px] font-medium text-[var(--hk-muted)] hover:text-black">
-              Find Stays
-            </Link>
-            <Link href="/search" className="text-[13px] font-medium text-[var(--hk-muted)] hover:text-black">
-              Deals
-            </Link>
-            <Link href="/profile" className="text-[13px] font-medium text-[var(--hk-muted)] hover:text-black">
-              For Business
-            </Link>
-            <Link href="/help" className="text-[13px] font-medium text-[var(--hk-muted)] hover:text-black">
-              Help
-            </Link>
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-3 md:flex">
-            <button className="text-[var(--hk-muted)] hover:text-black">
-              <GlobeIcon className="h-5 w-5" />
-            </button>
-            <span className="text-[13px] text-[var(--hk-muted)]">INR</span>
-            <button className="text-[var(--hk-muted)] hover:text-black">
-              <HeartIcon className="h-5 w-5" />
-            </button>
-          </div>
-          <Link href="/profile" className="flex items-center gap-2 rounded-[10px] border border-[var(--hk-navy-strong)] px-4 py-2 text-[13px] font-semibold text-[var(--hk-navy-strong)]">
-            <UserCircleIcon className="h-5 w-5" />
-            Log in
-          </Link>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -618,39 +574,11 @@ function HotelIcon({ className }: IconProps) {
   );
 }
 
-function GlobeIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function HeartIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
         d="m12 20.25-.94-.85C5.75 14.6 2.5 11.64 2.5 8a4.75 4.75 0 0 1 8.2-3.27L12 6.02l1.3-1.29A4.75 4.75 0 0 1 21.5 8c0 3.64-3.25 6.6-8.56 11.4l-.94.85Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function UserCircleIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 8a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-5-2.2c.91-1.7 2.74-2.8 5-2.8s4.09 1.1 5 2.8"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

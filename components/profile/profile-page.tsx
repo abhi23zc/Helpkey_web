@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AppUser } from "@/types/auth";
-import { MainNavLinks } from "@/components/shared/main-nav-links";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type IconProps = {
   className?: string;
@@ -37,7 +37,7 @@ const paymentMethods: PaymentMethod[] = [
 export function ProfilePage({ user }: { user: AppUser }) {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <ProfileHeader user={user} />
+      <SiteHeader activeHref="/profile" />
       <main className="mx-auto grid max-w-[1280px] grid-cols-1 gap-6 px-4 py-12 sm:px-6 md:grid-cols-12 lg:px-10">
         <AccountSidebar />
         <section className="space-y-6 md:col-span-9">
@@ -52,70 +52,6 @@ export function ProfilePage({ user }: { user: AppUser }) {
       </main>
       <ProfileFooter />
     </div>
-  );
-}
-
-function ProfileHeader({ user }: { user: AppUser }) {
-  const navItems = ["Find Stays", "Deals", "For Business", "Help"];
-  const userInitials = getInitials(user.fullName);
-
-  return (
-    <header className="border-b border-[var(--hk-border)] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-10">
-        <div className="flex items-center gap-8">
-          <Link
-            href="/"
-            className="flex items-center gap-3 text-[18px] font-bold text-[var(--hk-navy-strong)] sm:text-[22px]"
-          >
-            <StarBadgeIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />
-            Helpkey
-          </Link>
-          <nav className="hidden items-center gap-8 md:flex">
-            <MainNavLinks
-              items={navItems.map((item) => ({
-                label: item,
-                href:
-                  item === "Find Stays"
-                    ? "/search"
-                    : item === "Help"
-                      ? "/help"
-                      : "/profile",
-                className:
-                  "text-[15px] font-medium text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]",
-              }))}
-            />
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-4 border-r border-[var(--hk-border)] pr-4 md:flex">
-            <button className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]">
-              <GlobeIcon className="h-6 w-6" />
-            </button>
-            <span className="text-[14px] font-medium text-[var(--hk-ink)]">INR</span>
-            <Link
-              href="/wishlist"
-              className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
-            >
-              <HeartIcon className="h-6 w-6" />
-            </Link>
-          </div>
-
-          <button className="flex items-center gap-3">
-            <div className="h-10 w-10 overflow-hidden rounded-full bg-[var(--hk-surface-soft)]">
-              <Avatar user={user} size={40} fallback={userInitials} />
-            </div>
-            <div className="hidden text-left md:block">
-              <div className="text-[15px] font-bold text-[var(--hk-navy-strong)]">
-                {user.fullName}
-              </div>
-              <div className="text-[12px] text-[var(--hk-muted)]">Helpkey customer</div>
-            </div>
-            <ChevronDownIcon className="h-4 w-4 text-[var(--hk-muted)]" />
-          </button>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -489,48 +425,6 @@ function StarBadgeIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
         d="m12 4.5 1.9 3.85 4.25.62-3.08 3 .73 4.23L12 14.2l-3.8 2 .73-4.23-3.08-3 4.25-.62L12 4.5Zm7.5 7.75v1.5m-15-1.5v1.5m12.9 4.65 1.05 1.05M5.55 6.55 6.6 7.6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GlobeIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HeartIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m12 20.25-.94-.85C5.75 14.6 2.5 11.64 2.5 8a4.75 4.75 0 0 1 8.2-3.27L12 6.02l1.3-1.29A4.75 4.75 0 0 1 21.5 8c0 3.64-3.25 6.6-8.56 11.4l-.94.85Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronDownIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m5 7.5 5 5 5-5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

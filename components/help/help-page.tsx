@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { MainNavLinks } from "@/components/shared/main-nav-links";
+import { useState } from "react";
+import { LoginModal } from "@/components/auth/login-modal";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type IconProps = {
   className?: string;
@@ -62,9 +66,11 @@ const faqs: Faq[] = [
 ];
 
 export function HelpPage() {
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <HelpHeader />
+      <SiteHeader activeHref="/help" onLoginClick={() => setIsLoginOpen(true)} />
       <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6 lg:px-10">
         <HeroSection />
         <TopicsSection />
@@ -72,63 +78,11 @@ export function HelpPage() {
         <SupportSection />
       </main>
       <HelpFooter />
+      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
   );
 }
 
-function HelpHeader() {
-  const navItems = ["Find Stays", "Deals", "For Business", "Help"];
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--hk-border)] bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-10">
-        <Link
-          href="/"
-          className="flex items-center gap-3 text-[18px] font-bold text-[var(--hk-navy-strong)] sm:text-[22px]"
-        >
-          <StarBadgeIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />
-          Helpkey
-        </Link>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          <MainNavLinks
-            items={navItems.map((item) => ({
-              label: item,
-              href:
-                item === "Find Stays"
-                  ? "/search"
-                  : item === "Help"
-                    ? "/help"
-                    : "#",
-              className: `text-[15px] font-medium ${
-                item === "Help"
-                  ? "border-b-2 border-[var(--hk-navy-strong)] pb-1 text-[var(--hk-navy-strong)]"
-                  : "text-[var(--hk-ink)] hover:text-[var(--hk-navy-strong)]"
-              }`,
-            }))}
-          />
-        </nav>
-
-        <div className="flex items-center gap-4">
-          <button className="hidden items-center gap-1 text-[14px] text-[var(--hk-muted)] md:flex">
-            <GlobeIcon className="h-5 w-5" />
-            INR
-          </button>
-          <Link
-            href="/wishlist"
-            className="text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
-          >
-            <HeartIcon className="h-6 w-6" />
-          </Link>
-          <button className="flex items-center gap-2 rounded-[10px] bg-[var(--hk-navy-strong)] px-4 py-2.5 text-[14px] font-semibold text-white">
-            <UserCircleIcon className="h-5 w-5" />
-            <span>Log in</span>
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function HeroSection() {
   return (
@@ -290,48 +244,6 @@ function StarBadgeIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
         d="m12 4.5 1.9 3.85 4.25.62-3.08 3 .73 4.23L12 14.2l-3.8 2 .73-4.23-3.08-3 4.25-.62L12 4.5Zm7.5 7.75v1.5m-15-1.5v1.5m12.9 4.65 1.05 1.05M5.55 6.55 6.6 7.6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function GlobeIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HeartIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="m12 20.25-.94-.85C5.75 14.6 2.5 11.64 2.5 8a4.75 4.75 0 0 1 8.2-3.27L12 6.02l1.3-1.29A4.75 4.75 0 0 1 21.5 8c0 3.64-3.25 6.6-8.56 11.4l-.94.85Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function UserCircleIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 8a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-5-2.2c.91-1.7 2.74-2.8 5-2.8s4.09 1.1 5 2.8"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

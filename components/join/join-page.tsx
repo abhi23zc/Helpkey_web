@@ -2,49 +2,21 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/auth/auth-provider";
+import React, { useState } from "react";
 import { LoginModal } from "@/components/auth/login-modal";
 import { AuthCard } from "@/components/auth/auth-card";
+import { SiteHeader } from "@/components/shared/site-header";
 import { WorldMapGraphic } from "./world-map";
 
 export function JoinPage() {
-  const router = useRouter();
-  const { appUser } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [propertyType, setPropertyType] = useState("Hotel");
-  const [location, setLocation] = useState("");
-  const [rooms, setRooms] = useState(1);
-  const [formSubmitted, setFormSubmitted] = useState(false);
-
-  const handleStartListing = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormSubmitted(true);
-    setIsLoginOpen(true);
-  };
-
-  useEffect(() => {
-    if (formSubmitted && appUser) {
-      router.push("/partner/onboarding");
-    }
-  }, [appUser, formSubmitted, router]);
 
   return (
     <div className="min-h-screen bg-[var(--hk-background-warm)] text-[var(--hk-ink)]">
-      <Navbar onLoginClick={() => setIsLoginOpen(true)} />
+      <SiteHeader activeHref="/join" onLoginClick={() => setIsLoginOpen(true)} />
       
       <main>
-        <HeroSection
-          propertyType={propertyType}
-          location={location}
-          rooms={rooms}
-          onPropertyTypeChange={setPropertyType}
-          onLocationChange={setLocation}
-          onRoomsChange={setRooms}
-          onStartListing={handleStartListing}
-          onLoginClick={() => setIsLoginOpen(true)}
-        />
+        <HeroSection />
         <GlobalReachSection onLoginClick={() => setIsLoginOpen(true)} />
         <TestimonialsSection />
         <SimpleToStartSection onLoginClick={() => setIsLoginOpen(true)} />
@@ -59,139 +31,10 @@ export function JoinPage() {
   );
 }
 
-/* ─────────────────────────────────── NAVBAR ─────────────────────────────────── */
-
-function Navbar({ onLoginClick }: { onLoginClick: () => void }) {
-  const { appUser, logout } = useAuth();
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isProfileMenuOpen) return undefined;
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!profileMenuRef.current?.contains(event.target as Node)) setIsProfileMenuOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsProfileMenuOpen(false);
-    };
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [isProfileMenuOpen]);
-
-  return (
-    <nav className="sticky top-0 z-50 border-b border-[rgba(196,198,206,0.7)] bg-white">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-4 py-4 sm:px-6 lg:px-10">
-        <div className="flex items-center gap-8 lg:gap-12">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-[22px] font-extrabold tracking-[-0.03em] text-[var(--hk-primary-dark)]"
-          >
-            <KeyIcon className="h-5 w-5 text-[var(--hk-gold)]" />
-            Helpkey
-          </Link>
-          <div className="hidden items-center gap-8 md:flex">
-            <Link
-              href="/join"
-              className="border-b-2 border-[var(--hk-primary-dark)] pb-1 text-[14px] font-bold text-[var(--hk-primary-dark)]"
-            >
-              For Business
-            </Link>
-            <Link
-              href="/"
-              className="text-[14px] font-medium text-[var(--hk-muted)] transition-colors hover:text-[var(--hk-primary-dark)]"
-            >
-              Find Stays
-            </Link>
-            <Link
-              href="/search"
-              className="text-[14px] font-medium text-[var(--hk-muted)] transition-colors hover:text-[var(--hk-primary-dark)]"
-            >
-              Deals
-            </Link>
-            <Link
-              href="/help"
-              className="text-[14px] font-medium text-[var(--hk-muted)] transition-colors hover:text-[var(--hk-primary-dark)]"
-            >
-              Help
-            </Link>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-5 sm:gap-6">
-          <div className="hidden items-center gap-4 text-[var(--hk-muted)] md:flex">
-            <button className="transition-colors hover:text-[var(--hk-ink)]" aria-label="Select Language">
-              <GlobeIcon className="h-5 w-5" />
-            </button>
-            <button className="transition-colors hover:text-[var(--hk-ink)]" aria-label="Favorites">
-              <HeartIcon className="h-5 w-5" />
-            </button>
-            <span className="text-[14px] font-semibold">INR</span>
-          </div>
-
-          {appUser ? (
-            <div ref={profileMenuRef} className="relative">
-              <button type="button" onClick={() => setIsProfileMenuOpen((current) => !current)} aria-haspopup="menu" aria-expanded={isProfileMenuOpen} className="flex items-center gap-2 rounded-full bg-[var(--hk-primary-dark)] px-4 py-2.5 text-[14px] font-bold text-white shadow-sm hover:bg-[var(--hk-primary)]">
-                <UserAvatarIcon className="h-4 w-4" />
-                <span className="max-w-24 truncate sm:max-w-none">{appUser.fullName.split(" ")[0] || "Account"}</span>
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${isProfileMenuOpen ? "rotate-180" : ""}`} />
-              </button>
-              {isProfileMenuOpen && <div role="menu" aria-label="Profile menu" className="absolute right-0 top-[calc(100%+10px)] z-[60] w-72 overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white p-2 shadow-[0_18px_45px_rgba(15,31,56,0.18)]">
-                <div className="border-b border-[var(--hk-border)] px-3 py-3"><p className="truncate text-sm font-bold text-[var(--hk-primary-dark)]">{appUser.fullName || "Your account"}</p><p className="mt-1 truncate text-xs text-[var(--hk-muted)]">{appUser.email || appUser.phoneNumber || "Helpkey traveler"}</p></div>
-                <div className="py-2"><ProfileMenuLink href="/profile" label="My profile" description="Personal details and preferences" onSelect={() => setIsProfileMenuOpen(false)} /><ProfileMenuLink href="/trips" label="My bookings" description="Upcoming stays and past trips" onSelect={() => setIsProfileMenuOpen(false)} /><ProfileMenuLink href="/wishlist" label="Saved stays" description="Your favorite properties" onSelect={() => setIsProfileMenuOpen(false)} />{appUser.roles.includes("partner") && <ProfileMenuLink href="/partner/dashboard" label="Partner dashboard" description="Manage your property listings" onSelect={() => setIsProfileMenuOpen(false)} />}{appUser.roles.includes("admin") && <ProfileMenuLink href="/admin" label="Admin console" description="Platform operations" onSelect={() => setIsProfileMenuOpen(false)} />}</div>
-                <div className="border-t border-[var(--hk-border)] pt-2"><button type="button" role="menuitem" onClick={() => { setIsProfileMenuOpen(false); void logout(); }} className="flex w-full items-center rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50">Log out</button></div>
-              </div>}
-            </div>
-          ) : (
-            <>
-              <button
-                onClick={onLoginClick}
-                className="hidden text-[14px] font-bold text-[var(--hk-primary-dark)] hover:underline lg:block"
-              >
-                Already a partner? Sign in
-              </button>
-              <button
-                onClick={onLoginClick}
-                className="rounded-lg bg-[var(--hk-primary-dark)] px-5 py-2.5 text-[14px] font-bold text-white shadow-sm transition-all hover:bg-[var(--hk-primary)] hover:shadow-md"
-              >
-                Register for free
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function ProfileMenuLink({ href, label, description, onSelect }: { href: string; label: string; description: string; onSelect: () => void }) {
-  return <Link href={href} role="menuitem" onClick={onSelect} className="block rounded-xl px-3 py-2.5 hover:bg-[var(--hk-surface-soft)]"><span className="block text-sm font-semibold text-[var(--hk-primary-dark)]">{label}</span><span className="mt-0.5 block text-xs text-[var(--hk-muted)]">{description}</span></Link>;
-}
 
 /* ─────────────────────────────────── HERO SECTION ─────────────────────────────────── */
 
-function HeroSection({
-  propertyType,
-  location,
-  rooms,
-  onPropertyTypeChange,
-  onLocationChange,
-  onRoomsChange,
-  onStartListing,
-  onLoginClick,
-}: {
-  propertyType: string;
-  location: string;
-  rooms: number;
-  onPropertyTypeChange: (v: string) => void;
-  onLocationChange: (v: string) => void;
-  onRoomsChange: (v: number) => void;
-  onStartListing: (e: React.FormEvent) => void;
-  onLoginClick: () => void;
-}) {
+function HeroSection() {
   return (
     <section className="relative overflow-hidden bg-[var(--hk-primary-dark)] pb-20 pt-12 text-white lg:pb-28 lg:pt-20">
       {/* Background Image & Overlay */}
@@ -221,12 +64,6 @@ function HeroSection({
           </p>
 
           <div className="mb-10 flex flex-wrap gap-4">
-            <button
-              onClick={onLoginClick}
-              className="cursor-pointer rounded-lg bg-[#e3c27bdb]  hover:bg-[#e3c27b] px-8 py-4 text-[15px] font-bold text-[var(--hk-primary-dark)] shadow-md transition-all   hover:shadow-lg"
-            >
-              Register for free
-            </button>
             <a
               href="#how-it-works"
               className="rounded-lg border border-white/40 bg-white/10 px-8 py-4 text-[15px] font-bold text-white transition-all hover:bg-white/20"

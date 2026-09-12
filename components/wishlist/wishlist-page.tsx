@@ -1,6 +1,10 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { MainNavLinks } from "@/components/shared/main-nav-links";
+import { useState } from "react";
+import { LoginModal } from "@/components/auth/login-modal";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type IconProps = {
   className?: string;
@@ -48,9 +52,11 @@ const stays: FavoriteStay[] = [
 ];
 
 export function WishlistPage() {
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen flex-col bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <WishlistHeader />
+      <SiteHeader onLoginClick={() => setIsLoginOpen(true)} />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-12 sm:px-6 lg:px-10 lg:py-14">
         <section className="mb-12 flex flex-col gap-6 md:mb-10 md:flex-row md:items-end md:justify-between">
           <div>
@@ -159,53 +165,8 @@ export function WishlistPage() {
         </section>
       </main>
       <WishlistFooter />
+      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </div>
-  );
-}
-
-function WishlistHeader() {
-  const navItems = ["Find Stays", "Deals", "For Business", "Help"];
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--hk-border)] bg-[var(--hk-ivory)]/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-10">
-        <Link href="/" className="flex items-center gap-3 text-[18px] font-bold text-black sm:text-[22px]">
-          <KeyIcon className="h-5 w-5 text-[var(--hk-gold-strong)]" />
-          Helpkey
-        </Link>
-
-        <nav className="hidden items-center gap-8 md:flex">
-          <MainNavLinks
-            items={navItems.map((item) => ({
-              label: item,
-              href:
-                item === "Find Stays"
-                  ? "/search"
-                  : item === "Help"
-                    ? "/help"
-                    : "/profile",
-              className: "text-[15px] font-medium text-[var(--hk-ink)] hover:text-black",
-            }))}
-          />
-        </nav>
-
-        <div className="flex items-center gap-4">
-          <button className="hidden items-center gap-1 text-[var(--hk-muted)] md:flex">
-            <GlobeIcon className="h-5 w-5" />
-            <span className="text-[14px] font-medium">INR</span>
-          </button>
-          <Link href="/wishlist" className="text-[var(--hk-navy-strong)]">
-            <HeartIcon className="h-6 w-6" />
-          </Link>
-          <button className="text-[var(--hk-muted)] hover:text-black">
-            <UserCircleIcon className="h-6 w-6" />
-          </button>
-          <button className="rounded-[12px] bg-[var(--hk-navy-strong)] px-4 py-3 text-[15px] font-semibold text-white shadow-[var(--hk-shadow-soft)]">
-            Log in
-          </button>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -381,20 +342,6 @@ function GlobeIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path
         d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function UserCircleIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 8a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-5-2.2c.91-1.7 2.74-2.8 5-2.8s4.09 1.1 5 2.8"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

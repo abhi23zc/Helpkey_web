@@ -26,7 +26,7 @@ import {
   User,
   UserCheck,
 } from "lucide-react";
-import { SiteHeader } from "@/components/home/home-page";
+import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { useAuth } from "@/components/auth/auth-provider";
 import { BookingConfirmationCard } from "@/components/booking/booking-confirmation-card";

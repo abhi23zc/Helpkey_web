@@ -66,11 +66,6 @@ export function AuthCard({
   const [isOtpError, setIsOtpError] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
 
-  // Property quick-start state (when authenticated)
-  const [propertyType, setPropertyType] = useState("Hotel");
-  const [location, setLocation] = useState("");
-  const [rooms, setRooms] = useState(1);
-
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -268,12 +263,7 @@ export function AuthCard({
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  const handleStartListing = (e: React.FormEvent) => {
-    e.preventDefault();
-    router.push("/partner/onboarding");
-  };
-
-  // If user is already logged in, show authenticated quick dashboard/listing card
+  // If user is already logged in, show a streamlined welcome-back panel
   if (appUser) {
     return (
       <div className="rounded-2xl border border-[var(--hk-border)] bg-white p-7 shadow-2xl backdrop-blur-md sm:p-8">
@@ -305,73 +295,31 @@ export function AuthCard({
         </div>
 
         <div className="mb-6 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 text-emerald-900">
-          <p className="text-[14px] font-semibold">Ready to list your property?</p>
+          <p className="text-[14px] font-semibold">Welcome back!</p>
           <p className="mt-0.5 text-[13px] text-emerald-700">
             You are signed in as <span className="font-bold">{appUser.email || appUser.phoneNumber || "Host"}</span>.
           </p>
         </div>
 
-        <form onSubmit={handleStartListing} className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-[13px] font-bold text-[var(--hk-ink)]">
-              Property type
-            </label>
-            <select
-              value={propertyType}
-              onChange={(e) => setPropertyType(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 bg-[var(--hk-background-warm)] p-3.5 text-[14px] font-medium text-[var(--hk-ink)] outline-none transition-all focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.12)]"
-            >
-              <option value="Hotel">Hotel</option>
-              <option value="Apartment">Apartment</option>
-              <option value="Villa">Villa</option>
-              <option value="Resort">Resort</option>
-              <option value="Boutique Stay">Boutique Stay</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[13px] font-bold text-[var(--hk-ink)]">
-              Location
-            </label>
-            <input
-              type="text"
-              required
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. London, UK or Mumbai, India"
-              className="w-full rounded-xl border border-gray-300 bg-[var(--hk-background-warm)] p-3.5 text-[14px] text-[var(--hk-ink)] outline-none transition-all placeholder:text-gray-400 focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.12)]"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[13px] font-bold text-[var(--hk-ink)]">
-              Number of rooms
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="500"
-              value={rooms}
-              onChange={(e) => setRooms(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-full rounded-xl border border-gray-300 bg-[var(--hk-background-warm)] p-3.5 text-[14px] text-[var(--hk-ink)] outline-none transition-all focus:border-[var(--hk-primary-dark)] focus:ring-2 focus:ring-[rgba(11,31,58,0.12)]"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-[var(--hk-primary-dark)] py-4 text-[15px] font-bold text-white shadow-md transition-all hover:bg-[var(--hk-primary)] hover:shadow-lg"
+        <div className="space-y-3">
+          <Link
+            href="/partner/onboarding"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--hk-primary-dark)] py-4 text-[15px] font-bold text-white shadow-md transition-all hover:bg-[var(--hk-primary)] hover:shadow-lg"
           >
-            Continue to Partner Onboarding &rarr;
-          </button>
-        </form>
+            Start a new listing
+            <ArrowRightIcon className="h-4 w-4" />
+          </Link>
+          <p className="text-center text-[12px] text-gray-500">Takes about 10 minutes &middot; save and resume anytime</p>
 
-        <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
           <Link
             href="/partner/dashboard"
-            className="text-[13px] font-bold text-[var(--hk-primary-dark)] hover:underline"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 py-3.5 text-[14px] font-bold text-[var(--hk-primary-dark)] transition-all hover:bg-gray-50"
           >
             Open Partner Dashboard
           </Link>
+        </div>
+
+        <div className="mt-5 flex items-center justify-center border-t border-gray-100 pt-4">
           <button
             onClick={() => void logout()}
             className="text-[13px] font-semibold text-red-600 hover:underline"
@@ -674,6 +622,14 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
       <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M5 12h14m0 0-6-6m6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

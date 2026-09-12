@@ -21,7 +21,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { SiteHeader } from "@/components/home/home-page";
+import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 

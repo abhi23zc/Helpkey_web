@@ -13,7 +13,7 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import { SiteHeader } from "@/components/home/home-page";
+import { SiteHeader } from "@/components/shared/site-header";
 import { BookingReceiptModal, BookingReceiptData } from "./booking-receipt-modal";
 
 type Booking = {

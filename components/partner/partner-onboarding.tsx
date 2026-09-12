@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PropertySetup } from "@/components/partner/property-setup";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type Property = {
   id: string;
@@ -183,7 +184,7 @@ export function PartnerOnboarding() {
 
   return (
     <main className="min-h-screen bg-[#f6f3ed] text-[#071633]">
-      <PartnerTopNav />
+      <SiteHeader variant="partner" />
 
       <div className="mx-auto grid max-w-[1200px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-5 xl:px-0">
         <div className="space-y-4">
@@ -248,39 +249,6 @@ export function PartnerOnboarding() {
         )}
       </div>
     </main>
-  );
-}
-
-function PartnerTopNav() {
-  return (
-    <header className="bg-[#092442] text-white shadow-[0_4px_20px_rgba(7,22,51,0.18)]">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between gap-5 px-4 lg:px-5 xl:px-0">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-end gap-0.5 text-[#d99d30]" aria-hidden="true">
-            <span className="h-3 w-1 rounded-sm bg-current" />
-            <span className="h-5 w-1 rounded-sm bg-current" />
-            <span className="h-7 w-1 rounded-sm bg-current" />
-          </span>
-          <span>
-            <span className="block text-xl font-bold leading-none tracking-tight">Helpkey</span>
-            <span className="hidden text-[10px] font-medium leading-none text-white/75 sm:block">
-              Hotels for a better tomorrow
-            </span>
-          </span>
-        </Link>
-
-        <nav className="hidden items-center gap-6 text-xs font-medium text-white/90 lg:flex">
-          <Link href="/partner" className="hover:text-white transition-colors">Why list with us</Link>
-          <Link href="/join" className="hover:text-white transition-colors">How it works</Link>
-          <Link href="/help" className="hover:text-white transition-colors">Help</Link>
-          <span className="h-5 w-px bg-white/25" />
-          <span className="text-white/75">Already a partner?</span>
-          <Link href="/partner/dashboard" className="inline-flex items-center gap-2 font-bold text-[#f0ba4e] hover:text-[#f7cd78] transition-colors">
-            Sign in <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </nav>
-      </div>
-    </header>
   );
 }
 

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { SiteHeader } from "@/components/shared/site-header";
 
 type IconProps = {
   className?: string;
@@ -87,7 +88,7 @@ const amenities: { label: string; icon: IconComponent }[] = [
 export function SearchResultsPage() {
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <SearchHeader />
+      <SiteHeader activeHref="/search" />
       <SearchSummaryBar />
       <main className="mx-auto grid max-w-[1480px] grid-cols-1 gap-8 px-4 py-7 sm:px-6 lg:grid-cols-8 lg:px-10 2xl:grid-cols-12">
         <FiltersSidebar />
@@ -95,72 +96,6 @@ export function SearchResultsPage() {
         <SelectedHotelPanel />
       </main>
     </div>
-  );
-}
-
-function SearchHeader() {
-  const navItems = ["Find Stays", "Deals", "For Business", "Help"];
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--hk-border)] bg-white">
-      <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-5 px-4 py-5 sm:px-6 lg:flex-nowrap lg:px-10">
-        <div className="flex min-w-0 items-center gap-5 xl:gap-8">
-          <Link
-            href="/"
-            className="flex shrink-0 items-center gap-3 whitespace-nowrap text-[18px] font-bold text-black sm:text-[22px]"
-          >
-            <KeyIcon className="h-5 w-5 text-[var(--hk-gold)]" />
-            Helpkey
-          </Link>
-          <div className="hidden shrink-0 md:flex">
-            <div className="flex items-center rounded-full border border-[var(--hk-border-strong)] bg-[var(--hk-surface-soft)] p-1">
-              <div className="flex items-center gap-2 rounded-full bg-[var(--hk-navy-strong)] px-4 py-2 text-[13px] text-white shadow-sm">
-                <BriefcaseIcon className="h-4 w-4" />
-                <span className="font-medium">Business &amp; Traveler</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-full px-4 py-2 text-[13px] text-[var(--hk-ink)]">
-                <UsersIcon className="h-4 w-4" />
-                <span className="font-medium">Family &amp; Couples</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="hidden shrink-0 items-center gap-6 xl:gap-9 lg:flex">
-          <nav className="flex items-center gap-6 xl:gap-8">
-            {navItems.map((item) => (
-              <Link
-                key={item}
-                href={
-                  item === "Find Stays"
-                    ? "/search"
-                    : item === "Help"
-                      ? "/help"
-                      : "/profile"
-                }
-                className="whitespace-nowrap text-[15px] font-medium text-black"
-              >
-                {item}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex shrink-0 items-center gap-3 xl:gap-4">
-            <button className="rounded-full p-2 text-black hover:bg-[var(--hk-surface-soft)]">
-              <HeartIcon className="h-6 w-6" />
-            </button>
-            <button className="rounded-full p-2 text-black hover:bg-[var(--hk-surface-soft)]">
-              <GlobeIcon className="h-6 w-6" />
-            </button>
-            <div className="h-6 w-px bg-[var(--hk-border)]" />
-            <Link href="/profile" className="whitespace-nowrap text-[15px] font-semibold text-black">Log in</Link>
-            <Link href="/profile" className="rounded-full border border-[var(--hk-border-strong)] p-1 text-black">
-              <UserCircleIcon className="h-8 w-8" />
-            </Link>
-          </div>
-        </div>
-      </div>
-    </header>
   );
 }
 
