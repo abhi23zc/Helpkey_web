@@ -16,15 +16,14 @@ import {
   Map,
   MapPin,
   SlidersHorizontal,
-  Star,
   Users,
-  Wifi,
   X,
 } from "lucide-react";
 import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { formatStayDate } from "@/lib/customer/stay-search";
+import { amenityKey, amenityLabel } from "@/lib/customer/amenities";
 
 type Property = {
   id: string;
@@ -51,17 +50,6 @@ const money = (value: number | null, currency: string) =>
         currency,
         maximumFractionDigits: 0,
       }).format(value / 100);
-
-const AMENITY_OPTIONS = [
-  { code: "WIFI", label: "Free Wi-Fi" },
-  { code: "POOL", label: "Swimming Pool" },
-  { code: "BREAKFAST", label: "Breakfast Included" },
-  { code: "SPA", label: "Spa & Wellness" },
-  { code: "GYM", label: "Fitness Gym" },
-  { code: "PARKING", label: "Free Parking" },
-  { code: "AC", label: "Air Conditioning" },
-  { code: "SHUTTLE", label: "Airport Shuttle" },
-];
 
 const PROPERTY_TYPES = [
   { code: "HOTEL", label: "Hotel" },
@@ -134,6 +122,14 @@ export function LiveSearchResults() {
   const visibleSortOptions = SORT_OPTIONS.filter(
     (option) => !option.needsDestinationCoordinates || hasDestinationCoordinates
   );
+  const availableAmenities = useMemo(() => {
+    const values = new globalThis.Map<string, string>();
+    properties.forEach((property) => property.amenityCodes.forEach((amenity) => {
+      const key = amenityKey(amenity);
+      if (key) values.set(key, amenityLabel(amenity));
+    }));
+    return [...values.entries()].map(([code, label]) => ({ code, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [properties]);
 
   useEffect(() => {
     setLoading(true);
@@ -211,10 +207,7 @@ export function LiveSearchResults() {
     if (selectedAmenities.length > 0) {
       result = result.filter((p) =>
         selectedAmenities.every(
-          (code) =>
-            p.amenityCodes?.includes(code) ||
-            p.amenityCodes?.includes(code.toLowerCase()) ||
-            (code === "WIFI" && p.name.length > 0)
+          (code) => p.amenityCodes.some((amenity) => amenityKey(amenity) === code)
         )
       );
     }
@@ -316,6 +309,7 @@ export function LiveSearchResults() {
               setSelectedBookingOptions={setSelectedBookingOptions}
               selectedNeighbourhoods={selectedNeighbourhoods}
               setSelectedNeighbourhoods={setSelectedNeighbourhoods}
+              availableAmenities={availableAmenities}
               activeFilterCount={activeFilterCount}
               resetAllFilters={resetAllFilters}
             />
@@ -369,18 +363,6 @@ export function LiveSearchResults() {
             {/* QUICK FILTER CHIPS */}
             <div className="mt-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               <Chip
-                icon={<BadgeCheck />}
-                label="Verified stays"
-                active={selectedBookingOptions.includes("VERIFIED")}
-                onClick={() =>
-                  setSelectedBookingOptions((prev) =>
-                    prev.includes("VERIFIED")
-                      ? prev.filter((x) => x !== "VERIFIED")
-                      : [...prev, "VERIFIED"]
-                  )
-                }
-              />
-              <Chip
                 icon={<Check />}
                 label="Free cancellation"
                 active={selectedBookingOptions.includes("FREE_CANCEL")}
@@ -392,34 +374,15 @@ export function LiveSearchResults() {
                   )
                 }
               />
-              <Chip
-                icon={<Wifi />}
-                label="Fast Wi-Fi"
-                active={selectedAmenities.includes("WIFI")}
-                onClick={() =>
-                  setSelectedAmenities((prev) =>
-                    prev.includes("WIFI") ? prev.filter((x) => x !== "WIFI") : [...prev, "WIFI"]
-                  )
-                }
-              />
-              <Chip
-                icon={<Star />}
-                label="4.5+ rating"
-                active={minGuestRating === 4.5}
-                onClick={() => setMinGuestRating(minGuestRating === 4.5 ? null : 4.5)}
-              />
-              <Chip
-                icon={<Building2 />}
-                label="Resorts"
-                active={selectedPropertyTypes.includes("RESORT")}
-                onClick={() =>
-                  setSelectedPropertyTypes((prev) =>
-                    prev.includes("RESORT")
-                      ? prev.filter((x) => x !== "RESORT")
-                      : [...prev, "RESORT"]
-                  )
-                }
-              />
+              {availableAmenities.slice(0, 5).map((amenity) => (
+                <Chip
+                  key={amenity.code}
+                  icon={<BadgeCheck />}
+                  label={amenity.label}
+                  active={selectedAmenities.includes(amenity.code)}
+                  onClick={() => setSelectedAmenities((prev) => prev.includes(amenity.code) ? prev.filter((code) => code !== amenity.code) : [...prev, amenity.code])}
+                />
+              ))}
             </div>
 
             {/* ACTIVE FILTER BADGES */}
@@ -455,11 +418,11 @@ export function LiveSearchResults() {
                   />
                 ))}
                 {selectedAmenities.map((code) => {
-                  const am = AMENITY_OPTIONS.find((a) => a.code === code);
+                  const amenity = availableAmenities.find((item) => item.code === code);
                   return (
                     <ActiveFilterBadge
                       key={`am-${code}`}
-                      label={am?.label || code}
+                      label={amenity?.label ?? amenityLabel(code)}
                       onRemove={() =>
                         setSelectedAmenities((prev) => prev.filter((c) => c !== code))
                       }
@@ -489,9 +452,13 @@ export function LiveSearchResults() {
             )}
 
             <div className="mt-4 space-y-3">
-              {filteredProperties.map((property, i) => (
-                <StayCard key={property.id} property={property} recommended={sort === "top_picks" && i === 0} hotelQuery={hotelQuery} />
-              ))}
+              {loading ? (
+                <SearchResultsSkeleton />
+              ) : (
+                filteredProperties.map((property, i) => (
+                  <StayCard key={property.id} property={property} recommended={sort === "top_picks" && i === 0} hotelQuery={hotelQuery} />
+                ))
+              )}
             </div>
           </section>
         </div>
@@ -527,6 +494,7 @@ export function LiveSearchResults() {
                 setSelectedBookingOptions={setSelectedBookingOptions}
                 selectedNeighbourhoods={selectedNeighbourhoods}
                 setSelectedNeighbourhoods={setSelectedNeighbourhoods}
+                availableAmenities={availableAmenities}
                 activeFilterCount={activeFilterCount}
                 resetAllFilters={resetAllFilters}
               />
@@ -661,6 +629,7 @@ function FilterSidebarContent({
   setSelectedBookingOptions,
   selectedNeighbourhoods,
   setSelectedNeighbourhoods,
+  availableAmenities,
   activeFilterCount,
   resetAllFilters,
 }: {
@@ -678,6 +647,7 @@ function FilterSidebarContent({
   setSelectedBookingOptions: React.Dispatch<React.SetStateAction<string[]>>;
   selectedNeighbourhoods: string[];
   setSelectedNeighbourhoods: React.Dispatch<React.SetStateAction<string[]>>;
+  availableAmenities: ReadonlyArray<{ code: string; label: string }>;
   activeFilterCount: number;
   resetAllFilters: () => void;
 }) {
@@ -855,7 +825,7 @@ function FilterSidebarContent({
         </button>
         {open === "Popular amenities" && (
           <div className="mt-3 space-y-2.5">
-            {AMENITY_OPTIONS.map((item) => (
+            {availableAmenities.map((item) => (
               <label
                 key={item.code}
                 onClick={() => toggleAmenity(item.code)}
@@ -870,6 +840,7 @@ function FilterSidebarContent({
                 <span>{item.label}</span>
               </label>
             ))}
+            {!availableAmenities.length && <p className="text-xs text-[var(--hk-muted)]">No amenities are listed for these stays.</p>}
           </div>
         )}
       </div>
@@ -1063,6 +1034,47 @@ function Empty({ onReset }: { onReset: () => void }) {
   );
 }
 
+/** Matches the result-card layout so client-side searches never leave a blank results pane. */
+function SearchResultsSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite" className="space-y-3">
+      <span className="sr-only">Loading available stays</span>
+      {Array.from({ length: 3 }).map((_, index) => (
+        <article
+          key={index}
+          aria-hidden="true"
+          className="overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white shadow-[var(--hk-shadow-soft)]"
+        >
+          <div className="grid animate-pulse md:grid-cols-[250px_minmax(0,1fr)_180px]">
+            <div className="min-h-52 bg-slate-200/80" />
+            <div className="min-w-0 space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <div className="h-5 w-48 max-w-full rounded bg-slate-200" />
+                  <div className="h-3 w-36 rounded bg-slate-200" />
+                </div>
+                <div className="h-7 w-9 rounded bg-slate-200" />
+              </div>
+              <div className="h-3 w-32 rounded bg-slate-200" />
+              <div className="h-3 w-full max-w-md rounded bg-slate-200" />
+              <div className="h-3 w-4/5 max-w-sm rounded bg-slate-200" />
+              <div className="flex gap-2 pt-1">
+                <div className="h-6 w-24 rounded-full bg-slate-200" />
+                <div className="h-6 w-20 rounded-full bg-slate-200" />
+              </div>
+            </div>
+            <div className="flex min-h-32 flex-col justify-end border-t border-[var(--hk-border)] p-4 md:min-h-52 md:border-l md:border-t-0">
+              <div className="ml-auto h-3 w-20 rounded bg-slate-200" />
+              <div className="ml-auto mt-2 h-7 w-28 rounded bg-slate-200" />
+              <div className="mt-4 h-10 w-full rounded-lg bg-slate-200" />
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function StayCard({ property, recommended, hotelQuery }: { property: Property; recommended: boolean; hotelQuery: string }) {
   const rating = property.ratingAverage;
   return (
@@ -1123,14 +1135,13 @@ function StayCard({ property, recommended, hotelQuery }: { property: Property; r
           </div> : <p className="mt-2 text-xs text-[var(--hk-muted)]">New to Helpkey</p>}
 
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--hk-border)] pb-3 text-xs text-[var(--hk-muted)]">
-            <span className="flex items-center gap-1">
-              <Wifi className="h-3.5 w-3.5" />
-              Wi-Fi
-            </span>
-            <span>Air conditioning</span>
-            <span>Restaurant</span>
-            <span>Gym</span>
-            <span>Parking</span>
+            {property.amenityCodes.map((amenity) => (
+              <span key={amenity} className="flex items-center gap-1">
+                <BadgeCheck className="h-3.5 w-3.5 text-[var(--hk-success)]" />
+                {amenityLabel(amenity)}
+              </span>
+            ))}
+            {!property.amenityCodes.length && <span>Amenities not listed</span>}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs">

@@ -32,6 +32,7 @@ import { LoginModal } from "@/components/auth/login-modal";
 import { Reviews } from "@/components/hotel/hotel-reviews";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { staySearchFromParams, withStaySearch, type StaySearch } from "@/lib/customer/stay-search";
+import { amenityLabel } from "@/lib/customer/amenities";
 
 type PropertyImage = { id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string };
 type ReviewSummary = {
@@ -66,6 +67,7 @@ type BookableRoom = {
   maxChildren: number;
   maxInfants?: number;
   roomSizeSqFt: number | null;
+  amenityCodes: string[];
   bedConfigurations?: Array<{ bedType: string; count: number }>;
   imageUrl: string | null;
   rates: Array<{
@@ -87,15 +89,6 @@ const money = (value: number | null, currency: string) =>
         currency,
         maximumFractionDigits: 0,
       }).format(value / 100);
-
-const defaults = [
-  "Fast Wi-Fi",
-  "Business Centre",
-  "Fine Dining",
-  "Fitness Centre",
-  "Breakfast Available",
-  "Laundry Service",
-];
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const readableDate = (dateStr: string) => {
@@ -194,11 +187,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
   const rating = property.ratingAverage;
   const reviewCount = property.ratingCount;
   const location = `${property.city}${property.state ? `, ${property.state}` : ""}`;
-  const amenities = property.amenityCodes.length
-    ? property.amenityCodes.map((item) =>
-        item.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase())
-      )
-    : defaults;
+  const amenities = property.amenityCodes.map(amenityLabel);
 
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
@@ -289,9 +278,10 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                 Premium amenities
               </h2>
               <div className="mt-6 grid gap-5 sm:grid-cols-2 md:grid-cols-3">
-                {amenities.slice(0, 6).map((amenity, index) => (
+                {amenities.map((amenity, index) => (
                   <Amenity key={amenity} label={amenity} index={index} />
                 ))}
+                {!amenities.length && <p className="text-sm text-[var(--hk-muted)]">Amenities are not listed for this stay.</p>}
               </div>
             </section>
 
@@ -340,6 +330,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                               (bed) =>
                                 `${bed.count} ${bed.bedType.replaceAll("_", " ")} bed`
                             ),
+                          ...room.amenityCodes.map(amenityLabel),
                         ].filter(Boolean) as string[]
                       }
                       price={cheapest.basePricePaise}
