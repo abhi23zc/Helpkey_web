@@ -13,12 +13,13 @@ import {
   FileText,
   Headphones,
   ImageIcon,
+  Loader2,
   MapPin,
   ShieldCheck,
   UsersRound,
   Wifi,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PropertySetup } from "@/components/partner/property-setup";
 import { SiteHeader } from "@/components/shared/site-header";
@@ -29,6 +30,7 @@ type Property = {
   status: string;
   approvalStatus: string;
   address?: { city?: string; state?: string };
+  coverImageUrl?: string | null;
   updatedAt?: string | null;
   onboarding?: { currentStep: number; completedSteps?: number[] };
 };
@@ -36,12 +38,14 @@ type Property = {
 const STEP_COUNT = 8;
 
 const setupSteps = [
-  "Property Basics",
+  "Property type",
   "Location",
-  "Rooms",
+  "Details",
+  "Rooms & rates",
+  "Facilities",
   "Photos",
-  "Policies",
   "Verification",
+  "Review",
 ];
 
 const isDraft = (property: Property) =>
@@ -118,6 +122,7 @@ export function PartnerOnboarding() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [properties, setProperties] = useState<Property[]>([]);
+  const [loadingListings, setLoadingListings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -131,6 +136,9 @@ export function PartnerOnboarding() {
       })
       .catch(() => {
         if (!cancelled) setError("We could not load your listings. You can still start a new one.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingListings(false);
       });
     return () => {
       cancelled = true;
@@ -188,7 +196,7 @@ export function PartnerOnboarding() {
 
       <div className="mx-auto grid max-w-[1200px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-5 xl:px-0">
         <div className="space-y-4">
-          {featuredDraft && <ResumeStrip property={featuredDraft} />}
+          {loadingListings ? <ListingHubSkeleton /> : featuredDraft ? <ResumeStrip property={featuredDraft} /> : null}
           <SetupCard error={error} onSubmit={submit} saving={saving} hasDraft={Boolean(featuredDraft)} />
         </div>
 
@@ -290,9 +298,37 @@ function SetupCard({
   saving: boolean;
   hasDraft: boolean;
 }) {
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validateField = (name: string, value: string) => {
+    if (name === "name") return value.trim().length < 2 ? "Enter the name guests know this property by." : "";
+    if (name === "city") return value.trim().length < 2 ? "Enter the city where guests will stay." : "";
+    if (name === "propertyType") return value ? "" : "Choose the type of property you host.";
+    return "";
+  };
+
+  const handleBlur = (event: FormEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = event.currentTarget;
+    setFieldErrors((current) => ({ ...current, [name]: validateField(name, value) }));
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const nextErrors = ["name", "propertyType", "city"].reduce<Record<string, string>>((errors, name) => {
+      const message = validateField(name, String(form.get(name) ?? ""));
+      if (message) errors[name] = message;
+      return errors;
+    }, {});
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    void onSubmit(form);
+  };
+
   return (
     <form
-      action={onSubmit}
+      noValidate
+      onSubmit={handleSubmit}
       className="rounded-xl border border-[#ded8cf] bg-white p-5 shadow-[0_8px_24px_rgba(7,22,51,0.06)] sm:p-6"
     >
       <div className="flex items-start justify-between gap-5">
@@ -304,10 +340,10 @@ function SetupCard({
             List your property on Helpkey
           </h1>
           <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-            Create your listing step by step. Save progress anytime and publish after review.
+            Create your listing step by step, then submit it for Helpkey&apos;s review.
           </p>
         </div>
-        <span className="hidden shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 sm:block">Step 1 of 6</span>
+        <span className="hidden shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 sm:block">Step 1 of 8</span>
       </div>
 
       <Stepper />
@@ -317,24 +353,30 @@ function SetupCard({
         <p className="mt-1 text-xs sm:text-sm text-slate-500">Tell us about your property. You can edit this later.</p>
 
         <div className="mt-5 grid gap-x-5 gap-y-4 md:grid-cols-2">
-          <label className="block text-xs font-semibold text-slate-700 sm:text-sm">
+          <label className="block text-xs font-semibold text-slate-700 sm:text-sm" htmlFor="property-name">
             Property name <span className="text-rose-600">*</span>
             <input
-              required
+              id="property-name"
               minLength={2}
               name="name"
               placeholder="e.g. The Sunrise Hotel"
-              className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3.5 text-sm font-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#092442] focus:ring-2 focus:ring-[#092442]/15"
+              aria-describedby={fieldErrors.name ? "property-name-help property-name-error" : "property-name-help"}
+              aria-invalid={Boolean(fieldErrors.name)}
+              onBlur={handleBlur}
+              className={`mt-1.5 h-11 w-full rounded-lg border px-3.5 text-sm font-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 ${fieldErrors.name ? "border-rose-500 focus:border-rose-600 focus:ring-rose-100" : "border-slate-300 focus:border-[#092442] focus:ring-[#092442]/15"}`}
               autoFocus={!hasDraft}
             />
-            <span className="mt-1 block text-xs font-normal text-slate-500">
+            <span id="property-name-help" className="mt-1 block text-xs font-normal text-slate-500">
               Use the name guests already know.
             </span>
+            {fieldErrors.name ? <span id="property-name-error" className="mt-1 block text-xs font-semibold text-rose-700">{fieldErrors.name}</span> : null}
           </label>
 
           <SelectField
             label="Property type"
             name="propertyType"
+            error={fieldErrors.propertyType}
+            onBlur={handleBlur}
             options={[
               ["hotel", "Hotel"],
               ["apartment", "Apartment"],
@@ -346,16 +388,26 @@ function SetupCard({
               ["other", "Other"],
             ]}
           />
-          <label className="block text-xs font-semibold text-slate-700 sm:text-sm">
+          <label className="block text-xs font-semibold text-slate-700 sm:text-sm" htmlFor="property-city">
             City <span className="text-rose-600">*</span>
             <input
-              required
+              id="property-city"
               name="city"
               placeholder="e.g. Goa"
-              className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3.5 text-sm font-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#092442] focus:ring-2 focus:ring-[#092442]/15"
+              aria-describedby={fieldErrors.city ? "property-city-help property-city-error" : "property-city-help"}
+              aria-invalid={Boolean(fieldErrors.city)}
+              onBlur={handleBlur}
+              className={`mt-1.5 h-11 w-full rounded-lg border px-3.5 text-sm font-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 ${fieldErrors.city ? "border-rose-500 focus:border-rose-600 focus:ring-rose-100" : "border-slate-300 focus:border-[#092442] focus:ring-[#092442]/15"}`}
             />
+            <span id="property-city-help" className="mt-1 block text-xs font-normal text-slate-500">Add the city now; you&apos;ll confirm the full address next.</span>
+            {fieldErrors.city ? <span id="property-city-error" className="mt-1 block text-xs font-semibold text-rose-700">{fieldErrors.city}</span> : null}
           </label>
-          <SelectField label="Country / Region" name="countryCode" options={[["IN", "India"]]} />
+          <div className="block text-xs font-semibold text-slate-700 sm:text-sm">
+            <label htmlFor="property-country">Country / region</label>
+            <input id="property-country" name="countryCode" value="IN" readOnly className="sr-only" />
+            <div aria-describedby="property-country-help" className="mt-1.5 flex h-11 items-center rounded-lg border border-slate-300 bg-slate-50 px-3.5 text-sm font-normal text-slate-800">India</div>
+            <p id="property-country-help" className="mt-1 text-xs font-normal text-slate-500">Partner listings are currently available in India.</p>
+          </div>
         </div>
 
         {error && (
@@ -364,27 +416,14 @@ function SetupCard({
           </p>
         )}
 
-        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2.5 sm:flex-row">
-            <button
-              disabled={saving}
-              className="inline-flex h-10 min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[#092442] px-5 text-xs font-bold text-white transition hover:bg-[#061633] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? "Starting..." : "Continue"} <ArrowRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="h-10 rounded-lg border border-slate-300 px-5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              Save as draft
-            </button>
-          </div>
-          <p className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
-            <span className="grid h-4.5 w-4.5 place-items-center rounded-full bg-emerald-600 text-white">
-              <Check className="h-3 w-3" />
-            </span>
-            Your progress saves automatically.
-          </p>
+        <div className="mt-5 flex flex-col gap-2.5 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            disabled={saving}
+            className="inline-flex h-11 min-w-[160px] items-center justify-center gap-2 rounded-lg bg-[#092442] px-5 text-sm font-bold text-white transition hover:bg-[#061633] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#092442] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin text-amber-300" /><span>Creating listing...</span></> : <><span>Start listing</span><ArrowRight className="h-4 w-4" /></>}
+          </button>
+          <p className="text-xs font-medium leading-relaxed text-slate-600">Your draft is created when you start. Each completed step confirms when it has saved.</p>
         </div>
       </div>
     </form>
@@ -393,11 +432,11 @@ function SetupCard({
 
 function Stepper() {
   return (
-    <div className="mt-5 grid grid-cols-2 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+    <ol aria-label="Listing setup progress" className="mt-5 grid grid-cols-2 gap-y-3 sm:grid-cols-4 lg:grid-cols-8">
       {setupSteps.map((step, index) => {
         const active = index === 0;
         return (
-          <div key={step} className="relative flex flex-col items-center gap-1.5 text-center">
+          <li key={step} aria-current={active ? "step" : undefined} className="relative flex flex-col items-center gap-1.5 text-center">
             {index < setupSteps.length - 1 && (
               <span className="absolute left-1/2 top-3.5 hidden h-px w-full bg-slate-200 lg:block" />
             )}
@@ -411,29 +450,36 @@ function Stepper() {
             <span className={`text-xs ${active ? "font-semibold text-[#092442]" : "font-medium text-slate-500"}`}>
               {step}
             </span>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
-function SelectField({ label, name, options }: { label: string; name: string; options: Array<[string, string]> }) {
+function SelectField({ label, name, options, error, onBlur }: { label: string; name: string; options: Array<[string, string]>; error?: string; onBlur?: (event: FormEvent<HTMLInputElement | HTMLSelectElement>) => void }) {
+  const id = `property-${name}`;
   return (
-    <label className="block text-xs font-semibold text-slate-700 sm:text-sm">
+    <label className="block text-xs font-semibold text-slate-700 sm:text-sm" htmlFor={id}>
       {label} <span className="text-rose-600">*</span>
       <span className="relative mt-1.5 block">
         <select
+          id={id}
           name={name}
-          required
-          className="h-10 w-full appearance-none rounded-lg border border-slate-300 bg-white px-3.5 pr-9 text-sm font-normal text-slate-900 outline-none transition focus:border-[#092442] focus:ring-2 focus:ring-[#092442]/15"
+          aria-describedby={error ? `${id}-error` : undefined}
+          aria-invalid={Boolean(error)}
+          onBlur={onBlur}
+          defaultValue=""
+          className={`h-11 w-full appearance-none rounded-lg border bg-white px-3.5 pr-9 text-sm font-normal text-slate-900 outline-none transition focus:ring-2 ${error ? "border-rose-500 focus:border-rose-600 focus:ring-rose-100" : "border-slate-300 focus:border-[#092442] focus:ring-[#092442]/15"}`}
         >
+          <option value="" disabled>Select a property type</option>
           {options.map(([value, optionLabel]) => (
             <option key={value} value={value}>{optionLabel}</option>
           ))}
         </select>
         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
       </span>
+      {error ? <span id={`${id}-error`} className="mt-1 block text-xs font-semibold text-rose-700">{error}</span> : null}
     </label>
   );
 }
@@ -486,18 +532,16 @@ function PartnerGuidance() {
         </div>
       </InfoPanel>
 
-      <InfoPanel className="py-3.5">
-        <div className="flex items-center gap-3.5">
+      <InfoPanel className="overflow-hidden p-0">
+        <Link href="/help" className="flex items-center gap-3.5 p-3.5 transition-colors hover:bg-[#fdfaf3] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#092442]">
           <Headphones className="h-8 w-8 shrink-0 text-[#c8912c]" />
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-slate-900">Need help?</h3>
             <p className="mt-0.5 text-xs text-slate-500">Partner support is available.</p>
-            <Link href="/help" className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#8b6418] hover:underline">
-              Contact partner support <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            <span className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#785d1c]">Contact partner support <ArrowRight className="h-3.5 w-3.5" /></span>
           </div>
           <ArrowRight className="h-4 w-4 text-slate-400" />
-        </div>
+        </Link>
       </InfoPanel>
     </aside>
   );
@@ -537,6 +581,10 @@ function ListingRow({ property }: { property: Property }) {
 
   return (
     <article className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3.5">
+      <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={property.coverImageUrl || "/balmoral_hotel.png"} alt={`${property.name} property cover`} className="h-full w-full object-cover" />
+      </div>
       <div className="min-w-0">
         <h3 className="truncate text-sm font-bold text-slate-900">{property.name}</h3>
         <p className="mt-0.5 text-xs text-slate-500">{locationLabel(property)}</p>
@@ -549,5 +597,15 @@ function ListingRow({ property }: { property: Property }) {
         </Link>
       </div>
     </article>
+  );
+}
+
+function ListingHubSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite" className="rounded-xl border border-[#ded8cf] bg-white p-4 shadow-[0_4px_16px_rgba(7,22,51,0.04)]">
+      <span className="sr-only">Loading your listings</span>
+      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+      <div className="mt-3 flex items-center gap-3"><div className="h-12 w-16 animate-pulse rounded-lg bg-slate-200" /><div className="flex-1 space-y-2"><div className="h-3 w-36 animate-pulse rounded bg-slate-200" /><div className="h-3 w-24 animate-pulse rounded bg-slate-100" /></div></div>
+    </div>
   );
 }

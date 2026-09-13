@@ -109,12 +109,12 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     }
   };
 
-  if (!listing) return <main className="min-h-screen bg-[#f6f3ed] p-10 text-center text-sm font-medium text-slate-600">{note || "Loading your listing..."}</main>;
+  if (!listing) return <SetupWorkspaceSkeleton error={note} />;
 
   const property = listing.property;
   let body: React.ReactNode;
 
-  if (step === 1) body = <TypeStep selected={property.propertyType} onSave={(type) => saveStep({ propertyType: type })} saving={saving} />;
+  if (step === 1) body = <TypeStep selected={property.propertyType} propertyName={property.name} city={property.address?.city} confirmed={Boolean(property.onboarding?.initialBasicsConfirmed)} onContinue={completeCurrentStep} onSave={(type) => saveStep({ propertyType: type })} saving={saving} />;
   else if (step === 2) body = <LocationStep property={property} saving={saving} onSave={saveStep} />;
   else if (step === 3) body = <DetailsStep property={property} saving={saving} onSave={saveStep} />;
   else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} onContinue={completeCurrentStep} saving={saving} />;
@@ -278,6 +278,19 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
   );
 }
 
+function SetupWorkspaceSkeleton({ error }: { error: string }) {
+  if (error) return <main className="grid min-h-screen place-items-center bg-[#f8f6f0] p-6"><p role="alert" className="max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-900">{error}</p></main>;
+  return (
+    <main aria-busy="true" aria-live="polite" className="min-h-screen bg-[#f8f6f0] p-4 text-[#071633] sm:p-8">
+      <span className="sr-only">Loading your listing setup</span>
+      <div className="mx-auto max-w-[1240px]">
+        <div className="flex items-center justify-between border-b border-[#ded8cf] bg-white px-4 py-3 sm:px-6"><div className="h-10 w-28 animate-pulse rounded-xl bg-slate-200" /><div className="h-9 w-24 animate-pulse rounded-xl bg-slate-200" /></div>
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"><section className="rounded-2xl border border-[#ded8cf] bg-white p-6 sm:p-8"><div className="h-8 w-64 animate-pulse rounded bg-slate-200" /><div className="mt-3 h-4 w-96 max-w-full animate-pulse rounded bg-slate-100" /><div className="mt-8 grid gap-4 sm:grid-cols-2">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}</div><div className="mt-8 h-12 w-full animate-pulse rounded-xl bg-slate-200" /></section><aside className="hidden rounded-2xl border border-[#ded8cf] bg-white p-6 lg:block"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /><div className="mt-6 h-24 animate-pulse rounded-xl bg-slate-100" /></aside></div>
+      </div>
+    </main>
+  );
+}
+
 type PlaceSelection = {
   googlePlaceId: string;
   name: string;
@@ -396,7 +409,7 @@ function LocationStep({ property, saving, onSave }: { property: any; saving: boo
   return <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <Heading title="Where is your property?" text="Search Google Maps, then confirm the guest-facing address. We use the precise location privately for bookings and verification." />
     <label className="block text-sm font-bold text-[#0b1f3a]">Search your property
-      <span className="relative mt-2 block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => { setQuery(event.target.value); setMessage(""); }} placeholder="Property name, address, or landmark" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm outline-none focus:border-[#0b1f3a] focus:ring-4 focus:ring-[#0b1f3a]/10" />{(loading || suggestions.length > 0) && <div role="listbox" className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">{loading && <p className="px-3 py-2 text-sm text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Finding places…</p>}{suggestions.map((suggestion, index) => <button key={`${suggestion.text.toString()}-${index}`} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => void choose(suggestion)} className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-slate-50"><span className="block text-sm font-bold text-[#0b1f3a]">{suggestion.text.toString()}</span>{suggestion.secondaryText && <span className="mt-0.5 block text-xs text-slate-500">{suggestion.secondaryText.toString()}</span>}</button>)}</div>}</span>
+      <span className="relative mt-2 block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => { setQuery(event.target.value); setMessage(""); }} placeholder="Property name, address, or landmark" className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-sm outline-none focus:border-[#0b1f3a] focus:ring-4 focus:ring-[#0b1f3a]/10" />{(loading || suggestions.length > 0) && <div role="listbox" className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">{loading && <p className="px-3 py-2 text-sm text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Finding places…</p>}{suggestions.map((suggestion, index) => <button key={`${suggestion.text.toString()}-${index}`} type="button" role="option" aria-selected={false} onMouseDown={(event) => event.preventDefault()} onClick={() => void choose(suggestion)} className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-slate-50"><span className="block text-sm font-bold text-[#0b1f3a]">{suggestion.text.toString()}</span>{suggestion.secondaryText && <span className="mt-0.5 block text-xs text-slate-500">{suggestion.secondaryText.toString()}</span>}</button>)}</div>}</span>
     </label>
     <LocationMapPicker
       city={property.address?.city}
@@ -435,8 +448,6 @@ function LocationMapPicker({
   const [pinning, setPinning] = useState(false);
 
   const markerTitle = selected ? selected.name : propertyName;
-  const center = selected ? { lat: selected.latitude, lng: selected.longitude } : defaultMapCenter;
-
   const moveMarker = (position: google.maps.LatLngLiteral) => {
     const map = mapRef.current;
     if (!map) return;
@@ -734,9 +745,31 @@ function Save({ saving }: { saving: boolean }) {
   );
 }
 
-function TypeStep({ selected, onSave, saving }: { selected: string; onSave: (type: string) => void; saving: boolean }) {
+function TypeStep({ selected, propertyName, city, confirmed, onContinue, onSave, saving }: { selected: string; propertyName: string; city?: string; confirmed: boolean; onContinue: () => Promise<void>; onSave: (type: string) => void; saving: boolean }) {
   const [type, setType] = useState(selected || "hotel");
+  const [editing, setEditing] = useState(false);
   const types = ["hotel", "apartment", "villa", "resort", "hostel", "guest_house", "homestay", "other"];
+
+  if (confirmed && !editing) {
+    const info = propertyTypeDetails[selected] || propertyTypeDetails.hotel;
+    const Icon = info.icon;
+    return (
+      <>
+        <Heading title="Your property type is saved" text="We carried this over from the details you entered to start your listing." />
+        <div className="rounded-2xl border border-[#092442]/15 bg-[#f4f7fb] p-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#092442] text-amber-300"><Icon className="h-5 w-5" /></span>
+            <div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{propertyName}</p><p className="mt-0.5 text-base font-extrabold text-[#092442]">{info.label}</p>{city ? <p className="mt-1 text-xs font-medium text-slate-600">{city}, India</p> : null}</div>
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" aria-label="Saved" />
+          </div>
+          <button type="button" onClick={() => setEditing(true)} className="mt-4 text-sm font-bold text-[#092442] underline underline-offset-4 hover:text-[#bb8525]">Change property type</button>
+        </div>
+        <button disabled={saving} onClick={() => void onContinue()} className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#092442] px-5 py-3 text-sm font-extrabold text-white shadow-md transition-all hover:bg-[#061633] disabled:cursor-not-allowed disabled:opacity-60">
+          {saving ? <><Loader2 className="h-4 w-4 animate-spin text-amber-400" /><span>Saving updates...</span></> : <><span>Continue to location</span><ArrowRight className="h-4 w-4" /></>}
+        </button>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1035,7 +1068,11 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
           <p className="mt-2 text-3xl font-bold text-slate-950">{photoCount}/6</p>
           <p className="mt-2 text-sm text-slate-600">Exterior, reception, room, bathroom, and additional spaces are all accepted.</p>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            {listing.media.length ? listing.media.map((asset) => <article key={asset.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="aspect-[4/3] bg-slate-200">{previewUrls[asset.id] ? <img src={previewUrls[asset.id]} alt={`${String(asset.category || "property")} photo`} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs font-medium text-slate-500">Loading preview...</div>}</div><div className="p-3"><p className="text-xs font-semibold capitalize text-slate-700">{String(asset.category || "additional").replace("_", " ")}</p><p className="mt-1 text-xs text-amber-700">Pending approval</p></div></article>) : <p className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">No photos uploaded yet.</p>}
+            {listing.media.length ? listing.media.map((asset) => <article key={asset.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="aspect-[4/3] bg-slate-200">{previewUrls[asset.id] ? (
+              // Private signed R2 URLs cannot be safely configured as static Next image hosts.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrls[asset.id]} alt={`${String(asset.category || "property")} photo`} className="h-full w-full object-cover" />
+            ) : <div className="flex h-full items-center justify-center text-xs font-medium text-slate-500">Loading preview...</div>}</div><div className="p-3"><p className="text-xs font-semibold capitalize text-slate-700">{String(asset.category || "additional").replace("_", " ")}</p><p className="mt-1 text-xs text-amber-700">Pending approval</p></div></article>) : <p className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">No photos uploaded yet.</p>}
           </div>
         </div>
       </div>

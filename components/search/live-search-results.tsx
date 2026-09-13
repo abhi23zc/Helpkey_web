@@ -24,6 +24,7 @@ import {
 import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
+import { formatStayDate } from "@/lib/customer/stay-search";
 
 type Property = {
   id: string;
@@ -248,6 +249,12 @@ export function LiveSearchResults() {
   };
 
   const place = searchParams.get("destination") || "India";
+  const hotelQuery = useMemo(() => {
+    const next = new URLSearchParams(searchParams.toString());
+    // Sorting and presentation filters belong to the result list, not a shared hotel link.
+    next.delete("sort");
+    return next.toString();
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
@@ -271,12 +278,12 @@ export function LiveSearchResults() {
           <SearchPart
             label="Check-in"
             icon={<Calendar />}
-            value={searchParams.get("checkIn") ?? "Add dates"}
+            value={formatStayDate(searchParams.get("checkIn") ?? undefined)}
           />
           <SearchPart
             label="Check-out"
             icon={<Calendar />}
-            value={searchParams.get("checkOut") ?? "Add dates"}
+            value={formatStayDate(searchParams.get("checkOut") ?? undefined)}
           />
           <SearchPart
             label="Guests & rooms"
@@ -483,7 +490,7 @@ export function LiveSearchResults() {
 
             <div className="mt-4 space-y-3">
               {filteredProperties.map((property, i) => (
-                <StayCard key={property.id} property={property} recommended={sort === "top_picks" && i === 0} />
+                <StayCard key={property.id} property={property} recommended={sort === "top_picks" && i === 0} hotelQuery={hotelQuery} />
               ))}
             </div>
           </section>
@@ -1056,7 +1063,7 @@ function Empty({ onReset }: { onReset: () => void }) {
   );
 }
 
-function StayCard({ property, recommended }: { property: Property; recommended: boolean }) {
+function StayCard({ property, recommended, hotelQuery }: { property: Property; recommended: boolean; hotelQuery: string }) {
   const rating = property.ratingAverage;
   return (
     <article
@@ -1167,13 +1174,13 @@ function StayCard({ property, recommended }: { property: Property; recommended: 
 
           <div className="mt-4 grid gap-2">
             <Link
-              href={`/hotels/${property.slug}`}
+              href={`/hotels/${property.slug}${hotelQuery ? `?${hotelQuery}` : ""}`}
               className="rounded-lg border border-[var(--hk-navy)] px-3 py-2 text-center text-xs font-bold text-[var(--hk-navy)] hover:bg-[var(--hk-surface-soft)] transition"
             >
               View details
             </Link>
             <Link
-              href={`/hotels/${property.slug}`}
+              href={`/hotels/${property.slug}${hotelQuery ? `?${hotelQuery}&reserve=1` : "?reserve=1"}`}
               className="rounded-lg bg-[var(--hk-navy-strong)] px-3 py-2 text-center text-xs font-bold text-white hover:bg-[var(--hk-navy)] transition"
             >
               Book now

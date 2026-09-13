@@ -1,0 +1,3 @@
+export default function HotelLoading() {
+  return <main className="min-h-screen bg-[var(--hk-ivory)] px-4 py-8 sm:px-6 lg:px-10" aria-label="Loading hotel"><div className="mx-auto max-w-[1280px] animate-pulse space-y-6"><div className="h-4 w-48 rounded bg-slate-200" /><div className="h-12 w-2/5 rounded bg-slate-200" /><div className="grid gap-3 [grid-auto-rows:130px] sm:grid-cols-3 lg:[grid-auto-rows:175px]"><div className="col-span-2 row-span-2 rounded-2xl bg-slate-200" /><div className="rounded-2xl bg-slate-200" /><div className="rounded-2xl bg-slate-200" /></div><div className="grid gap-8 lg:grid-cols-3"><div className="h-64 rounded-2xl bg-slate-200 lg:col-span-2" /><div className="h-96 rounded-2xl bg-slate-200" /></div></div></main>;
+}

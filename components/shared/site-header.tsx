@@ -240,7 +240,11 @@ function PartnerHeader() {
           <BrandMark tagline="Hotels for a better tomorrow" />
         </Link>
 
-        <nav className="hidden items-center gap-6 text-[13px] font-medium text-white/90 lg:flex">
+        <Link href="/help" className="text-sm font-semibold text-white underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white lg:hidden">
+          Help
+        </Link>
+
+        <nav aria-label="Partner navigation" className="hidden items-center gap-6 text-sm font-medium text-white/90 lg:flex">
           {PARTNER_NAV_ITEMS.map((item) => (
             <Link key={item.label} href={item.href} className="transition-colors hover:text-white">
               {item.label}
@@ -250,7 +254,7 @@ function PartnerHeader() {
           <span className="text-white/75">Already a partner?</span>
           <Link
             href="/partner/dashboard"
-            className="inline-flex items-center gap-2 font-bold text-[var(--hk-gold-strong)] hover:text-[var(--hk-gold)] transition-colors"
+            className="inline-flex items-center gap-2 font-bold text-[var(--hk-gold-light)] transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--hk-gold-light)]"
           >
             Sign in <ArrowRightIcon className="h-3.5 w-3.5" />
           </Link>

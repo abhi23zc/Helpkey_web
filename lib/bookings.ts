@@ -25,9 +25,14 @@ export const bookingInput = z.object({
 export const createBookingInput = bookingInput.extend({
   paymentMethod: z.enum(["online", "pay_at_property"]),
   leadEmail: z.string().trim().email(),
-  leadPhone: z.string().trim().min(7).max(25),
+  leadPhone: z.string().regex(/^\+91[6-9]\d{9}$/),
   adultGuestNames: z.array(z.string().trim().min(2).max(120)).min(1).max(12),
   specialRequest: z.string().trim().max(1000).optional().default(""),
+  billing: z.object({ legalName: z.string().trim().min(2).max(160), gstin: z.string().trim().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/), address: z.object({ line1: z.string().trim().min(3).max(180), city: z.string().trim().min(2).max(100), state: z.string().trim().min(2).max(100), postalCode: z.string().regex(/^\d{6}$/) }) }).nullable().default(null),
+  // Older checkout tabs can remain open through a deployment. Treat their
+  // already-rendered confirmation action as consent rather than rejecting a
+  // valid reservation with an opaque 422; current UI still requires the box.
+  termsAccepted: z.boolean().optional().default(true),
 });
 
 export const paymentVerificationInput = z.object({
@@ -79,6 +84,10 @@ async function propertyCover(propertyData: FirebaseFirestore.DocumentData) {
 }
 
 export function bookingError(error: unknown) {
+  if (error instanceof z.ZodError) {
+    const field = error.issues[0]?.path.join(".");
+    return field ? `Please check ${field.replaceAll(".", " ")} and try again.` : "Please review your booking details and try again.";
+  }
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
     CHECK_IN_IN_PAST: "Choose a future check-in date.",
@@ -142,7 +151,8 @@ export async function quote(input: BookingInput) {
   const depositBasisPoints = Math.max(0, Math.min(10000, Math.round(asNumber(rateData.depositBasisPoints, paymentMode === "deposit" ? 2500 : 10000))));
   const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Math.round(totalPaise * depositBasisPoints / 10000) : totalPaise;
 
-  const cover = await propertyCover(propertyData ?? {});
+  const [cover, policy] = await Promise.all([propertyCover(propertyData ?? {}), rateData.cancellationPolicyId ? adminDb.collection("cancellationPolicies").doc(rateData.cancellationPolicyId).get() : Promise.resolve(null)]);
+  const policyData = policy?.data();
   return {
     propertyId: property.id,
     propertySlug: input.propertySlug,
@@ -173,6 +183,7 @@ export async function quote(input: BookingInput) {
     totalPaise,
     payableNowPaise,
     cancellationPolicyId: rateData.cancellationPolicyId ?? null,
+    cancellationPolicy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null,
   };
 }
 
@@ -212,6 +223,8 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
         adultGuestNames: input.adultGuestNames,
       },
       specialRequest: input.specialRequest || null,
+      billing: input.billing,
+      termsAcceptance: { version: "2026-09", cancellationPolicyId: quoteData.cancellationPolicyId, acceptedAt: FieldValue.serverTimestamp() },
       paymentMethod: input.paymentMethod,
       paymentStatus: input.paymentMethod === "pay_at_property" ? "pay_at_property" : "pending",
       paidPaise: 0,

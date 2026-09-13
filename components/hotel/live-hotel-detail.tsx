@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bath,
   BedDouble,
@@ -30,6 +31,7 @@ import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { Reviews } from "@/components/hotel/hotel-reviews";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
+import { staySearchFromParams, withStaySearch, type StaySearch } from "@/lib/customer/stay-search";
 
 type PropertyImage = { id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string };
 type ReviewSummary = {
@@ -106,6 +108,9 @@ const readableDate = (dateStr: string) => {
 };
 
 export function LiveHotelDetail({ slug }: { slug: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const stay = useMemo(() => staySearchFromParams(new URLSearchParams(searchParams.toString())), [searchParams]);
   const [property, setProperty] = useState<Property | null>(null);
   const [rooms, setRooms] = useState<BookableRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
@@ -127,9 +132,22 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => {
+    if (searchParams.get("reserve") !== "1") return;
+    document.getElementById("reserve")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [searchParams]);
+
+  useEffect(() => {
     void Promise.resolve().then(() => {
       setRoomsLoading(true);
-      return fetch(`/api/properties/${encodeURIComponent(slug)}/bookable`, {
+      const availability = new URLSearchParams();
+      if (stay?.checkIn && stay.checkOut) {
+        availability.set("checkIn", stay.checkIn);
+        availability.set("checkOut", stay.checkOut);
+        availability.set("adults", String(stay.adults));
+        availability.set("children", String(stay.children));
+        availability.set("infants", String(stay.infants));
+      }
+      return fetch(`/api/properties/${encodeURIComponent(slug)}/bookable?${availability}`, {
         cache: "no-store",
       }).then(async (response) => {
         const body = (await response.json()) as { rooms?: BookableRoom[] };
@@ -143,7 +161,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
     })
       .catch(() => setRooms([]))
       .finally(() => setRoomsLoading(false));
-  }, [slug]);
+  }, [slug, stay]);
 
   if (error)
     return (
@@ -163,8 +181,13 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
 
   if (!property)
     return (
-      <main className="min-h-screen bg-[var(--hk-ivory)] p-12 text-center text-[var(--hk-muted)]">
-        Loading property…
+      <main className="min-h-screen bg-[var(--hk-ivory)] px-4 py-8 sm:px-6 lg:px-10" aria-label="Loading property">
+        <div className="mx-auto max-w-[1280px] animate-pulse space-y-6">
+          <div className="h-4 w-48 rounded bg-slate-200" />
+          <div className="h-12 w-2/5 rounded bg-slate-200" />
+          <div className="grid gap-3 [grid-auto-rows:130px] sm:grid-cols-3 lg:[grid-auto-rows:175px]"><div className="col-span-2 row-span-2 rounded-2xl bg-slate-200" /><div className="rounded-2xl bg-slate-200" /><div className="rounded-2xl bg-slate-200" /></div>
+          <div className="grid gap-8 lg:grid-cols-3"><div className="space-y-4 lg:col-span-2"><div className="h-8 w-52 rounded bg-slate-200" /><div className="h-44 rounded-2xl bg-slate-200" /></div><div className="h-96 rounded-2xl bg-slate-200" /></div>
+        </div>
       </main>
     );
 
@@ -187,7 +210,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
         >
           <Link href="/">Home</Link>
           <ChevronRight className="h-3.5 w-3.5" />
-          <Link href="/search">India</Link>
+          <Link href={`/search${searchParams.toString() ? `?${searchParams}` : ""}`}>Search results</Link>
           <ChevronRight className="h-3.5 w-3.5" />
           <Link href={`/search?destination=${encodeURIComponent(property.city)}`}>
             {property.city}
@@ -336,11 +359,14 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
           </div>
 
           <BookingCard
+            key={searchParams.toString()}
             property={property}
             rating={rating}
             rooms={rooms}
             selectedChoice={selectedChoice}
             onChoiceChange={setSelectedChoice}
+            initialStay={stay}
+            onStayChange={(next) => router.replace(`/hotels/${slug}?${withStaySearch(new URLSearchParams(searchParams.toString()), next)}`, { scroll: false })}
           />
         </div>
       </main>
@@ -623,19 +649,24 @@ function BookingCard({
   rooms,
   selectedChoice,
   onChoiceChange,
+  initialStay,
+  onStayChange,
 }: {
   property: Property;
   rating: number;
   rooms: BookableRoom[];
   selectedChoice: string;
   onChoiceChange: (value: string) => void;
+  initialStay: StaySearch | null;
+  onStayChange: (value: StaySearch) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().slice(0, 10);
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [adults, setAdults] = useState(2);
-  const [children, setChildren] = useState(0);
+  const [checkIn, setCheckIn] = useState(initialStay?.checkIn ?? "");
+  const [checkOut, setCheckOut] = useState(initialStay?.checkOut ?? "");
+  const [adults, setAdults] = useState(initialStay?.adults ?? 2);
+  const [children, setChildren] = useState(initialStay?.children ?? 0);
+  const [infants] = useState(initialStay?.infants ?? 0);
   const [openPopover, setOpenPopover] = useState<"calendar" | "guests" | "rooms" | null>(
     null
   );
@@ -673,8 +704,13 @@ function BookingCard({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  const persistStay = (next: Partial<StaySearch>) => {
+    const value = { checkIn, checkOut, adults, children, infants, ...next };
+    if ((value.checkIn && value.checkOut && value.checkOut > value.checkIn) || (!value.checkIn && !value.checkOut)) onStayChange(value);
+  };
+
   return (
-    <aside className="relative" ref={containerRef}>
+    <aside id="reserve" className="relative scroll-mt-28" ref={containerRef}>
       <div className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         {/* Header Price & Rating */}
         <div className="flex items-end justify-between border-b border-slate-100 pb-5">
@@ -751,12 +787,14 @@ function BookingCard({
                   setCheckOut("");
                 } else {
                   setCheckOut(day);
+                  persistStay({ checkOut: day });
                   setOpenPopover(null);
                 }
               }}
               onClear={() => {
                 setCheckIn("");
                 setCheckOut("");
+                persistStay({ checkIn: undefined, checkOut: undefined });
               }}
               onClose={() => setOpenPopover(null)}
             />
@@ -801,7 +839,7 @@ function BookingCard({
                 value={adults}
                 min={1}
                 max={selectedRoom ? selectedRoom.maxAdults : 10}
-                onChange={setAdults}
+                onChange={(value) => { setAdults(value); persistStay({ adults: value }); }}
               />
               <GuestCounterRow
                 label="Children"
@@ -809,7 +847,7 @@ function BookingCard({
                 value={children}
                 min={0}
                 max={selectedRoom ? selectedRoom.maxChildren : 6}
-                onChange={setChildren}
+                onChange={(value) => { setChildren(value); persistStay({ children: value }); }}
               />
               <button
                 type="button"

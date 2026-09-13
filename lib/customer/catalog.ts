@@ -47,6 +47,9 @@ export const catalogSearchSchema = z.object({
   if (value.checkIn && value.checkOut && value.checkOut <= value.checkIn) {
     ctx.addIssue({ code: "custom", message: "CHECK_OUT_MUST_FOLLOW_CHECK_IN" });
   }
+  if (value.checkIn && value.checkOut && (new Date(`${value.checkOut}T00:00:00Z`).getTime() - new Date(`${value.checkIn}T00:00:00Z`).getTime()) / 86400000 > 30) {
+    ctx.addIssue({ code: "custom", message: "MAXIMUM_STAY_IS_30_NIGHTS" });
+  }
   if (value.minPricePaise !== undefined && value.maxPricePaise !== undefined && value.minPricePaise > value.maxPricePaise) {
     ctx.addIssue({ code: "custom", message: "INVALID_PRICE_RANGE" });
   }
@@ -78,6 +81,51 @@ export type CatalogImage = { id: string; imageUrl: string; imageSrcSet: string; 
 export type CatalogReviewSummary = { count: number; ratingSum: number; average: number; buckets: Record<"1" | "2" | "3" | "4" | "5", number> };
 export type CatalogDetailProperty = CatalogProperty & { images: CatalogImage[]; reviewSummary: CatalogReviewSummary | null };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
+
+function stayDates(checkIn: string, checkOut: string) {
+  const dates: string[] = [];
+  for (let date = new Date(`${checkIn}T00:00:00Z`), end = new Date(`${checkOut}T00:00:00Z`); date < end; date = new Date(date.getTime() + 86400000)) dates.push(date.toISOString().slice(0, 10));
+  return dates;
+}
+
+async function hasAvailableRoom(propertyId: string, input: CatalogSearch) {
+  if (!input.checkIn || !input.checkOut) return true;
+  const [rooms, rates] = await Promise.all([
+    adminDb.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active").get(),
+    adminDb.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active").get(),
+  ]);
+  const nights = stayDates(input.checkIn, input.checkOut);
+  for (const room of rooms.docs) {
+    const data = room.data();
+    const maxAdults = Number(data.maxAdults ?? 1);
+    const maxChildren = Number(data.maxChildren ?? 0);
+    const maxInfants = Number(data.maxInfants ?? 0);
+    if (input.adults > maxAdults || input.children > maxChildren || input.infants > maxInfants || input.adults + input.children > Number(data.maxOccupancy ?? maxAdults + maxChildren)) continue;
+    const eligibleRate = rates.docs.some((rate) => {
+      const rateData = rate.data();
+      const rules = rateData.stayRules ?? {};
+      return rateData.roomTypeId === room.id && nights.length >= Number(rules.minimumNights ?? 1) && (!Number(rules.maximumNights) || nights.length <= Number(rules.maximumNights));
+    });
+    if (!eligibleRate || Number(data.totalInventory ?? 0) <= 0) continue;
+    const inventory = await adminDb.getAll(...nights.map((day) => adminDb.collection("roomNightInventory").doc(`${propertyId}_${room.id}_${day}`)));
+    if (inventory.every((day) => Number(day.data()?.reserved ?? 0) < Number(data.totalInventory))) return true;
+  }
+  return false;
+}
+
+async function filterAvailability(cards: CatalogSearchProperty[], input: CatalogSearch) {
+  const visible: CatalogSearchProperty[] = [];
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(10, cards.length) }, async () => {
+    while (cursor < cards.length) {
+      const index = cursor++;
+      const card = cards[index];
+      if (await hasAvailableRoom(card.id, input)) visible[index] = card;
+    }
+  });
+  await Promise.all(workers);
+  return visible.filter(Boolean);
+}
 
 export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
 
@@ -238,7 +286,10 @@ export async function searchCatalog(input: CatalogSearch) {
       && (input.maxPricePaise === undefined || (property.minimumPricePaise !== null && property.minimumPricePaise <= input.maxPricePaise))
       && input.amenities.every((code) => property.amenityCodes.includes(code));
   });
-  return sortCatalog(matchingCards, input).slice(0, input.limit).map(publicCatalogProperty);
+  const dateAwareCards = input.checkIn && input.checkOut
+    ? await filterAvailability(matchingCards, input)
+    : matchingCards;
+  return sortCatalog(dateAwareCards, input).slice(0, input.limit).map(publicCatalogProperty);
 }
 
 export async function searchSuggestions(query: string): Promise<CatalogSuggestion[]> {

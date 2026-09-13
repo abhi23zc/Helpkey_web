@@ -68,7 +68,7 @@ export function PartnerSidebar({
       >
         <div
           className={`flex h-16 lg:h-20 items-center border-b border-white/10 px-4 transition-all duration-300 ${
-            !isExpanded ? "justify-between" : "justify-between px-5"
+            !isExpanded ? "justify-center px-0" : "justify-between px-5"
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -89,7 +89,7 @@ export function PartnerSidebar({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="hidden shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-white/80 transition-colors hover:bg-white/10 lg:block"
+            className={`hidden shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${isExpanded ? "lg:block" : ""}`}
             aria-label={collapsed ? "Pin sidebar open" : "Collapse sidebar"}
             title={
               collapsed
@@ -114,21 +114,21 @@ export function PartnerSidebar({
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-3">
+        <nav aria-label="Partner navigation" className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4">
           {navItems.map(({ label, href, icon: Icon }) => {
             const isActive = href ? pathname === href : false;
-            const baseClass = `group relative flex w-full items-center rounded-xl py-2.5 text-left text-xs font-semibold transition-all duration-200 ${
+            const baseClass = `group relative flex h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
               !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"
             } ${
               isActive
-                ? "bg-[#c89b3c]/15 text-white font-bold border-l-2 border-[#c89b3c] shadow-xs"
+                ? "bg-[#c89b3c]/15 text-white font-bold ring-1 ring-inset ring-[#c89b3c]/55"
                 : "text-slate-300 hover:bg-white/10 hover:text-white"
             }`;
 
             const content = (
               <>
                 <Icon
-                  className={`h-4.5 w-4.5 shrink-0 transition-colors ${
+                  className={`h-5 w-5 shrink-0 transition-colors ${
                     isActive ? "text-[#c89b3c]" : "text-slate-400 group-hover:text-white"
                   }`}
                 />
@@ -163,7 +163,7 @@ export function PartnerSidebar({
                 type="button"
                 disabled
                 className={`${baseClass} cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-400`}
-                title={!isExpanded ? label : undefined}
+                title={!isExpanded ? `${label} — coming soon` : undefined}
               >
                 {content}
               </button>
@@ -187,25 +187,25 @@ export function PartnerSidebar({
             <div className="mt-2.5 border-t border-white/10 pt-2.5">
               <p className="text-[11px] font-bold text-white">Need Support?</p>
               <p className="text-[10px] text-white/60">Partner team is 24/7 active</p>
-              <button
-                type="button"
-                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c]/60 bg-[#c89b3c]/10 py-1.5 text-xs font-bold text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224]"
+              <Link
+                href="/help"
+                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c]/60 bg-[#c89b3c]/10 py-1.5 text-xs font-bold text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
               >
                 <Headphones className="h-3.5 w-3.5" />
                 Contact Support
-              </button>
+              </Link>
             </div>
           </div>
         </div>
 
-        <div className={`mt-auto flex justify-center p-3 ${isExpanded ? "hidden" : "block"}`}>
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-xl border border-[#c89b3c]/30 bg-[#0d1e38] text-[#c89b3c] hover:bg-[#c89b3c] hover:text-[#061224] transition-all"
+        <div className={`mt-auto flex justify-center border-t border-white/10 px-3 py-4 ${isExpanded ? "hidden" : "block"}`}>
+          <Link
+            href="/help"
+            className="grid h-10 w-10 place-items-center rounded-xl border border-[#c89b3c]/30 bg-[#0d1e38] text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
             title="Contact Support"
           >
             <Headphones className="h-4 w-4" />
-          </button>
+          </Link>
         </div>
       </aside>
     </>

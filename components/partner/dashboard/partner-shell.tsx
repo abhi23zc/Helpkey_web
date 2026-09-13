@@ -1,6 +1,8 @@
 "use client";
 
-import { Building2, CalendarDays, Check, ChevronDown, Loader2, Menu, Search } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Building2, CalendarDays, Check, ChevronDown, CircleHelp, Loader2, LogOut, Menu, Search, UserRound } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PartnerSidebar } from "./partner-sidebar";
 import { NotificationBell } from "@/components/shared/notification-bell";
@@ -156,8 +158,13 @@ export function PartnerShell({
   children: (data: PartnerDashboardData) => ReactNode;
 }) {
   const data = usePartnerDashboardData();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [accountError, setAccountError] = useState("");
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const syncSidebar = () => setSidebarCollapsed(window.innerWidth < 1440);
@@ -166,9 +173,39 @@ export function PartnerShell({
     return () => window.removeEventListener("resize", syncSidebar);
   }, []);
 
+  useEffect(() => {
+    if (!accountMenuOpen) return undefined;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountMenuOpen]);
+
   const displayName = data.user?.fullName?.trim() || "Partner";
   const initials = useMemo(() => toInitials(displayName), [displayName]);
   const coverImage = data.selectedProperty?.coverImageUrl || "/balmoral_hotel.png";
+
+  const signOut = async () => {
+    setSigningOut(true);
+    setAccountError("");
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("We could not sign you out. Please try again.");
+      router.replace("/");
+      router.refresh();
+    } catch (cause) {
+      setAccountError(cause instanceof Error ? cause.message : "We could not sign you out. Please try again.");
+      setSigningOut(false);
+    }
+  };
 
   return (
     <main
@@ -232,27 +269,40 @@ export function PartnerShell({
 
           <div className="flex items-center justify-end gap-3 md:justify-self-end">
             <NotificationBell />
-            {data.user?.photoURL ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={data.user.photoURL}
-                alt={displayName}
-                className="h-11 w-11 rounded-full object-cover shadow-xs ring-2 ring-[#c89b3c]/30"
-              />
-            ) : (
-              <div className="grid h-11 w-11 place-items-center rounded-full bg-[#061224] text-xs font-bold text-white shadow-xs ring-2 ring-[#c89b3c]/30">
-                {initials}
-              </div>
-            )}
-            <div className="hidden text-left sm:block">
-              <p className="text-sm font-bold leading-tight text-[#061224]">
-                {displayName}
-              </p>
-              <p className="text-[11px] font-semibold text-slate-500">
-                Partner Admin
-              </p>
+            <div ref={accountMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => { setAccountError(""); setAccountMenuOpen((open) => !open); }}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                aria-label={`Open account menu for ${displayName}`}
+                className="flex items-center gap-3 rounded-2xl px-1 py-1 text-left transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
+              >
+                {data.user?.photoURL ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={data.user.photoURL} alt="" className="h-11 w-11 rounded-full object-cover shadow-xs ring-2 ring-[#c89b3c]/30" />
+                ) : (
+                  <div className="grid h-11 w-11 place-items-center rounded-full bg-[#061224] text-xs font-bold text-white shadow-xs ring-2 ring-[#c89b3c]/30">{initials}</div>
+                )}
+                <div className="hidden text-left sm:block"><p className="text-sm font-bold leading-tight text-[#061224]">{displayName}</p><p className="text-[11px] font-semibold text-slate-500">Partner Admin</p></div>
+                <ChevronDown className={`hidden h-4 w-4 text-slate-400 transition-transform sm:block ${accountMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {accountMenuOpen ? (
+                <div role="menu" aria-label="Account menu" className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-950/10">
+                  <div className="border-b border-slate-100 px-3 py-3"><p className="truncate text-sm font-bold text-[#061224]">{displayName}</p><p className="mt-0.5 truncate text-xs text-slate-500">{data.user?.email ?? "Partner account"}</p></div>
+                  <div className="py-1.5">
+                    <Link role="menuitem" href="/profile" onClick={() => setAccountMenuOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#061224]"><UserRound className="h-4 w-4 text-slate-500" />Account &amp; profile</Link>
+                    <Link role="menuitem" href="/partner/onboarding" onClick={() => setAccountMenuOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#061224]"><Building2 className="h-4 w-4 text-slate-500" />Your listings</Link>
+                    <Link role="menuitem" href="/help" onClick={() => setAccountMenuOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#061224]"><CircleHelp className="h-4 w-4 text-slate-500" />Help Centre</Link>
+                  </div>
+                  <div className="border-t border-slate-100 pt-1.5">
+                    <button type="button" role="menuitem" disabled={signingOut} onClick={() => void signOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60">{signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}{signingOut ? "Signing out..." : "Sign out"}</button>
+                    {accountError ? <p role="alert" className="px-3 pb-1 pt-2 text-xs font-medium text-rose-700">{accountError}</p> : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
           </div>
         </header>
 

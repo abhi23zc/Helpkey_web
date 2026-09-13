@@ -2,27 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
   BedDouble,
-  BriefcaseBusiness,
   Building2,
-  Calendar,
   CheckCircle2,
   Clock,
-  CreditCard,
   FileText,
   Heart,
   IndianRupee,
-  Lock,
   Mail,
   MapPin,
-  Moon,
   Phone,
   ShieldCheck,
-  Sparkles,
   User,
   UserCheck,
 } from "lucide-react";
@@ -48,11 +41,13 @@ type Quote = {
   nights: number;
   adults: number;
   children: number;
+  infants: number;
   subtotalPaise: number;
   taxPaise: number;
   customerFeePaise: number;
   totalPaise: number;
   payableNowPaise: number;
+  cancellationPolicy: { name: string; description: string; refundableUntilHours: number; cancellationFeePercent: number } | null;
 };
 
 type CheckoutParams = {
@@ -140,7 +135,6 @@ function parseParams(params: URLSearchParams): CheckoutParams | null {
 
 export function BookingCheckout() {
   const { appUser, loading } = useAuth();
-  const router = useRouter();
   const [input, setInput] = useState<CheckoutParams | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
@@ -152,7 +146,9 @@ export function BookingCheckout() {
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [taxId, setTaxId] = useState("");
+  const [billingAddress, setBillingAddress] = useState({ line1: "", city: "", state: "", postalCode: "" });
   const [request, setRequest] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [confirmed, setConfirmed] = useState("");
 
   useEffect(() => {
@@ -216,9 +212,12 @@ export function BookingCheckout() {
       return "Please enter full names for all adult guests.";
     if (!/^\S+@\S+\.\S+$/.test(email))
       return "Please enter a valid email address.";
-    if (phone.trim().length < 7) return "Please enter a valid phone number.";
+    if (!/^(?:\+91)?[6-9]\d{9}$/.test(phone.replace(/[\s-]/g, ""))) return "Enter a valid 10-digit Indian mobile number.";
+    if (taxId && (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(taxId.toUpperCase()) || !companyName.trim() || !Object.values(billingAddress).every(Boolean))) return "Complete a valid GST invoice name, GSTIN, and billing address.";
+    if (!termsAccepted) return "Accept the booking terms and cancellation policy to continue.";
     return "";
-  }, [appUser, email, input?.adults, names, phone]);
+  }, [appUser, billingAddress, companyName, email, input?.adults, names, phone, taxId, termsAccepted]);
+  const hotelHref = input ? `/hotels/${input.propertySlug}?${new URLSearchParams({ property: input.propertySlug, room: input.roomTypeId, rate: input.ratePlanId, checkIn: input.checkIn, checkOut: input.checkOut, adults: String(input.adults), children: String(input.children), infants: String(input.infants) })}` : "/search";
 
   const submit = async () => {
     if (!appUser) {
@@ -239,15 +238,15 @@ export function BookingCheckout() {
             ? "pay_at_property"
             : "online",
         leadEmail: email,
-        leadPhone: phone,
+        leadPhone: `+91${phone.replace(/\D/g, "").replace(/^91/, "")}`,
         adultGuestNames: names.map((name) => name.trim()),
         specialRequest: [
-          companyName.trim() ? `Company: ${companyName.trim()}` : "",
-          taxId.trim() ? `Tax ID: ${taxId.trim()}` : "",
           request.trim(),
         ]
           .filter(Boolean)
           .join("\n"),
+        billing: taxId ? { legalName: companyName.trim(), gstin: taxId.trim().toUpperCase(), address: billingAddress } : null,
+        termsAccepted,
       };
       const response = await fetch("/api/bookings", {
         method: "POST",
@@ -348,7 +347,7 @@ export function BookingCheckout() {
             <div>
               <Link
                 href={
-                  input ? `/hotels/${input.propertySlug}` : "/search"
+                  hotelHref
                 }
                 className="group mb-3 inline-flex items-center gap-2 text-xs font-semibold text-[#44474d] transition hover:text-[#000615]"
               >
@@ -533,6 +532,11 @@ export function BookingCheckout() {
                       </p>
                     </div>
                   </div>
+                  {taxId && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {(["line1", "city", "state", "postalCode"] as const).map((field) => <label key={field} className="text-xs font-bold uppercase tracking-wider text-[#44474d]">{field === "line1" ? "Billing address" : field === "postalCode" ? "PIN code" : field}<input value={billingAddress[field]} onChange={(event) => setBillingAddress((current) => ({ ...current, [field]: event.target.value }))} inputMode={field === "postalCode" ? "numeric" : undefined} className="mt-1.5 w-full rounded-xl border border-[#c4c6ce] px-3 py-3 text-sm font-normal normal-case outline-none focus:border-[#000615]" /></label>)}
+                    </div>
+                  )}
                 </div>
 
                 {/* Business & Corporate Billing Section */}
@@ -596,9 +600,14 @@ export function BookingCheckout() {
                     className="mt-2 w-full resize-none rounded-xl border border-[#c4c6ce] bg-white p-3.5 text-sm text-[#141b2b] outline-none transition placeholder:text-slate-400 focus:border-[#000615] focus:ring-2 focus:ring-[#000615]/10"
                   />
                   <p className="mt-1.5 text-[11px] text-[#75777e]">
-                    Requests are forwarded directly to the property upon confirmation.
+                    Requests are sent to the property after confirmation and are not guaranteed.
                   </p>
                 </div>
+
+                <label className="mt-6 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                  <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#000615]" />
+                  <span>I agree to Helpkey <Link href="/help" className="font-bold underline">Terms and Privacy Policy</Link> and the selected cancellation policy.</span>
+                </label>
 
                 {/* Validation / Error Message */}
                 {(error || formError) && (
@@ -682,7 +691,6 @@ function BookingSummary({
   const location = [quote?.propertyCity, quote?.propertyState]
     .filter(Boolean)
     .join(", ");
-  const taxesAndFees = (quote?.taxPaise ?? 0) + (quote?.customerFeePaise ?? 0);
   const cta = !appUserReady
     ? "Sign in to complete booking"
     : quote?.ratePlan.paymentMode === "pay_at_property"
@@ -745,10 +753,10 @@ function BookingSummary({
               {location}
             </p>
           )}
-          <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-[#000615]">
+          {quote?.cancellationPolicy && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-[#000615]" title={quote.cancellationPolicy.description}>
             <ShieldCheck className="h-3.5 w-3.5 text-[#000615]" />
-            Free cancellation included
-          </p>
+            {quote.cancellationPolicy.cancellationFeePercent === 0 ? `Free cancellation up to ${quote.cancellationPolicy.refundableUntilHours}h before check-in` : quote.cancellationPolicy.name}
+          </p>}
         </div>
 
         {/* Stay Dates & Duration Grid */}
@@ -780,7 +788,7 @@ function BookingSummary({
               </p>
               <p className="mt-0.5 text-[11px] text-[#44474d]">
                 {quote
-                  ? `${quote.adults + quote.children} guest${
+                  ? `${quote.adults + quote.children + quote.infants} guest${
                       quote.adults + quote.children === 1 ? "" : "s"
                     } · ${quote.ratePlan.name}`
                   : "Standard rate plan"}
@@ -809,11 +817,12 @@ function BookingSummary({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Taxes &amp; Guest Fees</span>
+                <span>Taxes</span>
                 <span className="font-semibold text-[#000615]">
-                  {money(taxesAndFees, quote.currency)}
+                  {money(quote.taxPaise, quote.currency)}
                 </span>
               </div>
+              <div className="flex justify-between"><span>Helpkey guest fee</span><span className="font-semibold text-[#000615]">{money(quote.customerFeePaise, quote.currency)}</span></div>
 
               <div className="border-t border-[#c4c6ce]/40 pt-3">
                 <div className="flex items-end justify-between text-[#000615]">
@@ -869,6 +878,7 @@ function BookingSummary({
               ? "💳 Pay directly at property during check-in."
               : "🔒 256-Bit SSL Encrypted & Protected Checkout"}
           </p>
+          {quote?.ratePlan.paymentMode === "deposit" && <p className="mt-2 text-center text-[11px] text-slate-500">The remaining balance is paid at the property.</p>}
         </div>
       </div>
     </aside>
