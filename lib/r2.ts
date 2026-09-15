@@ -64,6 +64,20 @@ export async function deletePrivateObject(key: string) {
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
 }
 
+/** Server-side only object helpers for encrypted application records. */
+export async function putPrivateObject(key: string, body: Uint8Array, contentType = "application/octet-stream") {
+  const { bucket, client } = privateConfig();
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: validObjectKey(key), Body: body, ContentLength: body.byteLength, ContentType: contentType, CacheControl: "private, no-store" }));
+}
+
+export async function getPrivateObject(key: string): Promise<Uint8Array> {
+  const { bucket, client } = privateConfig();
+  const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }));
+  if (!result.Body) throw new Error("R2_OBJECT_NOT_FOUND");
+  const bytes = await result.Body.transformToByteArray();
+  return new Uint8Array(bytes);
+}
+
 export function publicMediaUrl(key: string) {
   const base = process.env.PUBLIC_MEDIA_BASE_URL;
   const valid = validObjectKey(key);

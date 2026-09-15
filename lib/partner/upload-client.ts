@@ -2,6 +2,12 @@
 
 /** Shared client helpers for authenticated JSON calls and R2 uploads. */
 
+function customerRequestError(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "Request failed.";
+  if (value.trim().startsWith("[") || value.includes('"origin"')) return "Check the entered details and try again.";
+  return value;
+}
+
 export async function requestJson<T = unknown>(
   url: string,
   body?: unknown,
@@ -13,7 +19,7 @@ export async function requestJson<T = unknown>(
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error((json as { error?: string }).error ?? "Request failed.");
+  if (!response.ok) throw new Error(customerRequestError((json as { error?: string }).error));
   return json as T;
 }
 
@@ -56,12 +62,84 @@ export async function sha256Hex(file: File): Promise<string> {
     .join("");
 }
 
+export type PropertyPhotoCategory = "exterior" | "reception" | "room" | "bathroom" | "additional";
+export type KycDocumentType = "pan" | "government_id_front" | "government_id_back" | "gst";
+
+const kycMimeTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const maxKycDocumentBytes = 10 * 1024 * 1024;
+
+export function validateKycDocument(file: File): string | null {
+  if (!kycMimeTypes.has(file.type)) return "Use a JPG, PNG, or PDF document.";
+  if (!file.size || file.size > maxKycDocumentBytes) return "Use a file no larger than 10 MB.";
+  return null;
+}
+
+export type FinalizedKycDocument = {
+  documentId: string;
+  document?: { id: string; documentType?: string; fileName?: string | null; mimeType?: string | null; sizeBytes?: number | null; status?: string };
+};
+
+export async function uploadKycDocument(
+  propertyId: string,
+  documentType: KycDocumentType,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<FinalizedKycDocument> {
+  const validationError = validateKycDocument(file);
+  if (validationError) throw new Error(validationError);
+  const checksum = await sha256Hex(file);
+  const signed = await requestJson<{ uploadId: string; uploadUrl: string; headers: Record<string, string> }>(
+    `/api/partner/properties/${propertyId}/kyc/upload-url`,
+    { documentType, fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum },
+  );
+  await putFileWithProgress(signed.uploadUrl, signed.headers, file, onProgress ?? (() => {}));
+  return requestJson<FinalizedKycDocument>(`/api/partner/properties/${propertyId}/kyc/finalize`, { uploadId: signed.uploadId });
+}
+
+export type FinalizedPropertyPhoto = {
+  mediaId: string;
+  media?: {
+    id: string;
+    kind: string;
+    category?: string | null;
+    fileName?: string | null;
+    altText?: string;
+    moderationStatus?: string;
+    isCover?: boolean;
+    imageUrl?: string | null;
+  };
+  coverMediaId?: string | null;
+};
+
+/**
+ * The complete, authenticated property-photo write. Keeping this in one place
+ * prevents the onboarding and dashboard flows from drifting apart.
+ */
+export async function uploadPropertyPhoto(
+  propertyId: string,
+  file: File,
+  category: PropertyPhotoCategory,
+  onProgress?: (percent: number) => void,
+): Promise<FinalizedPropertyPhoto> {
+  const checksum = await sha256Hex(file);
+  const signed = await requestJson<{ uploadId: string; uploadUrl: string; headers: Record<string, string> }>(
+    `/api/partner/properties/${propertyId}/media/upload-url`,
+    { fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum, category },
+  );
+  await putFileWithProgress(signed.uploadUrl, signed.headers, file, onProgress ?? (() => {}));
+  return requestJson<FinalizedPropertyPhoto>(
+    `/api/partner/properties/${propertyId}/media/finalize`,
+    { uploadId: signed.uploadId },
+  );
+}
+
 export function uploadErrorMessage(error: unknown): string {
   if (error instanceof TypeError) return "Upload could not reach storage. Check your R2 bucket CORS for this app origin.";
   if (error instanceof Error) {
     if (error.message === "UPLOAD_FAILED") return "Upload was rejected by storage. Check file type, size, and signed URL expiry.";
     if (error.message === "UPLOAD_EXPIRED") return "The upload link expired before final save. Try the upload again.";
     if (error.message === "R2_OBJECT_VERIFICATION_FAILED") return "The file reached storage but verification failed. Retry with the original file.";
+    if (error.message === "INVALID_DOCUMENT_CONTENT") return "This file does not match its selected format. Choose the original JPG, PNG, or PDF file.";
     return error.message;
   }
   return "Upload failed.";

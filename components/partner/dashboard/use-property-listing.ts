@@ -296,6 +296,16 @@ export function usePropertyListing(propertyId: string | undefined) {
     [applyPatch],
   );
 
+  const removeMedia = useCallback(
+    (mediaId: string, coverMediaId: string | null) =>
+      applyPatch((current) => ({
+        ...current,
+        media: current.media.filter((asset) => asset.id !== mediaId).map((asset) => ({ ...asset, isCover: asset.id === coverMediaId })),
+        property: { ...current.property, coverMediaId },
+      })),
+    [applyPatch],
+  );
+
   const addDocument = useCallback(
     (document: { id: string; documentType?: string; status?: string }) =>
       applyPatch((current) => ({
@@ -402,6 +412,7 @@ export function usePropertyListing(propertyId: string | undefined) {
     addPolicy,
     addMedia,
     setCoverMedia,
+    removeMedia,
     addDocument,
   };
 }
@@ -411,5 +422,5 @@ export type PropertyListingData = ReturnType<typeof usePropertyListing>;
 /** Local-mutation callbacks editors use to update the snapshot without a refetch. */
 export type ListingMutations = Pick<
   PropertyListingData,
-  "patchProperty" | "addRoomType" | "updateRoomType" | "addRatePlan" | "updateRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "addDocument" | "reload"
+  "patchProperty" | "addRoomType" | "updateRoomType" | "addRatePlan" | "updateRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "removeMedia" | "addDocument" | "reload"
 >;

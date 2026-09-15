@@ -6,6 +6,11 @@ async function cleanup() {
   const expired = await db.collection("pendingUploads").where("expiresAt", "<=", Date.now()).limit(100).get();
   let objectsDeleted = 0, failures = 0;
   for (const upload of expired.docs) try { const key = upload.data().objectKey; if (typeof key === "string") { await deletePrivateObject(key); objectsDeleted++; } await upload.ref.delete(); } catch { failures++; }
+  // Aadhaar lab payloads are encrypted but still sensitive. Delete the object
+  // first; keeping Firestore metadata on a failed deletion makes this retry-safe.
+  const expiredAadhaar = await db.collection("aadhaarVerificationLab").where("expiresAt", "<=", Timestamp.now()).limit(100).get();
+  let aadhaarDeleted = 0, aadhaarFailures = 0;
+  for (const record of expiredAadhaar.docs) try { const key = record.data().payloadObjectKey; if (typeof key === "string") await deletePrivateObject(key); await record.ref.delete(); aadhaarDeleted++; } catch { aadhaarFailures++; }
   // Only legacy Firestore leases have leaseExpiresAt. BullMQ owns live job recovery.
   let recoveredLeases = 0;
   try {
@@ -17,6 +22,6 @@ async function cleanup() {
     // cleanup container or prevent expired private-upload cleanup.
     console.error("legacy media lease recovery skipped", error);
   }
-  console.log(JSON.stringify({ pendingUploadsDeleted: expired.size - failures, objectsDeleted, cleanupFailures: failures, expiredLegacyLeasesRecovered: recoveredLeases }));
+  console.log(JSON.stringify({ pendingUploadsDeleted: expired.size - failures, objectsDeleted, cleanupFailures: failures, aadhaarLabDeleted: aadhaarDeleted, aadhaarLabFailures: aadhaarFailures, expiredLegacyLeasesRecovered: recoveredLeases }));
 }
 void cleanup().catch((error) => { console.error(error); process.exitCode = 1; });

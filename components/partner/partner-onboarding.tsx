@@ -58,7 +58,7 @@ function statusDetails(property: Property) {
       Math.max(0, (property.onboarding?.currentStep ?? 1) - 1);
     return {
       label: `Draft · ${complete} of ${STEP_COUNT} complete`,
-      action: "Continue",
+      action: "Resume setup",
       href: `/partner/onboarding?propertyId=${property.id}`,
       tone: "bg-amber-50 text-amber-800",
     };
@@ -66,7 +66,7 @@ function statusDetails(property: Property) {
   if (property.approvalStatus === "approved") {
     return {
       label: "Live",
-      action: "Manage",
+      action: "Manage property",
       href: `/partner/listing?propertyId=${property.id}`,
       tone: "bg-emerald-50 text-emerald-800",
     };
@@ -125,24 +125,38 @@ export function PartnerOnboarding() {
   const [loadingListings, setLoadingListings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showNewProperty, setShowNewProperty] = useState(false);
+
+  const loadListings = () => {
+    setLoadingListings(true);
+    setError("");
+    void fetch("/api/partner/dashboard", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("We could not load your listings.");
+        const result = (await response.json()) as { properties?: Property[] };
+        setProperties(result.properties ?? []);
+      })
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : "We could not load your listings.");
+      })
+      .finally(() => {
+        setLoadingListings(false);
+      });
+  };
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/partner/dashboard", { cache: "no-store" })
       .then(async (response) => {
-        if (!response.ok || cancelled) return;
+        if (!response.ok) throw new Error("We could not load your listings.");
         const result = (await response.json()) as { properties?: Property[] };
-        setProperties(result.properties ?? []);
+        if (!cancelled) setProperties(result.properties ?? []);
       })
-      .catch(() => {
-        if (!cancelled) setError("We could not load your listings. You can still start a new one.");
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "We could not load your listings.");
       })
-      .finally(() => {
-        if (!cancelled) setLoadingListings(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setLoadingListings(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const { drafts, managed } = useMemo(() => {
@@ -196,8 +210,10 @@ export function PartnerOnboarding() {
 
       <div className="mx-auto grid max-w-[1200px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-5 xl:px-0">
         <div className="space-y-4">
-          {loadingListings ? <ListingHubSkeleton /> : featuredDraft ? <ResumeStrip property={featuredDraft} /> : null}
-          <SetupCard error={error} onSubmit={submit} saving={saving} hasDraft={Boolean(featuredDraft)} />
+          {loadingListings ? <ListingHubSkeleton /> : null}
+          {!loadingListings && error ? <LoadListingsError onRetry={loadListings} /> : null}
+          {!loadingListings && featuredDraft ? <ResumeStrip property={featuredDraft} /> : null}
+          {!featuredDraft || showNewProperty ? <SetupCard error={error} onSubmit={submit} saving={saving} hasDraft={Boolean(featuredDraft)} /> : <button type="button" onClick={() => setShowNewProperty(true)} className="inline-flex h-11 items-center justify-center rounded-lg border border-[#092442] bg-white px-4 text-sm font-bold text-[#092442] transition hover:bg-slate-50">Add a property</button>}
         </div>
 
         <PartnerGuidance />
@@ -235,7 +251,7 @@ export function PartnerOnboarding() {
                 <p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#bb8525]">
                   Your listings
                 </p>
-                <h2 className="mt-0.5 text-base font-bold text-slate-900">Other properties</h2>
+                <h2 className="mt-0.5 text-base font-bold text-slate-900">Your properties</h2>
               </div>
               <Link
                 href="/partner/dashboard"
@@ -245,14 +261,12 @@ export function PartnerOnboarding() {
               </Link>
             </div>
 
-            <div className="mt-3.5 grid gap-3 md:grid-cols-2">
-              {drafts.slice(1).map((property) => (
+            {drafts.length > 1 ? <><h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">More drafts</h3><div className="mt-2 grid gap-3 md:grid-cols-2">{drafts.slice(1).map((property) => (
                 <ListingRow key={property.id} property={property} />
-              ))}
-              {managed.map((property) => (
+              ))}</div></> : null}
+            {managed.length ? <><h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-slate-500">Live & under review</h3><div className="mt-2 grid gap-3 md:grid-cols-2">{managed.map((property) => (
                 <ListingRow key={property.id} property={property} />
-              ))}
-            </div>
+              ))}</div></> : null}
           </section>
         )}
       </div>
@@ -607,5 +621,15 @@ function ListingHubSkeleton() {
       <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
       <div className="mt-3 flex items-center gap-3"><div className="h-12 w-16 animate-pulse rounded-lg bg-slate-200" /><div className="flex-1 space-y-2"><div className="h-3 w-36 animate-pulse rounded bg-slate-200" /><div className="h-3 w-24 animate-pulse rounded bg-slate-100" /></div></div>
     </div>
+  );
+}
+
+function LoadListingsError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <section role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+      <p className="font-bold">We couldn’t load your listings.</p>
+      <p className="mt-1 text-xs leading-relaxed">Your saved drafts are safe. Please try again before making changes to an existing property.</p>
+      <button type="button" onClick={onRetry} className="mt-3 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-bold text-rose-800 transition hover:bg-rose-100">Try again</button>
+    </section>
   );
 }

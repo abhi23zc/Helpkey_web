@@ -5,7 +5,10 @@
     { "collectionGroup": "ratePlans", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }] },
     { "collectionGroup": "notifications", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "readAt", "order": "ASCENDING" }] },
     { "collectionGroup": "propertyReviews", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "propertyId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "submittedAt", "order": "DESCENDING" }] },
-    { "collectionGroup": "mediaPublicationJobs", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseExpiresAt", "order": "ASCENDING" }] }
+    { "collectionGroup": "mediaPublicationJobs", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "leaseExpiresAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "aadhaarVerificationLab", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "operatorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "aadhaarVerificationLab", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "operatorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "aadhaarVerificationLab", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "aadhaarFingerprint", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] }
   ],
   "fieldOverrides": []
 }

@@ -26,6 +26,27 @@ WHATSAPP_OTP_API_URL=https://api2.dineezy.in/api/v1/dev/create-message
 OTP_HASH_SECRET=
 ```
 
+### Admin Aadhaar Lab
+
+The `/admin/aadhaar-lab` console is disabled until its server-only settings are
+present. Do not use `NEXT_PUBLIC_` for any of these values.
+
+```bash
+CASHFREE_AADHAAR_SANDBOX_CLIENT_ID=
+CASHFREE_AADHAAR_SANDBOX_CLIENT_SECRET=
+# Base64-encoded random 32-byte key, e.g. `openssl rand -base64 32`
+AADHAAR_LAB_ENCRYPTION_KEY=
+# Separate high-entropy value used only for Aadhaar HMAC rate-limit fingerprints
+AADHAAR_LAB_HMAC_PEPPER=
+AADHAAR_LAB_RETENTION_DAYS=30
+
+# Omit these in ordinary deployments. Production stays unavailable unless all
+# three values are configured; every request also needs a typed confirmation.
+CASHFREE_AADHAAR_PRODUCTION_ENABLED=true
+CASHFREE_AADHAAR_LIVE_CLIENT_ID=
+CASHFREE_AADHAAR_LIVE_CLIENT_SECRET=
+```
+
 First, run the development server:
 
 ```bash

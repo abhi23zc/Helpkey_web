@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, BedDouble, Building, Building2, Check, CheckCircle2, ChevronLeft, CircleCheck, CircleHelp, Home, Hotel, Loader2, LockKeyhole, MapPin, Search, Sparkles, Trees, Users, Warehouse } from "lucide-react";
+import { ArrowRight, BedDouble, Building, Building2, Check, CheckCircle2, ChevronLeft, CircleCheck, CircleHelp, Home, Hotel, ImageIcon, Loader2, LockKeyhole, MapPin, Search, Sparkles, Trash2, Trees, Upload, Users, Warehouse, X } from "lucide-react";
 import { loadGoogleMaps, placesLibrary } from "@/lib/google/maps-loader";
+import { uploadErrorMessage, uploadKycDocument, uploadPropertyPhoto, validateKycDocument, type KycDocumentType, type PropertyPhotoCategory } from "@/lib/partner/upload-client";
 
 const steps = ["Property type", "Location", "Property details", "Rooms & rates", "Facilities", "Photos", "Verification", "Review"];
 const input = "mt-2 w-full rounded-xl border border-slate-300/80 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-xs outline-none transition placeholder:text-slate-400 focus:border-[#092442] focus:ring-4 focus:ring-[#092442]/10";
@@ -26,6 +27,14 @@ const kycDocumentTypes = [
 ] as const;
 type Listing = { property: any; roomTypes: any[]; ratePlans: any[]; policies: any[]; media: any[]; documents: any[] };
 
+function customerMessage(message: unknown, fallback = "We couldn’t save your changes. Please check the details and try again.") {
+  if (typeof message !== "string" || !message.trim()) return fallback;
+  // Zod's default message is serialized JSON. It is useful for developers,
+  // but must never be rendered to a customer.
+  if (message.trim().startsWith("[") || message.includes('"origin"')) return "Check the highlighted details and try again.";
+  return message;
+}
+
 export function PropertySetup({ propertyId }: { propertyId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,7 +51,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
       body: body ? JSON.stringify(body) : undefined,
     });
     const json = await response.json();
-    if (!response.ok) throw new Error(json.error ?? "Could not save your changes.");
+    if (!response.ok) throw new Error(customerMessage(json.error, "Could not save your changes."));
     return json;
   };
 
@@ -56,6 +65,13 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     const current = json.property.onboarding?.currentStep ?? 1;
     const target = Number.isInteger(requested) && requested >= 1 && requested <= current ? requested : current;
     setStep(target);
+  };
+
+  const goToStep = (nextStep: number) => {
+    const currentStep = listing?.property.onboarding?.currentStep ?? 1;
+    if (nextStep < 1 || nextStep > currentStep || saving) return;
+    setStep(nextStep);
+    router.replace(`/partner/onboarding?propertyId=${propertyId}&step=${nextStep}`, { scroll: false });
   };
 
   useEffect(() => {
@@ -83,7 +99,9 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
           },
         },
       } : current);
-      setStep((current) => Math.min(current + 1, 8));
+      const nextStep = Math.min(step + 1, 8);
+      setStep(nextStep);
+      router.replace(`/partner/onboarding?propertyId=${propertyId}&step=${nextStep}`, { scroll: false });
       setSavedAt("Saved just now");
       return true;
     } catch (error) {
@@ -100,7 +118,9 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
     try {
       await request(`/api/partner/properties/${propertyId}/steps`, { step });
       setListing((current) => current ? { ...current, property: { ...current.property, onboarding: { ...(current.property.onboarding ?? {}), currentStep: Math.min(step + 1, 8), completedSteps: [...new Set([...(current.property.onboarding?.completedSteps ?? []), step])] } } } : current);
-      setStep((current) => Math.min(current + 1, 8));
+      const nextStep = Math.min(step + 1, 8);
+      setStep(nextStep);
+      router.replace(`/partner/onboarding?propertyId=${propertyId}&step=${nextStep}`, { scroll: false });
       setSavedAt("Saved just now");
     } catch (error) {
       setNote(error instanceof Error ? `We couldn’t save your progress. ${error.message}` : "We couldn’t save your progress.");
@@ -118,14 +138,14 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
   else if (step === 2) body = <LocationStep property={property} saving={saving} onSave={saveStep} />;
   else if (step === 3) body = <DetailsStep property={property} saving={saving} onSave={saveStep} />;
   else if (step === 4) body = <RoomsRates propertyId={propertyId} listing={listing} request={request} onChanged={load} onContinue={completeCurrentStep} saving={saving} />;
-  else if (step === 5) body = <Facilities onSave={saveStep} saving={saving} selected={property.amenityIds ?? []} />;
-  else if (step === 6) body = <PhotoStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
-  else if (step === 7) body = <KycStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={() => void completeCurrentStep()} />;
+  else if (step === 5) body = <Facilities onSave={saveStep} saving={saving} selected={property.amenityIds ?? []} childrenPolicy={property.childrenPolicy} petPolicy={property.petPolicy} smokingPolicy={property.smokingPolicy} identityRequirements={property.identityRequirements} />;
+  else if (step === 6) body = <PhotoStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={completeCurrentStep} />;
+  else if (step === 7) body = <KycStep propertyId={propertyId} listing={listing} onChanged={load} onContinue={completeCurrentStep} />;
   else {
     body = (
       <Review
         listing={listing}
-        onFix={(target) => setStep(target)}
+        onFix={goToStep}
         onSubmit={async () => {
           await request(`/api/partner/properties/${propertyId}/submit`);
           router.replace("/partner/dashboard");
@@ -148,7 +168,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
               className="group flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3.5 py-2 text-xs sm:text-sm font-bold text-[#092442] shadow-xs transition hover:border-[#092442] hover:bg-[#092442] hover:text-white"
             >
               <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-              <span>Save & exit</span>
+              <span>Exit setup</span>
             </Link>
             <div className="hidden h-5 w-[1px] bg-slate-200 sm:block" />
             <div className="hidden items-center gap-2 sm:flex">
@@ -179,7 +199,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
               ) : (
                 <>
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-slate-500">Auto-saves on continue</span>
+                  <span className="text-slate-500">Saves when you continue</span>
                 </>
               )}
             </div>
@@ -206,6 +226,30 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
         </div>
       </header>
 
+      <nav aria-label="Listing setup steps" className="border-b border-[#ded8cf] bg-white">
+        <ol className="mx-auto hidden max-w-[1240px] grid-cols-8 gap-1 px-4 py-4 sm:px-6 lg:grid lg:px-8">
+          {steps.map((label, index) => {
+            const number = index + 1;
+            const complete = Boolean(listing.property.onboarding?.completedSteps?.includes(number));
+            const available = number <= (listing.property.onboarding?.currentStep ?? 1);
+            const active = number === step;
+            return (
+              <li key={label} className="relative min-w-0">
+                {index < steps.length - 1 ? <span className={`absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-4 h-px ${complete ? "bg-emerald-400" : "bg-slate-200"}`} /> : null}
+                <button type="button" disabled={!available || saving} onClick={() => goToStep(number)} aria-current={active ? "step" : undefined} className={`relative z-10 flex w-full flex-col items-center gap-1 text-center disabled:cursor-default ${available ? "cursor-pointer" : ""}`}>
+                  <span className={`grid h-8 w-8 place-items-center rounded-full border text-xs font-extrabold ${active ? "border-[#092442] bg-[#092442] text-white" : complete ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-400"}`}>{complete && !active ? <Check className="h-4 w-4" /> : number}</span>
+                  <span className={`truncate text-[10px] font-bold ${active ? "text-[#092442]" : complete ? "text-emerald-700" : "text-slate-500"}`}>{label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:hidden">
+          <div><p className="text-sm font-extrabold text-[#092442]">Step {step} of {steps.length} · {steps[step - 1]}</p><p className="mt-0.5 text-xs text-slate-500">{completedStepsCount} steps complete</p></div>
+          <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#092442]" style={{ width: `${progressPercent}%` }} /></div>
+        </div>
+      </nav>
+
       {/* Main Content & Sidebar Grid */}
       <div className="mx-auto grid max-w-[1240px] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:px-8">
         <div>
@@ -213,7 +257,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
             <span className="h-2 w-2 rounded-full bg-[#bb8525]" />
             <p className="text-[11px] font-extrabold uppercase tracking-[.22em] text-[#bb8525]">Step {step} — {steps[step - 1]}</p>
           </div>
-          <section className="rounded-2xl border border-[#ded8cf] bg-white p-6 shadow-[0_8px_30px_rgba(7,22,51,0.04)] sm:p-8">
+          <section aria-busy={saving} className="rounded-2xl border border-[#ded8cf] bg-white p-6 shadow-[0_8px_30px_rgba(7,22,51,0.04)] sm:p-8">
             {body}
           </section>
           {note && <p role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed font-medium text-rose-900 shadow-xs">{note}</p>}
@@ -260,10 +304,11 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="mx-auto flex max-w-[1240px] items-center justify-between px-4 pb-8 sm:px-6 lg:px-8">
+      <nav aria-label="Setup navigation" className="sticky bottom-0 z-20 border-t border-[#ded8cf] bg-white/95 shadow-[0_-4px_20px_rgba(7,22,51,0.04)] backdrop-blur">
+      <div className="mx-auto flex max-w-[1240px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <button
           type="button"
-          onClick={() => setStep((current) => Math.max(1, current - 1))}
+          onClick={() => goToStep(Math.max(1, step - 1))}
           disabled={step === 1 || saving}
           className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white px-5 text-sm font-extrabold text-[#092442] shadow-xs transition hover:border-[#092442] hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -271,9 +316,9 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
           <span>Back</span>
         </button>
         <span className="text-xs font-semibold text-slate-500 sm:hidden" aria-live="polite">
-          {saving ? "Saving..." : savedAt || "Saves on continue"}
+          {saving ? "Saving..." : savedAt || "Saves when you continue"}
         </span>
-      </nav>
+      </div></nav>
     </main>
   );
 }
@@ -845,35 +890,54 @@ function TypeStep({ selected, propertyName, city, confirmed, onContinue, onSave,
 
 function RoomsRates({ propertyId, listing, request, onChanged, onContinue, saving }: { propertyId: string; listing: Listing; request: any; onChanged: () => Promise<void>; onContinue: () => Promise<void>; saving: boolean }) {
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"room" | "policy" | "rate" | null>(null);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedPolicyId, setSelectedPolicyId] = useState("");
+  const policySectionRef = useRef<HTMLFormElement | null>(null);
+  const roomId = selectedRoomId || listing.roomTypes[0]?.id || "";
+  const policyId = selectedPolicyId || listing.policies[0]?.id || "";
+  const sellableRoomIds = new Set(listing.ratePlans.filter((rate) => rate.cancellationPolicyId).map((rate) => rate.roomTypeId));
+  const roomsMissingRates = listing.roomTypes.filter((room) => !sellableRoomIds.has(room.id));
+  const roomsAndRatesComplete = listing.roomTypes.length > 0 && listing.policies.length > 0 && roomsMissingRates.length === 0;
 
   const add = async (kind: "room" | "policy" | "rate", form: FormData) => {
-    setBusy(true);
+    setBusy(kind); setNotice("");
     try {
-      if (kind === "room") await request(`/api/partner/properties/${propertyId}/room-types`, { name: form.get("name"), description: form.get("description"), totalInventory: Number(form.get("inventory")), maxAdults: Number(form.get("adults")), maxChildren: 0, maxInfants: 0, bedConfigurations: [{ bedType: "double", count: 1 }] });
+      let createdRoomId = "";
+      if (kind === "room") {
+        const result = await request(`/api/partner/properties/${propertyId}/room-types`, { name: form.get("name"), description: form.get("description"), totalInventory: Number(form.get("inventory")), maxAdults: Number(form.get("adults")), maxChildren: 0, maxInfants: 0, bedConfigurations: [{ bedType: "double", count: 1 }] });
+        createdRoomId = typeof result.roomTypeId === "string" ? result.roomTypeId : "";
+      }
       if (kind === "policy") await request(`/api/partner/properties/${propertyId}/cancellation-policies`, { name: form.get("policyName"), description: form.get("policyDescription"), refundableUntilHours: Number(form.get("hours")), cancellationFeePercent: Number(form.get("fee")) });
       if (kind === "rate") {
-        if (!listing.policies[0]) throw new Error("Add a cancellation policy first.");
-        await request(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId: form.get("roomTypeId"), name: form.get("rateName"), code: String(form.get("code")).toUpperCase(), basePricePaise: Math.round(Number(form.get("price")) * 100), cancellationPolicyId: listing.policies[0].id, paymentMode: "full" });
+        if (!policyId) throw new Error("Add a cancellation policy first.");
+        const rateName = String(form.get("rateName") ?? "").trim();
+        await request(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId: roomId, name: rateName, code: internalRateCode(rateName), basePricePaise: Math.round(Number(form.get("price")) * 100), cancellationPolicyId: policyId, paymentMode: "full" });
       }
       await onChanged();
-      setNotice(kind === "room" ? "Room type added." : kind === "policy" ? "Cancellation policy added." : "Rate plan added.");
+      if (createdRoomId) setSelectedRoomId(createdRoomId);
+      setNotice(kind === "room" ? "Room type added. Next, add a cancellation promise." : kind === "policy" ? "Cancellation policy saved. Now set a nightly price." : "This room is ready to sell.");
+      if (kind === "room") {
+        requestAnimationFrame(() => {
+          policySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          policySectionRef.current?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+        });
+      }
       return true;
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not save.");
+      setNotice(error instanceof Error ? customerMessage(error.message, "Could not save.") : "Could not save.");
       return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   return (
     <>
-      <Heading title="Rooms and rates" text="Create a room type, then give it a price and cancellation promise. A room becomes ready only when all three are saved." />
-      <div className="grid gap-5 lg:grid-cols-2">
-        <form onSubmit={(event) => { event.preventDefault(); void add("room", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
-          <h2 className="font-bold">1. Add a room type</h2>
-          <p className="mt-1 text-sm text-slate-500">For example: Deluxe Double.</p>
+      <Heading title="Add your first room and rate" text="Set up one sellable room first: create the room, choose its cancellation promise, then add a nightly price." />
+      <div className="space-y-4">
+        <form noValidate onSubmit={(event) => { event.preventDefault(); void add("room", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
+          <StepHeading number="1" title="Create a room type" complete={listing.roomTypes.length > 0} text="For example: Deluxe Double." />
           <Field name="name" label="Room name" />
           <label className="mt-3 block text-sm font-medium">
             Short description
@@ -883,13 +947,12 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
             <Field name="inventory" label="Rooms to sell" type="number" />
             <Field name="adults" label="Max guests" type="number" />
           </div>
-          <button disabled={busy} className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">
-            Add room type
+          <button disabled={Boolean(busy)} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
+            {busy === "room" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving room...</> : "Save room type"}
           </button>
         </form>
-        <form onSubmit={(event) => { event.preventDefault(); void add("policy", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
-          <h2 className="font-bold">2. Set cancellation</h2>
-          <p className="mt-1 text-sm text-slate-500">Guests see this before booking.</p>
+        <form ref={policySectionRef} noValidate onSubmit={(event) => { event.preventDefault(); void add("policy", new FormData(event.currentTarget)); }} className={`rounded-2xl border p-5 ${listing.roomTypes.length ? "border-slate-200" : "border-slate-200 bg-slate-50"}`}>
+          <StepHeading number="2" title="Set a cancellation promise" complete={listing.policies.length > 0} text="Guests see this before booking." />
           <Field name="policyName" label="Policy name" />
           <label className="mt-3 block text-sm font-medium">
             Policy details
@@ -899,137 +962,224 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
             <Field name="hours" label="Hours before check-in" type="number" />
             <Field name="fee" label="Cancellation fee (%)" type="number" />
           </div>
-          <button disabled={busy} className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">
-            Save policy
+          <button disabled={Boolean(busy) || !listing.roomTypes.length} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
+            {busy === "policy" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving policy...</> : "Save cancellation policy"}
           </button>
         </form>
+        <form noValidate onSubmit={(event) => { event.preventDefault(); void add("rate", new FormData(event.currentTarget)); }} className={`rounded-2xl border p-5 ${roomId && policyId ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-slate-50"}`}>
+          <StepHeading number="3" title="Add a nightly rate" complete={Boolean(roomId && sellableRoomIds.has(roomId))} text="Link this room to the cancellation policy guests will see." />
+          <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-slate-500">Room type<select value={roomId} onChange={(event) => setSelectedRoomId(event.target.value)} disabled={!listing.roomTypes.length} className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wider text-slate-500">Cancellation policy<select value={policyId} onChange={(event) => setSelectedPolicyId(event.target.value)} disabled={!listing.policies.length} className={input}>{listing.policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name}</option>)}</select></label><Field name="rateName" label="Rate name" /><Field name="price" label="Price per night (INR)" type="number" /></div>
+          <button disabled={Boolean(busy) || !roomId || !policyId} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>{busy === "rate" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving rate...</> : "Save nightly rate"}</button>
+        </form>
       </div>
-      {listing.roomTypes.length > 0 && <form onSubmit={(event) => { event.preventDefault(); void add("rate", new FormData(event.currentTarget)); }} className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold">3. Add a sellable rate</h2><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium">Room type<select required name="roomTypeId" className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><Field name="rateName" label="Rate name" /><Field name="code" label="Rate code" /><Field name="price" label="Price per night (INR)" type="number" /></div><button disabled={busy} className="mt-5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">Add rate</button></form>}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <Summary title="Room types" count={listing.roomTypes.length} items={listing.roomTypes.map((room) => room.name)} />
         <Summary title="Policies" count={listing.policies.length} items={listing.policies.map((policy) => policy.name)} />
         <Summary title="Rates" count={listing.ratePlans.length} items={listing.ratePlans.map((rate) => rate.name)} />
       </div>
+      {roomsMissingRates.length > 0 && (
+        <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+          {roomsMissingRates.length === 1 ? `${roomsMissingRates[0].name} still needs a nightly rate.` : `${roomsMissingRates.length} room types still need rates: ${roomsMissingRates.map((room) => room.name).join(", ")}.`}
+        </p>
+      )}
       {notice && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm">{notice}</p>}
-      <button type="button" disabled={saving || busy || !listing.roomTypes.length || !listing.policies.length || !listing.roomTypes.every((room) => listing.ratePlans.some((rate) => rate.roomTypeId === room.id && rate.cancellationPolicyId))} onClick={() => void onContinue()} className="mt-7 w-full rounded-xl bg-[#0b1f3a] p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-        {!listing.roomTypes.length || !listing.policies.length || !listing.roomTypes.every((room) => listing.ratePlans.some((rate) => rate.roomTypeId === room.id && rate.cancellationPolicyId)) ? "Add a room, policy, and matching rate to continue" : saving ? "Saving…" : "Continue to facilities"}
+      <button type="button" disabled={saving || Boolean(busy) || !roomsAndRatesComplete} onClick={() => void onContinue()} className="mt-7 w-full rounded-xl bg-[#0b1f3a] p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        {!listing.roomTypes.length || !listing.policies.length ? "Add a room and cancellation policy to continue" : roomsMissingRates.length ? `Add rate${roomsMissingRates.length === 1 ? "" : "s"} for ${roomsMissingRates.length} remaining room type${roomsMissingRates.length === 1 ? "" : "s"}` : saving ? "Saving…" : "Continue to facilities"}
       </button>
     </>
   );
+}
+
+function StepHeading({ number, title, text, complete }: { number: string; title: string; text: string; complete: boolean }) {
+  return <div className="flex gap-3"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-extrabold ${complete ? "bg-emerald-100 text-emerald-700" : "bg-[#092442] text-white"}`}>{complete ? <Check className="h-4 w-4" /> : number}</span><div><h2 className="font-bold text-[#071633]">{title}</h2><p className="mt-1 text-sm text-slate-500">{text}</p></div></div>;
+}
+
+function internalRateCode(rateName: string) {
+  const code = rateName.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 28);
+  return code.length >= 2 ? `${code}_HK` : "STANDARD_HK";
 }
 
 function Summary({ title, count, items }: { title: string; count: number; items: string[] }) {
-  return <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p><p className="mt-1 text-2xl font-bold">{count}</p>{items.slice(0, 2).map((item) => <p key={item} className="mt-1 truncate text-sm text-slate-600">{item}</p>)}</div>;
+  return <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p><p className="mt-1 text-2xl font-bold">{count}</p>{items.slice(0, 2).map((item, index) => <p key={`${title}-${item}-${index}`} className="mt-1 truncate text-sm text-slate-600">{item}</p>)}</div>;
 }
 
-function Facilities({ selected, onSave, saving }: { selected: string[]; onSave: (value: any) => void; saving: boolean }) {
+const facilityGroups = [
+  { title: "Essentials", description: "The practical comforts guests expect every day.", items: ["Wi-Fi", "Air conditioning", "Power backup", "Hot water"] },
+  { title: "Food & drink", description: "On-property food and in-room dining options.", items: ["Restaurant", "Room service"] },
+  { title: "Services", description: "Conveniences that make arrival and stays easier.", items: ["Parking", "Lift"] },
+] as const;
+
+function allowedPolicy(value: unknown, fallback: boolean) {
+  return typeof value === "object" && value !== null && "allowed" in value && typeof (value as { allowed?: unknown }).allowed === "boolean"
+    ? (value as { allowed: boolean }).allowed
+    : fallback;
+}
+
+function idRequiredPolicy(value: unknown) {
+  return typeof value === "object" && value !== null && "governmentIdRequired" in value && typeof (value as { governmentIdRequired?: unknown }).governmentIdRequired === "boolean"
+    ? (value as { governmentIdRequired: boolean }).governmentIdRequired
+    : true;
+}
+
+function Facilities({ selected, childrenPolicy, petPolicy, smokingPolicy, identityRequirements, onSave, saving }: { selected: string[]; childrenPolicy: unknown; petPolicy: unknown; smokingPolicy: unknown; identityRequirements: unknown; onSave: (value: any) => Promise<boolean>; saving: boolean }) {
   const [items, setItems] = useState(selected);
-  const options = ["Wi-Fi", "Parking", "Restaurant", "Air conditioning", "Lift", "Power backup", "Room service", "Hot water"];
+  const [childrenAllowed, setChildrenAllowed] = useState(() => allowedPolicy(childrenPolicy, true));
+  const [petsAllowed, setPetsAllowed] = useState(() => allowedPolicy(petPolicy, false));
+  const [smokingAllowed, setSmokingAllowed] = useState(() => allowedPolicy(smokingPolicy, false));
+  const [governmentIdRequired, setGovernmentIdRequired] = useState(() => idRequiredPolicy(identityRequirements));
 
   return (
     <>
-      <Heading title="Facilities guests love" text="Choose all that are available at your property." />
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => <button key={option} onClick={() => setItems((current) => (current.includes(option) ? current.filter((item) => item !== option) : [...current, option]))} className={`rounded-full px-4 py-2 text-sm font-medium ${items.includes(option) ? "bg-slate-900 text-white" : "border border-slate-200"}`}>{option}</button>)}
+      <Heading title="Facilities and guest policies" text="Choose what guests can expect, then set the key policies they need to know before booking." />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-4">
+          {facilityGroups.map((group) => (
+            <fieldset key={group.title} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <legend className="px-1 text-sm font-extrabold text-[#071633]">{group.title}</legend>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">{group.description}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {group.items.map((option) => {
+                  const checked = items.includes(option);
+                  return <button type="button" key={option} role="checkbox" aria-checked={checked} disabled={saving} onClick={() => setItems((current) => checked ? current.filter((item) => item !== option) : [...current, option])} className={`flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#092442] disabled:cursor-not-allowed disabled:opacity-60 ${checked ? "border-[#092442] bg-[#092442] text-white" : "border-slate-200 bg-white text-slate-700 hover:border-[#092442]"}`}><span className={`grid h-5 w-5 place-items-center rounded border ${checked ? "border-white bg-white text-[#092442]" : "border-slate-300 bg-white"}`}>{checked ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : null}</span>{option}</button>;
+                })}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+
+        <section aria-labelledby="guest-policies-title" className="h-fit rounded-xl border border-[#ded8cf] bg-white p-4 shadow-[0_4px_16px_rgba(7,22,51,0.04)]">
+          <p className="text-[11px] font-extrabold uppercase tracking-[.18em] text-[#bb8525]">Guest policies</p>
+          <h2 id="guest-policies-title" className="mt-1 text-base font-extrabold text-[#071633]">Set expectations clearly</h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">Guests see these requirements before their stay.</p>
+          <div className="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
+            <PolicySwitch label="Children welcome" description="Children can stay at this property." checked={childrenAllowed} disabled={saving} onChange={setChildrenAllowed} />
+            <PolicySwitch label="Pets welcome" description="Guests may bring pets." checked={petsAllowed} disabled={saving} onChange={setPetsAllowed} />
+            <PolicySwitch label="Smoking allowed" description="Smoking is permitted on the property." checked={smokingAllowed} disabled={saving} onChange={setSmokingAllowed} />
+            <PolicySwitch label="Government ID required" description="Ask guests to present ID at check-in." checked={governmentIdRequired} disabled={saving} onChange={setGovernmentIdRequired} />
+          </div>
+        </section>
       </div>
-      <button disabled={saving} onClick={() => onSave({ amenityIds: items, childrenPolicy: { allowed: true }, petPolicy: { allowed: false }, smokingPolicy: { allowed: false }, identityRequirements: { governmentIdRequired: true } })} className="mt-7 w-full rounded-xl bg-slate-900 p-3 font-semibold text-white">
-        Save and continue
+      <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-slate-600" aria-live="polite"><span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-emerald-700"><Check className="h-3.5 w-3.5" /></span>{items.length} {items.length === 1 ? "facility selected" : "facilities selected"}</div>
+      <button type="button" disabled={saving || !items.length} onClick={() => void onSave({ amenityIds: items, childrenPolicy: { allowed: childrenAllowed }, petPolicy: { allowed: petsAllowed }, smokingPolicy: { allowed: smokingAllowed }, identityRequirements: { governmentIdRequired } })} className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 p-3 font-semibold text-white transition hover:bg-[#061633] disabled:cursor-not-allowed disabled:opacity-60">
+        {saving ? <><Loader2 className="h-4 w-4 animate-spin text-amber-300" /> Saving facilities and policies...</> : items.length ? "Save and continue to photos" : "Choose a facility to continue"}
       </button>
     </>
   );
 }
 
-function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId: string; listing: Listing; onChanged: () => Promise<void>; onContinue: () => void }) {
-  const [category, setCategory] = useState<(typeof propertyPhotoCategories)[number]["value"]>("exterior");
+function PolicySwitch({ label, description, checked, disabled, onChange }: { label: string; description: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {
+  return <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 p-3 text-left transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#092442] disabled:cursor-not-allowed disabled:opacity-60"><span><span className="block text-sm font-bold text-[#071633]">{label}</span><span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{description}</span></span><span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-[#092442]" : "bg-slate-200"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} /></span></button>;
+}
+
+type QueuedPhoto = { id: string; file: File; category: PropertyPhotoCategory; previewUrl: string; status: "queued" | "hashing" | "uploading" | "finalizing" | "failed"; progress: number; error?: string };
+
+function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId: string; listing: Listing; onChanged: () => Promise<void>; onContinue: () => Promise<void> }) {
+  const [category, setCategory] = useState<PropertyPhotoCategory>("exterior");
+  const [queue, setQueue] = useState<QueuedPhoto[]>([]);
   const [status, setStatus] = useState("");
-  const [uploading, setUploading] = useState(false);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
-  const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const [coverPendingId, setCoverPendingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const photoCount = listing.media.length;
+  const photos = listing.media.filter((asset) => asset.kind === "property_image");
+  const photoCount = photos.length;
+  const activeUploads = queue.filter((item) => !["failed"].includes(item.status)).length;
+
+  const updateQueueItem = (id: string, patch: Partial<QueuedPhoto>) => setQueue((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
 
   useEffect(() => {
     let cancelled = false;
-    if (!listing.media.length) {
-      setPreviewUrls({});
-      return;
-    }
-    void fetch(`/api/partner/properties/${propertyId}/media/preview-urls`, { cache: "no-store" })
-      .then(async (response) => {
-        const json = await response.json();
-        if (!response.ok) throw new Error(json.error ?? "Unable to load previews.");
-        if (!cancelled) setPreviewUrls(Object.fromEntries(json.previews.map((item: { id: string; url: string }) => [item.id, item.url])));
-      })
-      .catch(() => { if (!cancelled) setStatus("Photos are saved. Their previews could not be loaded yet."); });
+    const missing = photos.filter((asset) => !asset.imageUrl).map((asset) => asset.id);
+    if (!missing.length) return;
+    void fetch(`/api/partner/properties/${propertyId}/media/preview-urls`, { cache: "no-store" }).then(async (response) => {
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error ?? "Unable to load previews.");
+      if (!cancelled) setPreviewUrls(Object.fromEntries(json.previews.map((item: { id: string; url: string }) => [item.id, item.url])));
+    }).catch(() => { if (!cancelled) setStatus("Your photos are saved, but their previews could not be loaded yet."); });
     return () => { cancelled = true; };
   }, [propertyId, listing.media]);
 
-  const handleFiles = async (selectedFiles: File[]) => {
-    if (!selectedFiles.length) return;
-    const invalidFile = selectedFiles.find((file) => !allowedPropertyPhotoTypes.has(file.type) || file.size <= 0 || file.size > maxPropertyPhotoBytes);
-    if (invalidFile) {
-      setStatus(`“${invalidFile.name}” was not uploaded. Use a JPG, PNG, or WebP image no larger than 12 MB.`);
-      return;
-    }
-
-    setUploading(true);
-    setStatus(`Preparing ${selectedFiles.length} photo${selectedFiles.length > 1 ? "s" : ""}...`);
-    let uploadedCount = 0;
-    let uploadFailure: unknown = null;
-
+  const uploadOne = async (item: QueuedPhoto) => {
+    updateQueueItem(item.id, { status: "hashing", progress: 0, error: undefined });
     try {
-      for (const [index, file] of selectedFiles.entries()) {
-        setStatus(`Uploading photo ${index + 1} of ${selectedFiles.length}: ${file.name}`);
-        const checksum = await sha256Hex(file);
-        const signed = await postJson(`/api/partner/properties/${propertyId}/media/upload-url`, { fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum, category });
-        await putFile(signed.uploadUrl, signed.headers, file);
-        await postJson(`/api/partner/properties/${propertyId}/media/finalize`, { uploadId: signed.uploadId });
-        uploadedCount += 1;
-      }
+      updateQueueItem(item.id, { status: "uploading", progress: 1 });
+      await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }));
+      updateQueueItem(item.id, { status: "finalizing", progress: 100 });
+      await onChanged();
+      URL.revokeObjectURL(item.previewUrl);
+      setQueue((items) => items.filter((queued) => queued.id !== item.id));
     } catch (error) {
-      uploadFailure = error;
-    } finally {
-      // A later file may fail after earlier files were finalized. Re-read the
-      // listing so those successful uploads are immediately visible and never
-      // look as though they were lost.
-      if (uploadedCount > 0) {
-        try {
-          await onChanged();
-        } catch {
-          setStatus(`${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded, but the gallery could not refresh. Reloading the page will show them.`);
-        }
-      }
-      setUploading(false);
-      if (uploadFailure) {
-        const completed = uploadedCount ? `${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded successfully. ` : "";
-        setStatus(`${completed}${uploadErrorMessage(uploadFailure)}`);
-      } else {
-        setStatus(`${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded. They are private and pending review.`);
-      }
+      updateQueueItem(item.id, { status: "failed", progress: 0, error: uploadErrorMessage(error) });
     }
+  };
+
+  const runQueue = (items: QueuedPhoto[]) => {
+    let cursor = 0;
+    const worker = async () => { while (cursor < items.length) { const item = items[cursor++]; await uploadOne(item); } };
+    void Promise.all(Array.from({ length: Math.min(3, items.length) }, worker));
+  };
+
+  const addFiles = (files: File[]) => {
+    if (!files.length) return;
+    const next = files.map((file, index): QueuedPhoto => ({
+      id: `${Date.now()}-${index}-${file.name}`,
+      file,
+      category,
+      previewUrl: URL.createObjectURL(file),
+      status: allowedPropertyPhotoTypes.has(file.type) && file.size > 0 && file.size <= maxPropertyPhotoBytes ? "queued" : "failed",
+      progress: 0,
+      error: allowedPropertyPhotoTypes.has(file.type) && file.size > 0 && file.size <= maxPropertyPhotoBytes ? undefined : "Use a JPG, PNG, or WebP image no larger than 12 MB.",
+    }));
+    setQueue((items) => [...items, ...next]);
+    const valid = next.filter((item) => item.status === "queued");
+    if (valid.length) { setStatus(`Preparing ${valid.length} photo${valid.length === 1 ? "" : "s"} for upload.`); runQueue(valid); }
+  };
+
+  const retry = (item: QueuedPhoto) => { updateQueueItem(item.id, { status: "queued", progress: 0, error: undefined }); runQueue([{ ...item, status: "queued", progress: 0, error: undefined }]); };
+  const removeQueued = (item: QueuedPhoto) => { URL.revokeObjectURL(item.previewUrl); setQueue((items) => items.filter((queued) => queued.id !== item.id)); };
+  const setCover = async (mediaId: string) => { setCoverPendingId(mediaId); try { await postJson(`/api/partner/properties/${propertyId}/media/${mediaId}`, { makeCover: true }); await onChanged(); } catch (error) { setStatus(uploadErrorMessage(error)); } finally { setCoverPendingId(null); } };
+  const removeSaved = async (mediaId: string) => {
+    if (!window.confirm("Remove this photo permanently? This cannot be undone.")) return;
+    setRemovingId(mediaId);
+    try { const response = await fetch(`/api/partner/properties/${propertyId}/media/${mediaId}`, { method: "DELETE" }); const json = await response.json(); if (!response.ok) throw new Error(json.error ?? "Unable to remove photo."); await onChanged(); }
+    catch (error) { setStatus(uploadErrorMessage(error)); } finally { setRemovingId(null); }
   };
 
   return (
     <>
-      <Heading title="Add property photos" text="Upload at least six sharp photos. They stay private until approved by your team." />
+      <Heading title="Add property photos" text="Upload at least six sharp photos. They stay private until Helpkey approves them." />
       <div className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
         <div className="rounded-2xl border border-slate-200 p-5">
           <label className="block text-sm font-medium">
             Photo category
-            <select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className={input}>
+            <select value={category} disabled={activeUploads > 0} onChange={(event) => setCategory(event.target.value as PropertyPhotoCategory)} className={input}>
               {propertyPhotoCategories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
-          <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
+          <div
+            aria-label="Photo upload drop zone"
+            onDragOver={(event) => { event.preventDefault(); if (!activeUploads) setDragging(true); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              if (activeUploads) { setStatus("Wait for the current upload to finish before adding more photos."); return; }
+              addFiles(Array.from(event.dataTransfer.files));
+            }}
+            className={`mt-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-5 py-10 text-center transition ${dragging ? "border-[#092442] bg-blue-50 shadow-[0_0_0_4px_rgba(9,36,66,.08)]" : "border-slate-200 bg-slate-50"}`}
+          >
+            <Upload className="mb-3 h-7 w-7 text-[#092442]" />
             <span className="text-base font-semibold text-slate-900">Choose JPG, PNG, or WebP images</span>
-            <span className="mt-2 text-sm text-slate-500">Up to 12 MB each. You can upload multiple files at once.</span>
+            <span className="mt-2 text-sm text-slate-500">Drag and drop files here, or select them. Up to 12 MB each.</span>
             <button
               type="button"
-              disabled={uploading}
+              disabled={activeUploads > 0}
               onClick={() => fileInputRef.current?.click()}
               className="mt-5 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#092442] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {uploading ? "Uploading photos…" : "Select photos"}
+              {activeUploads ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Uploading {activeUploads}</> : "Select photos"}
             </button>
             <input
               ref={fileInputRef}
@@ -1037,7 +1187,7 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
               accept="image/jpeg,image/png,image/webp"
               multiple
               className="sr-only"
-              disabled={uploading}
+              disabled={activeUploads > 0}
               onChange={(event) => {
                 // FileList is owned by the browser and can be cleared when the
                 // input is reset. Copy it before starting asynchronous work.
@@ -1047,32 +1197,26 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
                   setStatus("No photos were selected.");
                   return;
                 }
-                setSelectedFileNames(selectedFiles.map((file) => file.name));
-                setStatus(`${selectedFiles.length} photo${selectedFiles.length === 1 ? "" : "s"} selected. Preparing upload…`);
-                void handleFiles(selectedFiles);
+                addFiles(selectedFiles);
               }}
             />
           </div>
-          {selectedFileNames.length > 0 && (
-            <p className="mt-3 truncate text-xs font-medium text-slate-600" title={selectedFileNames.join(", ")}>
-              Selected: {selectedFileNames.slice(0, 2).join(", ")}{selectedFileNames.length > 2 ? ` +${selectedFileNames.length - 2} more` : ""}
-            </p>
-          )}
-          {status && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{status}</p>}
-          <button type="button" disabled={uploading || photoCount < 6} onClick={onContinue} className={`mt-5 w-full ${button}`}>
-            {photoCount < 6 ? `Add ${6 - photoCount} more photo${6 - photoCount === 1 ? "" : "s"} to continue` : "Continue"}
+          {queue.length > 0 && <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-3" aria-live="polite">{queue.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-2"><img src={item.previewUrl} alt="" className="h-11 w-11 rounded object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{item.file.name}</p><div className="mt-1 h-1.5 overflow-hidden rounded bg-slate-200"><div className={`h-full ${item.status === "failed" ? "bg-rose-500" : "bg-[#092442]"}`} style={{ width: `${item.progress}%` }} /></div><p className={`mt-1 text-[11px] font-medium ${item.status === "failed" ? "text-rose-600" : "text-slate-500"}`}>{item.status === "hashing" ? "Preparing…" : item.status === "uploading" ? `Uploading ${item.progress}%` : item.status === "finalizing" ? "Saving photo…" : item.error ?? "Queued"}</p></div>{item.status === "failed" && <button type="button" onClick={() => retry(item)} className="text-xs font-bold text-[#092442]">Retry</button>}<button type="button" onClick={() => removeQueued(item)} className="p-1 text-slate-400 hover:text-rose-600" aria-label={`Remove ${item.file.name}`}><X className="h-4 w-4" /></button></div>)}</div>}
+          {status && <p role="status" className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{status}</p>}
+          <button type="button" disabled={activeUploads > 0 || photoCount < 6 || continuing} onClick={async () => { setContinuing(true); try { await onContinue(); } finally { setContinuing(false); } }} className={`mt-5 inline-flex w-full items-center justify-center gap-2 ${button}`}>
+            {continuing ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving progress…</> : photoCount < 6 ? `Add ${6 - photoCount} more photo${6 - photoCount === 1 ? "" : "s"} to continue` : "Continue to verification"}
           </button>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-500">Progress</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">{photoCount}/6</p>
-          <p className="mt-2 text-sm text-slate-600">Exterior, reception, room, bathroom, and additional spaces are all accepted.</p>
+          <p className="mt-2 text-sm text-slate-600">{photoCount >= 6 ? "You have enough photos to continue." : `${6 - photoCount} more needed. Any category is accepted.`}</p>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            {listing.media.length ? listing.media.map((asset) => <article key={asset.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="aspect-[4/3] bg-slate-200">{previewUrls[asset.id] ? (
+            {photos.length ? photos.map((asset) => <article key={asset.id} className="group overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="relative aspect-[4/3] bg-slate-200">{asset.imageUrl || previewUrls[asset.id] ? (
               // Private signed R2 URLs cannot be safely configured as static Next image hosts.
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrls[asset.id]} alt={`${String(asset.category || "property")} photo`} className="h-full w-full object-cover" />
-            ) : <div className="flex h-full items-center justify-center text-xs font-medium text-slate-500">Loading preview...</div>}</div><div className="p-3"><p className="text-xs font-semibold capitalize text-slate-700">{String(asset.category || "additional").replace("_", " ")}</p><p className="mt-1 text-xs text-amber-700">Pending approval</p></div></article>) : <p className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">No photos uploaded yet.</p>}
+              <img src={asset.imageUrl || previewUrls[asset.id]} alt={asset.altText || `${String(asset.category || "property")} photo`} className="h-full w-full object-cover" />
+            ) : <div className="flex h-full items-center justify-center text-xs font-medium text-slate-500">Loading preview...</div>}{asset.isCover && <span className="absolute left-2 top-2 rounded-full bg-[#c89b3c] px-2 py-1 text-[10px] font-bold text-[#071633]">Cover</span>}<div className="absolute inset-x-1 bottom-1 flex gap-1 opacity-0 transition group-hover:opacity-100">{!asset.isCover && <button type="button" disabled={coverPendingId !== null} onClick={() => void setCover(asset.id)} className="flex-1 rounded bg-slate-950/85 py-1 text-[10px] font-bold text-white">{coverPendingId === asset.id ? "Setting…" : "Set cover"}</button>}<button type="button" disabled={removingId !== null} onClick={() => void removeSaved(asset.id)} className="rounded bg-rose-600/90 p-1 text-white" aria-label="Remove photo">{removingId === asset.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}</button></div></div><div className="p-3"><p className="text-xs font-semibold capitalize text-slate-700">{String(asset.category || "additional").replace("_", " ")}</p><p className="mt-1 text-xs text-amber-700">Pending approval</p></div></article>) : <p className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">No photos uploaded yet.</p>}
           </div>
         </div>
       </div>
@@ -1080,59 +1224,60 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
   );
 }
 
-function KycStep({ propertyId, listing, onChanged, onContinue }: { propertyId: string; listing: Listing; onChanged: () => Promise<void>; onContinue: () => void }) {
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
+type KycUploadState = { documentType: KycDocumentType; stage: "validating" | "uploading" | "finalizing" | "failed"; progress: number; file: File; error?: string };
+
+function KycStep({ propertyId, listing, onChanged, onContinue }: { propertyId: string; listing: Listing; onChanged: () => Promise<void>; onContinue: () => Promise<void> }) {
+  const [upload, setUpload] = useState<KycUploadState | null>(null);
+  const [dragging, setDragging] = useState<KycDocumentType | null>(null);
+  const [continuing, setContinuing] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const documentSet = new Set(listing.documents.map((item) => item.documentType));
   const requiredMissing = kycDocumentTypes.filter((item) => item.required && !documentSet.has(item.value)).length;
 
-  const handleFile = async (documentType: (typeof kycDocumentTypes)[number]["value"], file: File | null) => {
-    if (!file) return;
-    setUploading(documentType);
-    setStatus(`Uploading ${file.name}...`);
-
+  const handleFile = async (documentType: KycDocumentType, file: File | null) => {
+    if (!file || (upload && upload.stage !== "failed")) return;
+    const validationError = validateKycDocument(file);
+    if (validationError) { setUpload({ documentType, stage: "failed", progress: 0, file, error: validationError }); return; }
+    setUpload({ documentType, stage: "validating", progress: 0, file });
     try {
-      const checksum = await sha256Hex(file);
-      const signed = await postJson(`/api/partner/properties/${propertyId}/kyc/upload-url`, { documentType, fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum });
-      await putFile(signed.uploadUrl, signed.headers, file);
-      await postJson(`/api/partner/properties/${propertyId}/kyc/finalize`, { uploadId: signed.uploadId });
+      setUpload({ documentType, stage: "uploading", progress: 1, file });
+      await uploadKycDocument(propertyId, documentType, file, (progress) => setUpload({ documentType, stage: "uploading", progress, file }));
+      setUpload({ documentType, stage: "finalizing", progress: 100, file });
       await onChanged();
-      setStatus("Document uploaded and stored privately.");
+      setUpload(null);
     } catch (error) {
-      setStatus(uploadErrorMessage(error));
-    } finally {
-      setUploading(null);
+      setUpload({ documentType, stage: "failed", progress: 0, file, error: uploadErrorMessage(error) });
     }
+  };
+
+  const removeDocument = async (document: any) => {
+    if (!window.confirm(`Remove ${document.fileName ?? "this document"} permanently?`)) return;
+    setRemovingId(document.id);
+    try { const response = await fetch(`/api/partner/properties/${propertyId}/kyc/${document.id}`, { method: "DELETE" }); const json = await response.json(); if (!response.ok) throw new Error(json.error ?? "Unable to remove document."); await onChanged(); }
+    catch (error) { setUpload({ documentType: document.documentType, stage: "failed", progress: 0, file: new File([], document.fileName ?? "Document"), error: uploadErrorMessage(error) }); } finally { setRemovingId(null); }
   };
 
   return (
     <>
-      <Heading title="Verify ownership" text="PAN and government ID front and back are required before submission. Files stay private." />
-      <div className="space-y-4">
+      <Heading title="Verify your identity" text="Upload PAN and government ID front and back before submission. JPG, PNG, or PDF · up to 10 MB · stored privately." />
+      <div className="space-y-3">
         {kycDocumentTypes.map((item) => {
           const existing = listing.documents.find((document) => document.documentType === item.value);
-          const isBusy = uploading === item.value;
-
-          return (
-            <div key={item.value} className="rounded-2xl border border-slate-200 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold text-slate-900">{item.label}</p>
-                  <p className="text-sm text-slate-500">{item.required ? "Required for submission" : "Optional"}</p>
-                  {existing ? <p className="mt-2 text-sm text-emerald-700">Uploaded: {existing.fileName} ({existing.status || "pending"})</p> : <p className="mt-2 text-sm text-amber-700">Not uploaded yet</p>}
-                </div>
-                <label className={`inline-flex cursor-pointer items-center justify-center ${button}`}>
-                  {isBusy ? "Uploading..." : existing ? "Replace file" : "Upload file"}
-                  <input type="file" accept={item.accept} className="hidden" disabled={Boolean(uploading)} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ""; void handleFile(item.value, file); }} />
-                </label>
-              </div>
+          const isBusy = upload?.documentType === item.value && upload.stage !== "failed";
+          const failed = upload?.documentType === item.value && upload.stage === "failed" ? upload : null;
+          const isDragging = dragging === item.value;
+          return <div key={item.value} onDragOver={(event) => { event.preventDefault(); if (!upload) setDragging(item.value); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(null); }} onDrop={(event) => { event.preventDefault(); setDragging(null); void handleFile(item.value, event.dataTransfer.files?.[0] ?? null); }} className={`rounded-2xl border p-4 transition ${isDragging ? "border-[#092442] bg-blue-50 shadow-[0_0_0_3px_rgba(9,36,66,.08)]" : "border-slate-200 bg-white"}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0"><p className="font-semibold text-slate-900">{item.label} {item.required && <span className="text-amber-700" aria-label="required">*</span>}</p><p className="text-sm text-slate-500">{item.required ? "Required for submission" : "Optional"}</p>{existing ? <p className="mt-1 truncate text-sm text-emerald-700">Uploaded: {existing.fileName} · {existing.status || "pending"}</p> : <p className="mt-1 text-sm text-amber-700">Drop a file here or choose one</p>}</div>
+              <div className="flex shrink-0 items-center gap-2"><label className={`inline-flex cursor-pointer items-center justify-center gap-2 ${button} ${upload && !isBusy ? "pointer-events-none opacity-60" : ""}`}>{isBusy ? <><Loader2 className="h-4 w-4 animate-spin" />{upload.stage === "finalizing" ? "Saving…" : `Uploading ${upload.progress}%`}</> : existing ? "Replace" : "Upload file"}<input type="file" accept={item.accept} className="hidden" disabled={Boolean(upload)} onChange={(event) => { const file = event.currentTarget.files?.[0] ?? null; event.currentTarget.value = ""; void handleFile(item.value, file); }} /></label>{existing && <button type="button" disabled={Boolean(upload) || removingId !== null} onClick={() => void removeDocument(existing)} className="rounded-xl border border-slate-200 p-2.5 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove ${item.label}`}>{removingId === existing.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>}</div>
             </div>
-          );
+            {isBusy && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-live="polite"><div className="h-full rounded-full bg-[#092442] transition-all" style={{ width: `${upload.progress}%` }} /></div>}
+            {failed && <div role="alert" className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"><span className="min-w-0">{failed.error}</span><button type="button" onClick={() => void handleFile(item.value, failed.file)} className="shrink-0 rounded bg-white px-2 py-1 text-xs font-bold text-rose-700 shadow-sm">Retry</button></div>}
+          </div>;
         })}
       </div>
-      {status && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{status}</p>}
-      <button disabled={Boolean(uploading) || requiredMissing > 0} onClick={onContinue} className={`mt-6 w-full ${button}`}>
-        {requiredMissing > 0 ? `Upload ${requiredMissing} required document${requiredMissing === 1 ? "" : "s"} to continue` : "Continue"}
+      <button disabled={Boolean(upload && upload.stage !== "failed") || requiredMissing > 0 || continuing} onClick={async () => { setContinuing(true); try { await onContinue(); } finally { setContinuing(false); } }} className={`mt-6 inline-flex w-full items-center justify-center gap-2 ${button}`}>
+        {continuing ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving verification…</> : requiredMissing > 0 ? `Upload ${requiredMissing} required document${requiredMissing === 1 ? "" : "s"} to continue` : "Continue to review"}
       </button>
     </>
   );
@@ -1172,8 +1317,8 @@ function Review({ listing, onSubmit, onFix }: { listing: Listing; onSubmit: () =
       </div>
       {error && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">{error}</p>}
       {!complete && <p className="mt-5 text-sm text-slate-600">Finish each item marked “Needs attention” before submitting.</p>}
-      <button type="button" disabled={submitting || !complete} onClick={() => void submit()} className="mt-7 w-full rounded-xl bg-amber-400 p-3 font-bold disabled:cursor-not-allowed disabled:opacity-50">
-        {submitting ? "Submitting listing..." : "Submit for review"}
+      <button type="button" disabled={submitting || !complete} onClick={() => void submit()} className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#092442] p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting listing...</> : "Submit for review"}
       </button>
     </>
   );
@@ -1184,26 +1329,4 @@ async function postJson(url: string, body: unknown) {
   const json = await response.json();
   if (!response.ok) throw new Error(json.error ?? "Request failed.");
   return json;
-}
-
-async function putFile(url: string, headers: Record<string, string>, file: File) {
-  const response = await fetch(url, { method: "PUT", headers, body: file });
-  if (!response.ok) throw new Error("UPLOAD_FAILED");
-}
-
-async function sha256Hex(file: File) {
-  const buffer = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function uploadErrorMessage(error: unknown) {
-  if (error instanceof TypeError) return "Upload could not reach storage. Check your R2 bucket CORS for this app origin.";
-  if (error instanceof Error) {
-    if (error.message === "UPLOAD_FAILED") return "Upload was rejected by storage. Check file type, size, and signed URL expiry.";
-    if (error.message === "UPLOAD_EXPIRED") return "The upload link expired before final save. Try the upload again.";
-    if (error.message === "R2_OBJECT_VERIFICATION_FAILED") return "The file reached storage but verification failed. Retry with the original file.";
-    return error.message;
-  }
-  return "Upload failed.";
 }

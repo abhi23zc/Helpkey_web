@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertTriangle, CheckCircle2, ImageIcon, Loader2, MapPin, Navigation, Plus, Search, Star, Upload, X } from "lucide-react";
 import { formatPaise, toPaise } from "@/lib/currency";
-import { requestJson, putFile, putFileWithProgress, sha256Hex, uploadErrorMessage } from "@/lib/partner/upload-client";
+import { requestJson, uploadErrorMessage, uploadKycDocument, uploadPropertyPhoto } from "@/lib/partner/upload-client";
 import { mapsLibrary, markerLibrary, placesLibrary } from "@/lib/google/maps-loader";
 import type { ListingMutations, ListingProperty, ListingResponse } from "./use-property-listing";
 
@@ -801,6 +801,7 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
   const [notice, setNotice] = useState("");
   const [activeUploads, setActiveUploads] = useState(0);
   const [coverPendingId, setCoverPendingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     onBusyChange?.(activeUploads > 0 || coverPendingId !== null);
@@ -821,18 +822,9 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
     updateQueueItem(item.id, { status: "uploading", progress: 1, error: undefined });
     setActiveUploads((count) => count + 1);
     try {
-      const checksum = await sha256Hex(item.file);
-      const signed = await requestJson<{ uploadId: string; uploadUrl: string; headers: Record<string, string> }>(
-        `/api/partner/properties/${propertyId}/media/upload-url`,
-        { fileName: item.file.name, mimeType: item.file.type, sizeBytes: item.file.size, checksum, category: item.category },
-      );
-      await putFileWithProgress(signed.uploadUrl, signed.headers, item.file, (progress) => updateQueueItem(item.id, { progress }));
+      const finalized = await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }));
       updateQueueItem(item.id, { status: "processing", progress: 100 });
-      const finalized = await requestJson<{ mediaId: string; media?: ListingResponse["media"][number]; coverMediaId?: string | null }>(
-        `/api/partner/properties/${propertyId}/media/finalize`,
-        { uploadId: signed.uploadId },
-      );
-      if (finalized.media) mutations.addMedia(finalized.media, finalized.coverMediaId ?? undefined);
+      if (finalized.media) mutations.addMedia(finalized.media as ListingResponse["media"][number], finalized.coverMediaId ?? undefined);
       updateQueueItem(item.id, { status: "uploaded", progress: 100 });
       window.setTimeout(() => {
         URL.revokeObjectURL(item.previewUrl);
@@ -905,6 +897,19 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
       mutations.reload();
     } finally {
       setCoverPendingId(null);
+    }
+  };
+
+  const removeSaved = async (mediaId: string) => {
+    if (!window.confirm("Remove this photo permanently? This cannot be undone.")) return;
+    setRemovingId(mediaId);
+    try {
+      const result = await requestJson<{ coverMediaId: string | null }>(`/api/partner/properties/${propertyId}/media/${mediaId}`, undefined, "DELETE");
+      mutations.removeMedia(mediaId, result.coverMediaId);
+    } catch (cause) {
+      setNotice(uploadErrorMessage(cause));
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -999,6 +1004,9 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
                     {coverPendingId === photo.id ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Setting…</> : "Set cover"}
                   </button>
                 )}
+                <button type="button" onClick={() => void removeSaved(photo.id)} disabled={removingId !== null} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-md bg-rose-600/90 text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-100" aria-label={`Remove ${photo.fileName ?? "photo"}`}>
+                  {removingId === photo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                </button>
               </div>
             ))}
           </div>
@@ -1031,16 +1039,7 @@ export function SafetyEditor({ propertyId, listing, onSaved, mutations, onBusyCh
     setUploading(documentType);
     setStatus(`Uploading ${file.name}…`);
     try {
-      const checksum = await sha256Hex(file);
-      const signed = await requestJson<{ uploadId: string; uploadUrl: string; headers: Record<string, string> }>(
-        `/api/partner/properties/${propertyId}/kyc/upload-url`,
-        { documentType, fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum },
-      );
-      await putFile(signed.uploadUrl, signed.headers, file);
-      const finalized = await requestJson<{ documentId: string; document?: { id: string; documentType?: string; status?: string } }>(
-        `/api/partner/properties/${propertyId}/kyc/finalize`,
-        { uploadId: signed.uploadId },
-      );
+      const finalized = await uploadKycDocument(propertyId, documentType as "pan" | "government_id_front" | "government_id_back" | "gst", file);
       if (finalized.document) mutations.addDocument(finalized.document);
       setStatus("Document uploaded and stored privately.");
       onSaved();
