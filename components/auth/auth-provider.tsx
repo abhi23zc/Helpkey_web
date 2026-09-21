@@ -82,11 +82,5 @@ export function useAuth() {
  */
 export function useIsPartner() {
   const { appUser } = useAuth();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  return mounted && Boolean(appUser?.roles?.includes("partner"));
+  return Boolean(appUser?.roles?.includes("partner"));
 }

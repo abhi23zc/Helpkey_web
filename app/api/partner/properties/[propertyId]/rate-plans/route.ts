@@ -1,8 +1,11 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { ZodError } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner, ratePlanSchema } from "@/lib/partner/service";
+import { enqueueProjection } from "@/lib/projections";
+import { invalidatePublic } from "@/lib/api/cache";
 
 function customerError(error: unknown) {
   if (error instanceof ZodError) {
@@ -17,7 +20,7 @@ function customerError(error: unknown) {
   return error instanceof Error ? error.message : "Unable to create rate plan.";
 }
 
-export async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/rate-plans">) {
+const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/rate-plans">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
@@ -28,7 +31,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/part
     if (!room.exists || room.data()?.propertyId !== propertyId) throw new Error("INVALID_ROOM_TYPE");
     const ref = adminDb.collection("ratePlans").doc();
     const { minimumNights, maximumNights, ...rate } = input;
-    await ref.set({
+    const batch = adminDb.batch();
+    batch.set(ref, {
       propertyId,
       ...rate,
       bookingMode: "overnight",
@@ -49,8 +53,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/part
       updatedBy: user.uid,
       deletedAt: null,
     });
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
+    await invalidatePublic("home", "search:*", "bookable:*");
     return Response.json({ ratePlanId: ref.id, ratePlan: { id: ref.id, propertyId, ...rate, roomTypeId: input.roomTypeId, cancellationPolicyId: input.cancellationPolicyId, minimumNights, maximumNights, status: "active" } }, { status: 201 });
   } catch (error) {
     return Response.json({ error: customerError(error) }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/partner/properties/[propertyId]/rate-plans", auth: "strict", requireAuth: true, cache: "private" });

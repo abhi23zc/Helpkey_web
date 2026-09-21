@@ -1,11 +1,14 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireAdmin, recordReviewEvent } from "@/lib/admin/data";
 import { notifyPropertyDecision } from "@/lib/notifications/service";
+import { enqueueProjection } from "@/lib/projections";
+import { invalidatePublic } from "@/lib/api/cache";
 const schema = z.object({ decision: z.enum(["approve", "request_changes", "reject"]), reason: z.string().max(1000).optional() }).strict();
-export async function POST(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]/review">) {
+const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]/review">) {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
     await requireAdmin(user.uid);
@@ -61,6 +64,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/admi
         reason: input.decision === "approve" ? null : input.reason ?? null,
         submissionAttempt: typeof data?.submissionCount === "number" ? data.submissionCount : 0,
       });
+      enqueueProjection(tx, "property_search", propertyId);
 
       return {
         ownerId: (data?.partnerId ?? data?.ownerId) as string | undefined,
@@ -68,6 +72,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/admi
         approvalStatus: update.approvalStatus,
       };
     });
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     // Best-effort notification, never blocks or rolls back the decision.
     if (result?.ownerId) {
@@ -86,3 +91,5 @@ export async function POST(request: Request, { params }: RouteContext<"/api/admi
     return Response.json({ error: error instanceof Error ? error.message : "Unable to review property." }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/admin/properties/[propertyId]/review", auth: "strict", requireAuth: true, cache: "private" });

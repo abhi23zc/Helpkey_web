@@ -5,6 +5,10 @@ import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { recordReviewEvent } from "@/lib/partner/review-events";
 import { getUserByUid } from "@/lib/auth/users";
+import { apiContext } from "@/lib/api/context";
+import { cacheKey, withRedis } from "@/lib/redis";
+import { invalidateUserSessions } from "@/lib/auth/session";
+import { enqueueProjection } from "@/lib/projections";
 
 const propertyTypes = ["hotel", "apartment", "villa", "resort", "hostel", "guest_house", "homestay", "other"] as const;
 const startDraftOptionsSchema = z.object({ propertyType: z.enum(propertyTypes).optional(), city: z.string().trim().min(2).max(120).optional(), countryCode: z.literal("IN").optional() }).strict();
@@ -19,17 +23,31 @@ export const ratePlanPatchSchema = z.object({ name: z.string().min(2).max(140).o
 export const cancellationPolicySchema = z.object({ name: z.string().min(2).max(100), description: z.string().min(10).max(2000), refundableUntilHours: z.number().int().min(0).max(8760), cancellationFeePercent: z.number().int().min(0).max(100) }).strict();
 export const stepSchema = z.object({ step: z.number().int().min(1).max(8), completed: z.boolean().default(true) }).strict();
 
-export async function requireRole(uid: string, role: "partner" | "admin") { const user = await getUserByUid(uid); if (!user || !user.isActive || !user.roles.includes(role)) throw new Error("FORBIDDEN"); return user; }
-export async function propertyOwner(uid: string, propertyId: string) { await requireRole(uid, "partner"); const membership = await adminDb.collection("propertyMemberships").doc(`${propertyId}_${uid}`).get(); if (!membership.exists || membership.data()?.status !== "active" || membership.data()?.role !== "owner") throw new Error("FORBIDDEN"); return adminDb.collection("properties").doc(propertyId); }
+export async function requireRole(uid: string, role: "partner" | "admin") { const contextual = apiContext.actor(); const user = contextual?.uid === uid ? contextual : await getUserByUid(uid); if (!user || !user.isActive || !user.roles.includes(role)) throw new Error("FORBIDDEN"); return user; }
+export async function propertyOwner(uid: string, propertyId: string) {
+  await requireRole(uid, "partner");
+  const key = cacheKey("membership", uid, propertyId);
+  const strict = apiContext.current()?.authMode === "strict";
+  if (!strict) {
+    const cached = await withRedis((redis) => redis.get(key));
+    if (cached === "owner") return adminDb.collection("properties").doc(propertyId);
+  }
+  const membership = await adminDb.collection("propertyMemberships").doc(`${propertyId}_${uid}`).get();
+  if (!membership.exists || membership.data()?.status !== "active" || membership.data()?.role !== "owner") throw new Error("FORBIDDEN");
+  await withRedis((redis) => redis.set(key, "owner", "EX", 60));
+  return adminDb.collection("properties").doc(propertyId);
+}
 const slug = (name: string, id: string) => `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70)}-${id.slice(0, 6)}`;
 
 export async function beginOnboarding(uid: string, raw: unknown) {
   const input = onboardingSchema.parse(raw); const userRef = adminDb.collection("users").doc(uid); const partnerRef = adminDb.collection("partnerProfiles").doc(uid);
-  return adminDb.runTransaction(async (tx) => { const user = await tx.get(userRef); const oldPartner = await tx.get(partnerRef); if (!user.exists || user.data()?.accountStatus !== "active") throw new Error("FORBIDDEN"); const propertyId = input.createNew ? adminDb.collection("properties").doc().id : oldPartner.data()?.primaryDraftPropertyId || adminDb.collection("properties").doc().id; const propertyRef = adminDb.collection("properties").doc(propertyId); const allRoles = new Set(Array.isArray(user.data()?.roles) ? user.data()?.roles : ["customer"]); allRoles.add("partner");
+  const result = await adminDb.runTransaction(async (tx) => { const user = await tx.get(userRef); const oldPartner = await tx.get(partnerRef); if (!user.exists || user.data()?.accountStatus !== "active") throw new Error("FORBIDDEN"); const propertyId = input.createNew ? adminDb.collection("properties").doc().id : oldPartner.data()?.primaryDraftPropertyId || adminDb.collection("properties").doc().id; const propertyRef = adminDb.collection("properties").doc(propertyId); const allRoles = new Set(Array.isArray(user.data()?.roles) ? user.data()?.roles : ["customer"]); allRoles.add("partner");
     tx.set(userRef, { roles: [...allRoles], updatedAt: FieldValue.serverTimestamp(), updatedBy: uid }, { merge: true });
     tx.set(partnerRef, { userId: uid, businessName: input.businessName, businessEmail: input.businessEmail.toLowerCase(), businessPhone: input.businessPhone, businessAddress: input.businessAddress, gstin: null, pan: null, onboardingStatus: "property_setup", kycStatus: "not_started", payoutEligibility: "blocked", defaultCommissionBps: null, primaryDraftPropertyId: propertyId, createdAt: oldPartner.exists ? oldPartner.data()?.createdAt : FieldValue.serverTimestamp(), createdBy: oldPartner.exists ? oldPartner.data()?.createdBy : uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, deletedAt: null }, { merge: true });
     tx.set(propertyRef, { ownerId: uid, partnerId: uid, name: input.property.name, slug: slug(input.property.name, propertyId), propertyType: input.property.propertyType, description: "", address: input.property.address, geoPoint: new GeoPoint(input.property.latitude, input.property.longitude), geohash: `${input.property.latitude.toFixed(4)}:${input.property.longitude.toFixed(4)}`, googlePlaceId: input.property.googlePlaceId, timezone: input.property.timezone, checkInTime: "14:00", checkOutTime: "11:00", bookingModes: ["overnight"], publicPhone: input.businessPhone, publicEmail: input.businessEmail.toLowerCase(), supportContact: null, floors: 0, otaUrls: [], onboarding: { currentStep: 1, completedSteps: [], lastSavedAt: FieldValue.serverTimestamp() }, roomTypeCount: 0, totalPhysicalRooms: input.property.roomCount, currency: "INR", customerFeeRule: null, partnerCommissionRule: { type: "percentage", basisPoints: 0 }, payAtPropertyEnabled: false, depositsEnabled: false, defaultLanguage: "en", supportedLanguages: ["en"], amenityIds: [], roomAmenityIds: [], mediaIds: [], coverMediaId: null, cancellationPolicyIds: [], childrenPolicy: {}, petPolicy: {}, smokingPolicy: {}, identityRequirements: {}, status: "draft", approvalStatus: "not_submitted", rejectionReason: null, submittedAt: null, approvedAt: null, pausedAt: null, suspendedUntil: null, ratingAverage: 0, ratingCount: 0, minimumDisplayPricePaise: null, isBookable: false, createdAt: FieldValue.serverTimestamp(), createdBy: uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, deletedAt: null }, { merge: true });
     tx.set(adminDb.collection("propertyMemberships").doc(`${propertyId}_${uid}`), { propertyId, userId: uid, role: "owner", permissions: ["*"], status: "active", createdAt: FieldValue.serverTimestamp(), createdBy: uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, deletedAt: null }, { merge: true }); return { propertyId }; });
+  await Promise.all([invalidateUserSessions(uid), withRedis((redis) => redis.del(cacheKey("membership", uid, result.propertyId)))]);
+  return result;
 }
 export async function startPropertyDraft(uid: string, name: string, rawOptions: unknown = {}) {
   if (name.trim().length < 2 || name.trim().length > 140) throw new Error("PROPERTY_NAME_REQUIRED");
@@ -39,6 +57,7 @@ export async function startPropertyDraft(uid: string, name: string, rawOptions: 
   await propertyRef.set({ ownerId: uid, partnerId: uid, name: name.trim(), slug: slug(name, propertyRef.id), propertyType: options.propertyType ?? "hotel", description: "", address: options.city ? { city: options.city, countryCode: options.countryCode ?? "IN" } : {}, geoPoint: null, geohash: null, googlePlaceId: null, timezone: "Asia/Kolkata", checkInTime: "14:00", checkOutTime: "11:00", publicPhone: null, publicEmail: null, floors: 0, totalPhysicalRooms: 1, otaUrls: [], amenityIds: [], roomAmenityIds: [], mediaIds: [], coverMediaId: null, cancellationPolicyIds: [], childrenPolicy: {}, petPolicy: {}, smokingPolicy: {}, identityRequirements: {}, onboarding: { currentStep: 1, completedSteps: [], initialBasicsConfirmed: true, lastSavedAt: FieldValue.serverTimestamp() }, status: "draft", approvalStatus: "not_submitted", rejectionReason: null, isBookable: false, createdAt: FieldValue.serverTimestamp(), createdBy: uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, deletedAt: null });
   await adminDb.collection("propertyMemberships").doc(`${propertyRef.id}_${uid}`).set({ propertyId: propertyRef.id, userId: uid, role: "owner", permissions: ["*"], status: "active", createdAt: FieldValue.serverTimestamp(), createdBy: uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, deletedAt: null });
   await adminDb.collection("partnerProfiles").doc(uid).set({ userId: uid, onboardingStatus: "property_setup", primaryDraftPropertyId: propertyRef.id, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid, createdAt: FieldValue.serverTimestamp(), createdBy: uid }, { merge: true });
+  await Promise.all([invalidateUserSessions(uid), withRedis((redis) => redis.del(cacheKey("membership", uid, propertyRef.id)))]);
   return { propertyId: propertyRef.id };
 }
 export async function submit(uid: string, propertyId: string) { const ref = await propertyOwner(uid, propertyId); const [p, rooms, rates, media, documents] = await Promise.all([ref.get(), adminDb.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active").get(), adminDb.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active").get(), adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).get(), adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).get()]); const data = p.data(); const sellableRooms = new Set(rooms.docs.map(r => r.id)); const rateRooms = new Set(rates.docs.filter(r => sellableRooms.has(r.data().roomTypeId) && r.data().cancellationPolicyId).map(r => r.data().roomTypeId)); const validImages = media.docs.filter(d => ["pending", "approved"].includes(d.data().moderationStatus ?? d.data().status) && d.data().kind === "property_image"); const documentKinds = new Set(documents.docs.filter(d => ["pending", "approved"].includes(d.data().status)).map(d => d.data().documentType)); const required = ["pan", "government_id_front", "government_id_back"];
@@ -99,6 +118,7 @@ export async function submit(uid: string, propertyId: string) { const ref = awai
       toStatus: "pending_review",
       submissionAttempt: submissionCount,
     });
+    enqueueProjection(tx, "property_search", propertyId);
   });
 
   return { propertyId, propertyName: typeof data?.name === "string" ? data.name : "Your property" };

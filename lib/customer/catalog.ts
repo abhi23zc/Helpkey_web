@@ -4,6 +4,8 @@ import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { resolvePublicImage } from "@/lib/media-resolver";
 import { amenityKey, resolveAmenityCodes } from "@/lib/customer/amenities";
+import { apiContext } from "@/lib/api/context";
+import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 export const catalogSorts = [
@@ -40,6 +42,7 @@ export const catalogSearchSchema = z.object({
   minRating: z.coerce.number().min(0).max(5).optional(),
   sort: z.enum(catalogSorts).default("top_picks"),
   limit: z.coerce.number().int().min(1).max(50).default(24),
+  cursor: z.string().max(2048).optional(),
 }).superRefine((value, ctx) => {
   if ((value.checkIn && !value.checkOut) || (!value.checkIn && value.checkOut)) {
     ctx.addIssue({ code: "custom", message: "CHECK_IN_AND_OUT_REQUIRED" });
@@ -81,6 +84,7 @@ export type CatalogImage = { id: string; imageUrl: string; imageSrcSet: string; 
 export type CatalogReviewSummary = { count: number; ratingSum: number; average: number; buckets: Record<"1" | "2" | "3" | "4" | "5", number> };
 export type CatalogDetailProperty = CatalogProperty & { images: CatalogImage[]; reviewSummary: CatalogReviewSummary | null };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
+export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean };
 
 function stayDates(checkIn: string, checkOut: string) {
   const dates: string[] = [];
@@ -88,43 +92,32 @@ function stayDates(checkIn: string, checkOut: string) {
   return dates;
 }
 
-async function hasAvailableRoom(propertyId: string, input: CatalogSearch) {
-  if (!input.checkIn || !input.checkOut) return true;
-  const [rooms, rates] = await Promise.all([
-    adminDb.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active").get(),
-    adminDb.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active").get(),
-  ]);
-  const nights = stayDates(input.checkIn, input.checkOut);
-  for (const room of rooms.docs) {
-    const data = room.data();
-    const maxAdults = Number(data.maxAdults ?? 1);
-    const maxChildren = Number(data.maxChildren ?? 0);
-    const maxInfants = Number(data.maxInfants ?? 0);
-    if (input.adults > maxAdults || input.children > maxChildren || input.infants > maxInfants || input.adults + input.children > Number(data.maxOccupancy ?? maxAdults + maxChildren)) continue;
-    const eligibleRate = rates.docs.some((rate) => {
-      const rateData = rate.data();
-      const rules = rateData.stayRules ?? {};
-      return rateData.roomTypeId === room.id && nights.length >= Number(rules.minimumNights ?? 1) && (!Number(rules.maximumNights) || nights.length <= Number(rules.maximumNights));
-    });
-    if (!eligibleRate || Number(data.totalInventory ?? 0) <= 0) continue;
-    const inventory = await adminDb.getAll(...nights.map((day) => adminDb.collection("roomNightInventory").doc(`${propertyId}_${room.id}_${day}`)));
-    if (inventory.every((day) => Number(day.data()?.reserved ?? 0) < Number(data.totalInventory))) return true;
-  }
-  return false;
-}
-
 async function filterAvailability(cards: CatalogSearchProperty[], input: CatalogSearch) {
-  const visible: CatalogSearchProperty[] = [];
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(10, cards.length) }, async () => {
-    while (cursor < cards.length) {
-      const index = cursor++;
-      const card = cards[index];
-      if (await hasAvailableRoom(card.id, input)) visible[index] = card;
-    }
+  if (!input.checkIn || !input.checkOut || !cards.length) return cards;
+  const propertyIds = cards.map((card) => card.id);
+  const roomDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  const rateDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (let index = 0; index < propertyIds.length; index += 30) {
+    const ids = propertyIds.slice(index, index + 30);
+    const [rooms, rates] = await Promise.all([
+      adminDb.collection("roomTypes").where("propertyId", "in", ids).where("status", "==", "active").get(),
+      adminDb.collection("ratePlans").where("propertyId", "in", ids).where("status", "==", "active").get(),
+    ]);
+    roomDocs.push(...rooms.docs); rateDocs.push(...rates.docs);
+  }
+  const nights = stayDates(input.checkIn, input.checkOut);
+  const eligibleRooms = roomDocs.filter((room) => {
+    const data = room.data();
+    const maxAdults = Number(data.maxAdults ?? 1), maxChildren = Number(data.maxChildren ?? 0), maxInfants = Number(data.maxInfants ?? 0);
+    if (input.adults > maxAdults || input.children > maxChildren || input.infants > maxInfants || input.adults + input.children > Number(data.maxOccupancy ?? maxAdults + maxChildren) || Number(data.totalInventory ?? 0) <= 0) return false;
+    return rateDocs.some((rate) => { const value = rate.data(); const rules = value.stayRules ?? {}; return value.propertyId === data.propertyId && value.roomTypeId === room.id && nights.length >= Number(rules.minimumNights ?? 1) && (!Number(rules.maximumNights) || nights.length <= Number(rules.maximumNights)); });
   });
-  await Promise.all(workers);
-  return visible.filter(Boolean);
+  const refs = eligibleRooms.flatMap((room) => nights.map((day) => adminDb.collection("roomNightInventory").doc(`${room.data().propertyId}_${room.id}_${day}`)));
+  const inventory: FirebaseFirestore.DocumentSnapshot[] = [];
+  for (let index = 0; index < refs.length; index += 300) inventory.push(...await adminDb.getAll(...refs.slice(index, index + 300)));
+  const byId = new Map(inventory.map((doc) => [doc.id, doc]));
+  const available = new Set(eligibleRooms.filter((room) => nights.every((day) => Number(byId.get(`${room.data().propertyId}_${room.id}_${day}`)?.data()?.reserved ?? 0) < Number(room.data().totalInventory))).map((room) => String(room.data().propertyId)));
+  return cards.filter((card) => available.has(card.id));
 }
 
 export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
@@ -138,21 +131,25 @@ export async function amenityCodeMap() {
 async function propertyCard(
   doc: FirebaseFirestore.QueryDocumentSnapshot,
   codesById: Map<string, string>,
-  roomAmenityIds: string[]
+  roomAmenityIds: string[],
+  preloaded?: { rates: FirebaseFirestore.QueryDocumentSnapshot[]; cover: FirebaseFirestore.DocumentSnapshot | null },
 ): Promise<CatalogSearchProperty> {
   const data = doc.data();
-  const [rates, cover] = await Promise.all([
-    adminDb.collection("ratePlans").where("propertyId", "==", doc.id).limit(100).get(),
-    typeof data.coverMediaId === "string" && data.coverMediaId ? adminDb.collection("mediaAssets").doc(data.coverMediaId).get() : Promise.resolve(null),
-  ]);
-  const activePrices = rates.docs.map((rate) => rate.data()).filter((rate) => rate.status === "active" && Number.isSafeInteger(rate.basePricePaise) && rate.basePricePaise >= 0).map((rate) => rate.basePricePaise as number);
+  const loaded = preloaded ?? await (async () => {
+    const [rates, cover] = await Promise.all([
+      adminDb.collection("ratePlans").where("propertyId", "==", doc.id).limit(50).get(),
+      typeof data.coverMediaId === "string" && data.coverMediaId ? adminDb.collection("mediaAssets").doc(data.coverMediaId).get() : Promise.resolve(null),
+    ]);
+    return { rates: rates.docs, cover };
+  })();
+  const activePrices = loaded.rates.map((rate) => rate.data()).filter((rate) => rate.status === "active" && Number.isSafeInteger(rate.basePricePaise) && rate.basePricePaise >= 0).map((rate) => rate.basePricePaise as number);
   const storedPrice = Number.isSafeInteger(data.minimumDisplayPricePaise) && data.minimumDisplayPricePaise >= 0 ? data.minimumDisplayPricePaise as number : null;
   const cardAmenityCodes = resolveAmenityCodes(
     [...(Array.isArray(data.amenityIds) ? data.amenityIds : []), ...(Array.isArray(data.roomAmenityIds) ? data.roomAmenityIds : []), ...roomAmenityIds],
     codesById
   );
-  const coverData = cover?.data();
-  const coverImage = cover && coverData ? await resolvePublicImage(cover.id, coverData, typeof coverData.altText === "string" ? coverData.altText : "") : null;
+  const coverData = loaded.cover?.data();
+  const coverImage = loaded.cover && coverData ? await resolvePublicImage(loaded.cover.id, coverData, typeof coverData.altText === "string" ? coverData.altText : "") : null;
   return {
     id: doc.id,
     slug: typeof data.slug === "string" && data.slug ? data.slug : doc.id,
@@ -177,6 +174,33 @@ async function propertyCard(
   };
 }
 
+function projectedProperty(doc: FirebaseFirestore.QueryDocumentSnapshot): CatalogSearchProperty | null {
+  const data = doc.data();
+  const cover = data.publicCover;
+  if (typeof data.normalizedName !== "string" || typeof data.normalizedCity !== "string" || !Array.isArray(data.amenityCodes)) return null;
+  return {
+    id: doc.id,
+    slug: typeof data.slug === "string" && data.slug ? data.slug : doc.id,
+    name: typeof data.name === "string" && data.name ? data.name : "Untitled property",
+    propertyType: typeof data.propertyType === "string" ? data.propertyType : "hotel",
+    city: typeof data.address?.city === "string" ? data.address.city : "",
+    state: typeof data.address?.state === "string" ? data.address.state : null,
+    ratingAverage: Number(data.ratingAverage) || 0,
+    ratingCount: Number(data.ratingCount) || 0,
+    minimumPricePaise: Number.isSafeInteger(data.minimumPricePaise) ? data.minimumPricePaise : null,
+    currency: typeof data.currency === "string" ? data.currency : "INR",
+    coverImageUrl: typeof cover?.imageUrl === "string" ? cover.imageUrl : null,
+    coverImageSrcSet: typeof cover?.srcSet === "string" ? cover.srcSet : "",
+    coverImageWidth: Number(cover?.width) || 1,
+    coverImageHeight: Number(cover?.height) || 1,
+    amenityCodes: data.amenityCodes.filter((code: unknown): code is string => typeof code === "string"),
+    freeCancellation: data.freeCancellation === true,
+    coordinates: typeof data.geoPoint?.latitude === "number" && typeof data.geoPoint?.longitude === "number"
+      ? { latitude: data.geoPoint.latitude, longitude: data.geoPoint.longitude }
+      : null,
+  };
+}
+
 /** Reads room amenities in batches, avoiding one query per search-result card. */
 async function roomAmenitiesByProperty(propertyIds: string[]) {
   const amenities = new Map<string, string[]>();
@@ -193,6 +217,23 @@ async function roomAmenitiesByProperty(propertyIds: string[]) {
     }
   }
   return amenities;
+}
+
+async function legacyCards(docs: FirebaseFirestore.QueryDocumentSnapshot[]) {
+  if (!docs.length) return [];
+  const propertyIds = docs.map((doc) => doc.id);
+  const [codesById, roomAmenities] = await Promise.all([amenityCodeMap(), roomAmenitiesByProperty(propertyIds)]);
+  const rateDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (let index = 0; index < propertyIds.length; index += 30) {
+    const rates = await adminDb.collection("ratePlans").where("propertyId", "in", propertyIds.slice(index, index + 30)).limit(50).get();
+    rateDocs.push(...rates.docs);
+  }
+  const coverIds = [...new Set(docs.map((doc) => doc.data().coverMediaId).filter((id): id is string => typeof id === "string" && id.length > 0))];
+  const coverDocs = coverIds.length ? await adminDb.getAll(...coverIds.map((id) => adminDb.collection("mediaAssets").doc(id))) : [];
+  const coverById = new Map(coverDocs.map((doc) => [doc.id, doc]));
+  const ratesByProperty = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
+  for (const rate of rateDocs) { const propertyId = String(rate.data().propertyId ?? ""); ratesByProperty.set(propertyId, [...(ratesByProperty.get(propertyId) ?? []), rate]); }
+  return Promise.all(docs.map((doc) => propertyCard(doc, codesById, roomAmenities.get(doc.id) ?? [], { rates: ratesByProperty.get(doc.id) ?? [], cover: coverById.get(doc.data().coverMediaId) ?? null })));
 }
 
 const compareText = (a: CatalogProperty, b: CatalogProperty) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
@@ -294,35 +335,62 @@ async function propertyImages(propertyId: string, property: FirebaseFirestore.Do
   return [...ordered, ...imagesById.values()];
 }
 
+export async function searchCatalogPage(input: CatalogSearch): Promise<CatalogPage> {
+  let query: FirebaseFirestore.Query = adminDb.collection("properties")
+    .where("status", "==", "active")
+    .where("approvalStatus", "==", "approved")
+    .where("isBookable", "==", true);
+  const destination = input.destination.trim().toLocaleLowerCase();
+  if (destination) query = query.where("normalizedCity", "==", destination);
+  if (input.propertyType) query = query.where("propertyType", "==", input.propertyType);
+  if (input.minPricePaise !== undefined) query = query.where("minimumPricePaise", ">=", input.minPricePaise);
+  if (input.maxPricePaise !== undefined) query = query.where("minimumPricePaise", "<=", input.maxPricePaise);
+  if (input.minRating !== undefined && input.minPricePaise === undefined && input.maxPricePaise === undefined) query = query.where("ratingAverage", ">=", input.minRating);
+  if (input.amenities.length === 1) query = query.where("amenityCodes", "array-contains", input.amenities[0]);
+  const priceOrdered = input.sort === "price_low_to_high" || input.sort === "price_high_to_low" || input.minPricePaise !== undefined || input.maxPricePaise !== undefined;
+  const ratingOrdered = !destination && !priceOrdered && (input.minRating !== undefined || ["rating_high_to_low", "rating_low_to_high", "top_reviewed", "rating_and_price", "best_reviewed_lowest_price"].includes(input.sort));
+  const orderField = priceOrdered ? "minimumPricePaise" : ratingOrdered ? "ratingAverage" : "ratingAverage";
+  const orderDirection: FirebaseFirestore.OrderByDirection = input.sort === "price_high_to_low" || input.sort === "rating_high_to_low" || input.sort === "top_reviewed" || input.sort === "top_picks" ? "desc" : "asc";
+  query = query.orderBy(orderField, orderDirection).orderBy("__name__", orderDirection);
+  if (input.cursor) {
+    const cursor = decodeCursor(input.cursor);
+    query = query.startAfter(...cursor.values, cursor.id);
+  }
+  const snapshot = await query.limit(input.limit + 1).get();
+  const hasMore = snapshot.size > input.limit;
+  const pageDocs = snapshot.docs.slice(0, input.limit);
+  const projected = pageDocs.map((doc) => ({ doc, card: projectedProperty(doc) }));
+  let cards = projected.flatMap(({ card }) => card ? [card] : []);
+  const missing = projected.filter(({ card }) => !card).map(({ doc }) => doc);
+  if (missing.length) {
+    apiContext.projectionFallback();
+    cards = [...cards, ...await legacyCards(missing)];
+  }
+  cards = cards.filter((property) => input.amenities.every((code) => property.amenityCodes.some((amenity) => amenityKey(amenity) === amenityKey(code))));
+  if (input.minRating !== undefined) cards = cards.filter((property) => property.ratingAverage >= input.minRating!);
+  if (input.checkIn && input.checkOut) cards = await filterAvailability(cards, input);
+  const last = pageDocs.at(-1);
+  return {
+    properties: sortCatalog(cards, input).map(publicCatalogProperty),
+    hasMore,
+    nextCursor: hasMore && last ? encodeCursor({ values: [typeof last.get(orderField) === "number" ? Number(last.get(orderField)) : String(last.get(orderField) ?? "")], id: last.id }) : null,
+  };
+}
+
 export async function searchCatalog(input: CatalogSearch) {
-  const [properties, codesById] = await Promise.all([
-    adminDb.collection("properties").where("status", "==", "active").where("isBookable", "==", true).limit(200).get(),
-    amenityCodeMap(),
-  ]);
-  const approvedProperties = properties.docs.filter((doc) => doc.data().approvalStatus === "approved");
-  const roomAmenityIds = await roomAmenitiesByProperty(approvedProperties.map((doc) => doc.id));
-  const cards = await Promise.all(approvedProperties.map((doc) => propertyCard(doc, codesById, roomAmenityIds.get(doc.id) ?? [])));
-  const destination = input.destination.toLocaleLowerCase();
-  const matchingCards = cards.filter((property) => {
-    const location = `${property.city} ${property.state ?? ""} ${property.name}`.toLocaleLowerCase();
-    return (!destination || location.includes(destination))
-      && (!input.propertyType || property.propertyType === input.propertyType)
-      && (input.minRating === undefined || property.ratingAverage >= input.minRating)
-      && (input.minPricePaise === undefined || (property.minimumPricePaise !== null && property.minimumPricePaise >= input.minPricePaise))
-      && (input.maxPricePaise === undefined || (property.minimumPricePaise !== null && property.minimumPricePaise <= input.maxPricePaise))
-      && input.amenities.every((code) => property.amenityCodes.some((amenity) => amenityKey(amenity) === amenityKey(code)));
-  });
-  const dateAwareCards = input.checkIn && input.checkOut
-    ? await filterAvailability(matchingCards, input)
-    : matchingCards;
-  return sortCatalog(dateAwareCards, input).slice(0, input.limit).map(publicCatalogProperty);
+  return (await searchCatalogPage(input)).properties;
 }
 
 export async function searchSuggestions(query: string): Promise<CatalogSuggestion[]> {
   const term = query.trim().toLocaleLowerCase();
   if (term.length < 2) return [];
-  const snapshot = await adminDb.collection("properties").where("status", "==", "active").where("isBookable", "==", true).limit(200).get();
-  const matches = snapshot.docs.filter((doc) => doc.data().approvalStatus === "approved").map((doc) => {
+  const base = adminDb.collection("properties").where("status", "==", "active").where("approvalStatus", "==", "approved").where("isBookable", "==", true);
+  const [byName, byCity] = await Promise.all([
+    base.where("normalizedName", ">=", term).where("normalizedName", "<=", `${term}\uf8ff`).orderBy("normalizedName").limit(5).get(),
+    base.where("normalizedCity", ">=", term).where("normalizedCity", "<=", `${term}\uf8ff`).orderBy("normalizedCity").limit(5).get(),
+  ]);
+  const documents = [...new Map([...byName.docs, ...byCity.docs].map((doc) => [doc.id, doc])).values()];
+  const matches = documents.map((doc) => {
     const data = doc.data(); const name = typeof data.name === "string" ? data.name : "";
     const city = typeof data.address?.city === "string" ? data.address.city : "";
     return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const };
@@ -337,7 +405,7 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
 }
 
 export async function homeCatalog() {
-  const properties = await searchCatalog({ destination: "", adults: 2, children: 0, infants: 0, amenities: [], sort: "top_picks", limit: 50 });
+  const properties = await searchCatalog({ destination: "", adults: 2, children: 0, infants: 0, amenities: [], sort: "top_picks", limit: 24 });
   const cities = [...properties.reduce((counts, property) => {
     if (property.city) counts.set(property.city, (counts.get(property.city) ?? 0) + 1);
     return counts;

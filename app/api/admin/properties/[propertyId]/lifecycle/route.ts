@@ -1,8 +1,11 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireAdmin, recordReviewEvent, type ReviewAction } from "@/lib/admin/data";
+import { enqueueProjection } from "@/lib/projections";
+import { invalidatePublic } from "@/lib/api/cache";
 
 const schema = z.object({ action: z.enum(["pause", "resume", "archive", "restore"]) }).strict();
 
@@ -13,7 +16,7 @@ const LIFECYCLE_ACTION: Record<z.infer<typeof schema>["action"], ReviewAction> =
   restore: "restored",
 };
 
-export async function POST(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]/lifecycle">) {
+const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]/lifecycle">) {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
     await requireAdmin(user.uid);
@@ -43,9 +46,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/admi
         fromStatus,
         toStatus: String(changes.status),
       });
+      enqueueProjection(tx, "property_search", propertyId);
     });
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update listing." }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/admin/properties/[propertyId]/lifecycle", auth: "strict", requireAuth: true, cache: "private" });

@@ -1,9 +1,14 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { setSessionCookie } from "@/lib/auth/session";
 import { upsertUserFromToken } from "@/lib/auth/users";
 import { adminAuth } from "@/lib/firebase/admin";
+import { enforceRateLimit } from "@/lib/api/rate-limit";
+import { clientIp, privateFingerprint } from "@/lib/api/request";
+import { ApiException } from "@/lib/api/errors";
 
-export async function POST(request: Request) {
+const rawPOST = async function POST(request: Request) {
   try {
+    await enforceRateLimit({ bucket: "session-ip", identifier: privateFingerprint(clientIp(request)), limit: 30, windowSeconds: 300 });
     const body = (await request.json()) as {
       idToken?: string;
       fullName?: string;
@@ -33,6 +38,9 @@ export async function POST(request: Request) {
       return Response.json({ error: message }, { status: 403 });
     }
 
-    return Response.json({ error: message }, { status: 401 });
+    if (message.startsWith("auth/") || message.includes("TOKEN") || message.includes("ID token")) return Response.json({ error: "INVALID_ID_TOKEN" }, { status: 401 });
+    throw new ApiException("SESSION_PROVIDER_UNAVAILABLE", 503, "Authentication is temporarily unavailable.");
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/auth/session", auth: "public", requireAuth: false, cache: "private" });

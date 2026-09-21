@@ -3,6 +3,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { apiFetch } from "@/lib/api/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   BadgeCheck,
@@ -100,9 +103,10 @@ export function LiveSearchResults() {
   const searchParams = useSearchParams();
   const query = useMemo(() => searchParams.toString(), [searchParams]);
 
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const search = useQuery({ queryKey: queryKeys.search({ query }), queryFn: ({ signal }) => apiFetch<{ properties: Property[] }>(`/api/search/properties?${query}`, { signal }), staleTime: 60_000, placeholderData: (previous) => previous });
+  const properties = search.data?.properties ?? [];
+  const loading = search.isLoading;
+  const error = search.error instanceof Error ? search.error.message : "";
   const [destination, setDestination] = useState(searchParams.get("destination") ?? "");
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
@@ -130,19 +134,6 @@ export function LiveSearchResults() {
     }));
     return [...values.entries()].map(([code, label]) => ({ code, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [properties]);
-
-  useEffect(() => {
-    setLoading(true);
-    setError("");
-    void fetch(`/api/search/properties?${query}`, { cache: "no-store" })
-      .then(async (response) => {
-        const payload = (await response.json()) as { properties?: Property[]; error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "Unable to search properties.");
-        setProperties(payload.properties ?? []);
-      })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to search properties."))
-      .finally(() => setLoading(false));
-  }, [query]);
 
   // Compute active filters count
   const activeFilterCount = useMemo(() => {

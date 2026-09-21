@@ -1,8 +1,10 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertySummary, requireAdmin } from "@/lib/admin/data";
+import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
 
-export async function GET(request: Request) {
+const rawGET = async function GET(request: Request) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
@@ -12,25 +14,17 @@ export async function GET(request: Request) {
     const approval = url.searchParams.get("approval");
     const search = (url.searchParams.get("search") ?? "").toLowerCase();
 
-    // Push the approval filter into the indexed query when present; otherwise
-    // fall back to a bounded scan. Remaining filters (status/search) refine the
-    // reduced result set in memory.
     let query: FirebaseFirestore.Query = adminDb.collection("properties");
     if (approval) query = query.where("approvalStatus", "==", approval);
-    query = query.limit(500);
-
-    const properties = (await query.get()).docs
-      .map((doc) => propertySummary(doc.id, doc.data()))
-      .filter(
-        (item) =>
-          (!status || item.status === status) &&
-          (!search ||
-            `${item.name} ${(item.address as { city?: string }).city ?? ""} ${item.propertyType}`
-              .toLowerCase()
-              .includes(search)),
-      );
-    return Response.json({ properties });
+    if (status) query = query.where("status", "==", status);
+    if (search) query = query.where("searchTokens", "array-contains", search);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 25, 1), 50);
+    query = query.orderBy("__name__"); const rawCursor = url.searchParams.get("cursor"); if (rawCursor) query = query.startAfter(decodeCursor(rawCursor).id);
+    const snapshot = await query.limit(limit + 1).get(); const page = snapshot.docs.slice(0, limit); const hasMore = snapshot.size > limit; const last = page.at(-1);
+    return Response.json({ properties: page.map((doc) => propertySummary(doc.id, doc.data())), hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [], id: last.id }) : null });
   } catch {
     return Response.json({ error: "Admin access required." }, { status: 403 });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/admin/properties", auth: "read", requireAuth: true, cache: "private" });

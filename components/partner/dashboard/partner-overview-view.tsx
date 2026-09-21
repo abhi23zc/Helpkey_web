@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, BedDouble, Bell, CalendarDays, ChevronRight, CircleAlert, Clock3, IndianRupee, MessageCircle, RefreshCw, Send, Star, UsersRound } from "lucide-react";
 import type { Property } from "./types";
 import { formatPaise } from "@/lib/currency";
@@ -21,13 +21,22 @@ const money = (value: number) => formatPaise(value, { currency: "INR" });
 const shortDate = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 const statusLabel = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-export function PartnerOverviewView({ selectedProperty, propertyName, businessName, isLive, health, reportingDate }: { selectedProperty?: Property; propertyName: string; businessName: string; isLive: boolean; health: number; reportingDate: string }) {
+export function PartnerOverviewView({ selectedProperty, propertyName, businessName, isLive, health, reportingDate, onInitialLoadingChange }: { selectedProperty?: Property; propertyName: string; businessName: string; isLive: boolean; health: number; reportingDate: string; onInitialLoadingChange?: (loading: boolean) => void }) {
   const [range, setRange] = useState<Range>("daily");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const initialLoadComplete = useRef(false);
   const propertyId = selectedProperty?.id;
+
+  // Keep the route skeleton visible through the initial dependent overview request.
+  // Later range changes use the dashboard's local loading UI instead.
+  useLayoutEffect(() => {
+    if (initialLoadComplete.current) return;
+    onInitialLoadingChange?.(loading);
+    if (!loading) initialLoadComplete.current = true;
+  }, [loading, onInitialLoadingChange]);
 
   const load = useCallback(async (signal?: AbortSignal, background = false) => {
     if (!propertyId) { setOverview(null); setLoading(false); return; }

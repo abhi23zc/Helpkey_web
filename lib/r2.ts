@@ -2,6 +2,10 @@ import "server-only";
 
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, type HeadObjectCommandOutput } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createHash } from "node:crypto";
+import { cacheKey, withRedis } from "@/lib/redis";
+import { apiContext } from "@/lib/api/context";
+import { enforceRateLimit } from "@/lib/api/rate-limit";
 
 const PRIVATE_READ_SECONDS = 5 * 60;
 const PRIVATE_UPLOAD_SECONDS = 15 * 60;
@@ -44,9 +48,17 @@ export async function createPrivateUploadUrl(key: string, contentType: string, c
 }
 
 export async function createPrivateReadUrl(key: string, expiresSeconds = PRIVATE_READ_SECONDS) {
-  const { bucket, client } = privateConfig();
+  const objectKey = validObjectKey(key);
+  const actor = apiContext.actor();
+  if (actor) await enforceRateLimit({ bucket: "private-media", identifier: actor.uid, limit: 60, windowSeconds: 60, failClosed: true });
   const seconds = Math.min(expiresSeconds, PRIVATE_READ_SECONDS);
-  return { url: await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: validObjectKey(key) }), { expiresIn: seconds }), expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+  const signedCacheKey = cacheKey("signed-media", createHash("sha256").update(objectKey).digest("hex"), seconds);
+  const cached = await withRedis((redis) => redis.get(signedCacheKey));
+  if (cached) return JSON.parse(cached) as { url: string; expiresAt: string };
+  const { bucket, client } = privateConfig();
+  const result = { url: await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: objectKey }), { expiresIn: seconds }), expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+  await withRedis((redis) => redis.set(signedCacheKey, JSON.stringify(result), "EX", Math.max(1, seconds - 30)));
+  return result;
 }
 
 export async function headPrivateObject(key: string): Promise<HeadObjectCommandOutput> {

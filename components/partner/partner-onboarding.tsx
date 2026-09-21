@@ -343,28 +343,35 @@ function SetupCard({
     <form
       noValidate
       onSubmit={handleSubmit}
-      className="rounded-xl border border-[#ded8cf] bg-white p-5 shadow-[0_8px_24px_rgba(7,22,51,0.06)] sm:p-6"
+      className="overflow-hidden rounded-2xl border border-[#e2dbcf] bg-white shadow-[0_18px_46px_rgba(7,22,51,0.09)]"
     >
-      <div className="flex items-start justify-between gap-5">
-        <div>
+      <div className="border-b border-[#e9e3d9] bg-[linear-gradient(120deg,#071633_0%,#0b2c4f_68%,#173f67_100%)] px-5 py-6 text-white sm:px-7 sm:py-7">
+        <div className="flex items-start justify-between gap-5">
+          <div>
           <p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#bb8525]">
             Helpkey Partners
           </p>
-          <h1 className="mt-1.5 text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-2xl">
-            List your property on Helpkey
+          <h1 className="mt-2 text-2xl font-bold leading-snug tracking-tight sm:text-3xl">
+            Let&apos;s create your property listing
           </h1>
-          <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-            Create your listing step by step, then submit it for Helpkey&apos;s review.
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/75">
+            Add the essentials first. You can save, pause, and finish the rest when it suits you.
           </p>
+          </div>
+          <span className="hidden shrink-0 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white sm:block">Step 1 of 8</span>
         </div>
-        <span className="hidden shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 sm:block">Step 1 of 8</span>
       </div>
 
-      <Stepper />
+      <div className="px-5 pt-5 sm:px-7"><Stepper /></div>
 
-      <div className="mt-6 border-t border-slate-200/80 pt-5">
-        <h2 className="text-base font-bold text-slate-900">Start with your property basics</h2>
-        <p className="mt-1 text-xs sm:text-sm text-slate-500">Tell us about your property. You can edit this later.</p>
+      <div className="mx-5 mt-6 border-t border-slate-200/80 px-0 pb-6 pt-5 sm:mx-7 sm:pb-7">
+        <div className="flex items-start gap-3">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#f4ead8] text-xs font-bold text-[#a97620]">01</span>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Start with the property basics</h2>
+            <p className="mt-1 text-xs sm:text-sm text-slate-500">These details help us create your draft and guide you through the next steps.</p>
+          </div>
+        </div>
 
         <div className="mt-5 grid gap-x-5 gap-y-4 md:grid-cols-2">
           <label className="block text-xs font-semibold text-slate-700 sm:text-sm" htmlFor="property-name">
@@ -430,14 +437,14 @@ function SetupCard({
           </p>
         )}
 
-        <div className="mt-5 flex flex-col gap-2.5 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-3 rounded-xl border border-[#e9e3d9] bg-[#fcfaf6] p-3.5 sm:flex-row sm:items-center sm:justify-between">
           <button
             disabled={saving}
-            className="inline-flex h-11 min-w-[160px] items-center justify-center gap-2 rounded-lg bg-[#092442] px-5 text-sm font-bold text-white transition hover:bg-[#061633] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#092442] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-11 min-w-[175px] items-center justify-center gap-2 rounded-lg bg-[#092442] px-5 text-sm font-bold text-white shadow-[0_7px_16px_rgba(7,22,51,0.16)] transition hover:-translate-y-px hover:bg-[#061633] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#092442] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? <><Loader2 className="h-4 w-4 animate-spin text-amber-300" /><span>Creating listing...</span></> : <><span>Start listing</span><ArrowRight className="h-4 w-4" /></>}
           </button>
-          <p className="text-xs font-medium leading-relaxed text-slate-600">Your draft is created when you start. Each completed step confirms when it has saved.</p>
+          <p className="max-w-sm text-xs font-medium leading-relaxed text-slate-600">Your draft is created when you continue. Each completed step is saved automatically.</p>
         </div>
       </div>
     </form>

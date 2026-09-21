@@ -1,6 +1,7 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 
-export async function GET() {
+const rawGET = async function GET() {
   const user = await getAuthenticatedUser();
 
   if (!user) {
@@ -9,3 +10,5 @@ export async function GET() {
 
   return Response.json({ user });
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/auth/me", auth: "read", requireAuth: true, cache: "private" });

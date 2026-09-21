@@ -14,7 +14,6 @@ x-app: &app
       NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
       NEXT_PUBLIC_GOOGLE_MAP_ID: ${NEXT_PUBLIC_GOOGLE_MAP_ID}
-      NEXT_PUBLIC_GOOGLE_MAP_ID: ${NEXT_PUBLIC_GOOGLE_MAP_ID}
   env_file:
     - .env.local
   environment:
@@ -70,6 +69,14 @@ services:
   media-worker-2:
     <<: *app
     command: ["node", "dist/workers/media/runner.js"]
+
+  projection-dispatcher:
+    <<: *app
+    command: ["node", "dist/workers/projections/dispatcher.js"]
+
+  projection-worker:
+    <<: *app
+    command: ["node", "dist/workers/projections/runner.js"]
 
   cleanup:
     <<: *app

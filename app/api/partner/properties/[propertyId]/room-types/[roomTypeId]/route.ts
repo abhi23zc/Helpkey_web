@@ -1,9 +1,12 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { propertyOwner, roomTypePatchSchema } from "@/lib/partner/service";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { enqueueProjection } from "@/lib/projections";
+import { invalidatePublic } from "@/lib/api/cache";
 
-export async function PATCH(
+const rawPATCH = async function PATCH(
   request: Request,
   { params }: { params: Promise<{ propertyId: string; roomTypeId: string }> },
 ) {
@@ -39,7 +42,11 @@ export async function PATCH(
       const maxInfants = input.maxInfants ?? data?.maxInfants ?? 0;
       update.maxOccupancy = maxAdults + maxChildren + maxInfants;
     }
-    await ref.update(update);
+    const batch = adminDb.batch();
+    batch.update(ref, update);
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
+    await invalidatePublic("home", "search:*", "bookable:*");
 
     return Response.json({
       ok: true,
@@ -64,3 +71,42 @@ export async function PATCH(
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update room type." }, { status: 422 });
   }
 }
+
+export const PATCH = withApiHandler(rawPATCH, { route: "/api/partner/properties/[propertyId]/room-types/[roomTypeId]", auth: "strict", requireAuth: true, cache: "private" });
+
+const rawDELETE = async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ propertyId: string; roomTypeId: string }> },
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
+  try {
+    const { propertyId, roomTypeId } = await params;
+    await propertyOwner(user.uid, propertyId);
+
+    const ref = adminDb.collection("roomTypes").doc(roomTypeId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data()?.propertyId !== propertyId) throw new Error("ROOM_TYPE_NOT_FOUND");
+
+    // Cascade: a room type cannot be sold without rate plans, and orphaned rate
+    // plans would break search projections, so delete them in the same batch.
+    const rates = await adminDb
+      .collection("ratePlans")
+      .where("propertyId", "==", propertyId)
+      .where("roomTypeId", "==", roomTypeId)
+      .get();
+
+    const batch = adminDb.batch();
+    rates.docs.forEach((doc) => batch.delete(doc.ref));
+    batch.delete(ref);
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
+    await invalidatePublic("home", "search:*", "bookable:*");
+
+    return Response.json({ ok: true, roomTypeId, removedRatePlans: rates.size });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Unable to delete room type." }, { status: 422 });
+  }
+}
+
+export const DELETE = withApiHandler(rawDELETE, { route: "/api/partner/properties/[propertyId]/room-types/[roomTypeId]", auth: "strict", requireAuth: true, cache: "private" });

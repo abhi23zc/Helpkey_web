@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -7,7 +8,7 @@ import { bookingError, releaseBookingHold } from "@/lib/bookings";
 
 const schema = z.object({ status: z.enum(["checked_in", "completed", "no_show", "cancelled"]) }).strict();
 
-export async function POST(request: Request, { params }: RouteContext<"/api/partner/bookings/[bookingId]/status">) {
+const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/partner/bookings/[bookingId]/status">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
@@ -31,3 +32,5 @@ export async function POST(request: Request, { params }: RouteContext<"/api/part
     return Response.json({ error: bookingError(error) }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/partner/bookings/[bookingId]/status", auth: "strict", requireAuth: true, cache: "private" });

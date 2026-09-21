@@ -263,66 +263,74 @@ export function AuthCard({
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  // If user is already logged in, show a streamlined welcome-back panel
+  // If a partner is already signed in, make the next listing action unmistakable.
   if (appUser) {
     return (
-      <div className="rounded-2xl border border-[var(--hk-border)] bg-white p-7 shadow-2xl backdrop-blur-md sm:p-8">
-        <div className="mb-6 flex items-center justify-between border-b border-gray-100 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--hk-primary-dark)] text-white shadow-sm">
-              <UserAvatarIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-bold uppercase tracking-wider text-[var(--hk-gold)]">
-                  Active Partner
-                </span>
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              </div>
-              <h3 className="text-[17px] font-bold text-[var(--hk-primary-dark)]">
-                {appUser.fullName || "Partner Account"}
-              </h3>
-            </div>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-            >
-              <XIcon className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+      <div className="relative rounded-[22px] border border-[#e5ded2] bg-white p-6 shadow-[0_24px_70px_rgba(3,15,35,0.28)] sm:p-8">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-xl border border-transparent text-gray-400 transition-colors hover:border-gray-200 hover:bg-gray-50 hover:text-gray-700"
+            aria-label="Close partner panel"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        )}
 
-        <div className="mb-6 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 text-emerald-900">
-          <p className="text-[14px] font-semibold">Welcome back!</p>
-          <p className="mt-0.5 text-[13px] text-emerald-700">
-            You are signed in as <span className="font-bold">{appUser.email || appUser.phoneNumber || "Host"}</span>.
+        <div className="px-6 pt-1 text-center sm:px-8">
+          <p className="text-[25px] font-bold leading-tight tracking-[-0.035em] text-[#071633] sm:text-[28px]">Ready to welcome your next guest?</p>
+          <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-slate-500">
+            Build your listing, add rooms and rates, then share your stay with travelers on Helpkey.
           </p>
         </div>
 
-        <div className="space-y-3">
+        <ol aria-label="Listing setup progress" className="mt-6 grid grid-cols-4 gap-1">
+          {["Property", "Rooms", "Rates", "Publish"].map((label, index) => (
+            <li key={label} className="relative text-center">
+              {index < 3 && <span className="absolute left-[58%] right-[-42%] top-3.5 h-px bg-[#d9dee6]" />}
+              <span className={`relative z-10 mx-auto grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${index === 0 ? "bg-[var(--hk-gold)] text-white shadow-[0_3px_8px_rgba(181,132,38,0.28)]" : "bg-[#f0f2f5] text-slate-500"}`}>{index + 1}</span>
+              <span className={`mt-1.5 block text-[11px] font-semibold ${index === 0 ? "text-[#9b6d1e]" : "text-slate-500"}`}>{label}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-6 rounded-2xl border border-[#eadfcd] bg-[linear-gradient(135deg,#fffdf9_0%,#f8f3ea_100%)] p-4">
+          <div className="flex gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f1e7d4] text-[#a97620]">
+              <PropertyIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[15px] font-bold text-[#071633]">List a new property</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-slate-500">Usually takes 10 minutes. Save your progress anytime.</p>
+            </div>
+          </div>
           <Link
             href="/partner/onboarding"
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--hk-primary-dark)] py-4 text-[15px] font-bold text-white shadow-md transition-all hover:bg-[var(--hk-primary)] hover:shadow-lg"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--hk-primary-dark)] py-3.5 text-[15px] font-bold text-white shadow-[0_8px_18px_rgba(7,22,51,0.18)] transition-all hover:-translate-y-px hover:bg-[var(--hk-primary)] hover:shadow-lg"
           >
-            Start a new listing
+            Continue listing
             <ArrowRightIcon className="h-4 w-4" />
-          </Link>
-          <p className="text-center text-[12px] text-gray-500">Takes about 10 minutes &middot; save and resume anytime</p>
-
-          <Link
-            href="/partner/dashboard"
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 py-3.5 text-[14px] font-bold text-[var(--hk-primary-dark)] transition-all hover:bg-gray-50"
-          >
-            Open Partner Dashboard
           </Link>
         </div>
 
-        <div className="mt-5 flex items-center justify-center border-t border-gray-100 pt-4">
+        <div className="mt-4">
+          <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 before:h-px before:flex-1 before:bg-[#e7e9ed] after:h-px after:flex-1 after:bg-[#e7e9ed]">or</div>
+          <Link
+            href="/partner/dashboard"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#cbd2dc] bg-white py-3 text-[14px] font-bold text-[var(--hk-primary-dark)] transition-all hover:border-[#9ba8b9] hover:bg-[#f8fafc]"
+          >
+            <DashboardIcon className="h-4 w-4" />
+            Go to partner dashboard
+          </Link>
+        </div>
+
+        <div className="mt-5 flex items-center justify-between border-t border-[#eee9e1] pt-4">
+          <a href="mailto:partners@helpkey.com" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 transition hover:text-[var(--hk-gold)]">
+            <SupportIcon className="h-4 w-4" /> Need help?
+          </a>
           <button
             onClick={() => void logout()}
-            className="text-[13px] font-semibold text-red-600 hover:underline"
+            className="text-[12px] font-semibold text-red-600 hover:underline"
           >
             Sign out
           </button>
@@ -607,17 +615,6 @@ function KeyIcon({ className }: { className?: string }) {
   );
 }
 
-function UserAvatarIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2.5-7 5v1h14v-1c0-2.5-3-5-7-5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 function XIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -632,6 +629,18 @@ function ArrowRightIcon({ className }: { className?: string }) {
       <path d="M5 12h14m0 0-6-6m6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+function PropertyIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true"><path d="M4 20V9.5L12 4l8 5.5V20M9 20v-5h6v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function DashboardIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/><rect x="14" y="4" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/><rect x="4" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/><rect x="14" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/></svg>;
+}
+
+function SupportIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0v4a2 2 0 0 1-2 2h-2v-5h4M4 14h4v5H6a2 2 0 0 1-2-2v-4Zm8 6h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function BackIcon({ className }: { className?: string }) {

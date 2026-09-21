@@ -6,6 +6,7 @@ import { Building2, CalendarDays, Check, ChevronDown, CircleHelp, Loader2, LogOu
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { PartnerSidebar } from "./partner-sidebar";
 import { NotificationBell } from "@/components/shared/notification-bell";
+import { PartnerWorkspaceSkeleton } from "@/app/partner/loading";
 import {
   type PartnerDashboardData,
   usePartnerDashboardData,
@@ -154,8 +155,11 @@ function PropertyDropdown({
 
 export function PartnerShell({
   children,
+  contentLoading = false,
 }: {
   children: (data: PartnerDashboardData) => ReactNode;
+  /** Keeps the route fallback visible while page-specific dashboard data loads. */
+  contentLoading?: boolean;
 }) {
   const data = usePartnerDashboardData();
   const router = useRouter();
@@ -208,6 +212,8 @@ export function PartnerShell({
   };
 
   return (
+    <>
+    {(data.loading || contentLoading) ? <div className="fixed inset-0 z-[100] overflow-y-auto"><PartnerWorkspaceSkeleton /></div> : null}
     <main
       className={`min-h-screen bg-[#f7f5f0] text-[#061224] font-sans transition-[padding] duration-300 ${
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-[248px]"
@@ -315,5 +321,6 @@ export function PartnerShell({
         {children(data)}
       </section>
     </main>
+    </>
   );
 }

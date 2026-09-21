@@ -1,6 +1,8 @@
-import { catalogSearchSchema, searchCatalog } from "@/lib/customer/catalog";
+import { catalogSearchSchema, searchCatalogPage } from "@/lib/customer/catalog";
+import { cachedPublic } from "@/lib/api/cache";
+import { withApiHandler } from "@/lib/api/handler";
 
-export async function GET(request: Request) {
+async function get(request: Request) {
   try {
     const url = new URL(request.url);
     const amenities = url.searchParams.getAll("amenity");
@@ -23,7 +25,11 @@ export async function GET(request: Request) {
       minRating: url.searchParams.get("minRating") || undefined,
       sort: url.searchParams.get("sort") || undefined,
       limit: url.searchParams.get("limit") ?? 24,
+      cursor: url.searchParams.get("cursor") || undefined,
     });
-    return Response.json({ properties: await searchCatalog(input) });
+    const page = await cachedPublic(["search", Buffer.from(JSON.stringify(input)).toString("base64url")], () => searchCatalogPage(input));
+    return Response.json(page);
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Invalid search." }, { status: 422 }); }
 }
+
+export const GET = withApiHandler(get, { route: "/api/search/properties", cache: "public" });

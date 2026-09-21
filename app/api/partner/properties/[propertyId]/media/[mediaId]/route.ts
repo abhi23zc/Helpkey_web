@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -15,7 +16,7 @@ const schema = z
     message: "NOTHING_TO_UPDATE",
   });
 
-export async function PATCH(
+const rawPATCH = async function PATCH(
   request: Request,
   { params }: RouteContext<"/api/partner/properties/[propertyId]/media/[mediaId]">,
 ) {
@@ -52,7 +53,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+const rawDELETE = async function DELETE(
   _request: Request,
   { params }: RouteContext<"/api/partner/properties/[propertyId]/media/[mediaId]">,
 ) {
@@ -106,3 +107,6 @@ export async function DELETE(
     return Response.json({ error: error instanceof Error ? error.message : "Unable to remove photo." }, { status: 422 });
   }
 }
+
+export const PATCH = withApiHandler(rawPATCH, { route: "/api/partner/properties/[propertyId]/media/[mediaId]", auth: "strict", requireAuth: true, cache: "private" });
+export const DELETE = withApiHandler(rawDELETE, { route: "/api/partner/properties/[propertyId]/media/[mediaId]", auth: "strict", requireAuth: true, cache: "private" });

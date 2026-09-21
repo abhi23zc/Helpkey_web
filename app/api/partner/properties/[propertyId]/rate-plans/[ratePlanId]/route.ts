@@ -1,9 +1,12 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner, ratePlanPatchSchema } from "@/lib/partner/service";
+import { enqueueProjection } from "@/lib/projections";
+import { invalidatePublic } from "@/lib/api/cache";
 
-export async function PATCH(
+const rawPATCH = async function PATCH(
   request: Request,
   { params }: { params: Promise<{ propertyId: string; ratePlanId: string }> },
 ) {
@@ -30,7 +33,11 @@ export async function PATCH(
       ...(input.maximumNights === undefined ? {} : { maximumNights: input.maximumNights }),
     };
     const patch = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "minimumNights" && key !== "maximumNights"));
-    await ref.update({ ...patch, stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    const batch = adminDb.batch();
+    batch.update(ref, { ...patch, stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
+    await invalidatePublic("home", "search:*", "bookable:*");
 
     return Response.json({
       ok: true,
@@ -54,3 +61,33 @@ export async function PATCH(
     return Response.json({ error: error instanceof Error ? error.message : "Unable to update rate plan." }, { status: 422 });
   }
 }
+
+export const PATCH = withApiHandler(rawPATCH, { route: "/api/partner/properties/[propertyId]/rate-plans/[ratePlanId]", auth: "strict", requireAuth: true, cache: "private" });
+
+const rawDELETE = async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ propertyId: string; ratePlanId: string }> },
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
+  try {
+    const { propertyId, ratePlanId } = await params;
+    await propertyOwner(user.uid, propertyId);
+
+    const ref = adminDb.collection("ratePlans").doc(ratePlanId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data()?.propertyId !== propertyId) throw new Error("RATE_PLAN_NOT_FOUND");
+
+    const batch = adminDb.batch();
+    batch.delete(ref);
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
+    await invalidatePublic("home", "search:*", "bookable:*");
+
+    return Response.json({ ok: true, ratePlanId });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Unable to delete rate plan." }, { status: 422 });
+  }
+}
+
+export const DELETE = withApiHandler(rawDELETE, { route: "/api/partner/properties/[propertyId]/rate-plans/[ratePlanId]", auth: "strict", requireAuth: true, cache: "private" });

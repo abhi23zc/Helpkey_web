@@ -1,10 +1,11 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner } from "@/lib/partner/service";
 import { deletePrivateObject } from "@/lib/r2";
 
-export async function DELETE(
+const rawDELETE = async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ propertyId: string; documentId: string }> },
 ) {
@@ -25,3 +26,5 @@ export async function DELETE(
     return Response.json({ error: error instanceof Error ? error.message : "Unable to remove document." }, { status: 422 });
   }
 }
+
+export const DELETE = withApiHandler(rawDELETE, { route: "/api/partner/properties/[propertyId]/kyc/[documentId]", auth: "strict", requireAuth: true, cache: "private" });

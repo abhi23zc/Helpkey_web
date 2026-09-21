@@ -1,24 +1,17 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
 import { ZodError } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner, propertyPatchSchema } from "@/lib/partner/service";
-import { createR2ReadUrl } from "@/lib/r2";
+import { resolvePublicImage } from "@/lib/media-resolver";
+import { enqueueProjection } from "@/lib/projections";
 
 function serializeDate(value: unknown): string | null {
   if (value && typeof value === "object" && "toDate" in value && typeof (value as { toDate: unknown }).toDate === "function") {
     return (value as { toDate: () => Date }).toDate().toISOString();
   }
   return null;
-}
-
-async function safeReadUrl(objectKey: unknown): Promise<string | null> {
-  if (typeof objectKey !== "string" || !objectKey) return null;
-  try {
-    return (await createR2ReadUrl(objectKey)).url;
-  } catch {
-    return null;
-  }
 }
 
 function fieldLabel(path: Array<PropertyKey>) {
@@ -49,19 +42,20 @@ function validationMessage(error: unknown) {
   return `${label}: ${issue.message}`;
 }
 
-export async function GET(_: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]">) {
+const rawGET = async function GET(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
     const { propertyId } = await params;
+    const view = new URL(request.url).searchParams.get("view") === "rooms" ? "rooms" : "listing";
     const ref = await propertyOwner(user.uid, propertyId);
     const [property, rooms, rates, policies, media, documents] = await Promise.all([
       ref.get(),
       adminDb.collection("roomTypes").where("propertyId", "==", propertyId).limit(50).get(),
       adminDb.collection("ratePlans").where("propertyId", "==", propertyId).limit(100).get(),
-      adminDb.collection("cancellationPolicies").where("propertyId", "==", propertyId).get(),
-      adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).get(),
-      adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).get(),
+      adminDb.collection("cancellationPolicies").where("propertyId", "==", propertyId).limit(50).get(),
+      adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).limit(50).get(),
+      view === "listing" ? adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).limit(50).get() : Promise.resolve(null),
     ]);
     const p = property.data() ?? {};
     return Response.json({
@@ -140,6 +134,9 @@ export async function GET(_: Request, { params }: RouteContext<"/api/partner/pro
       policies: policies.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
       media: await Promise.all(media.docs.map(async (doc) => {
         const data = doc.data();
+        const published = data.kind === "property_image"
+          ? await resolvePublicImage(doc.id, data, typeof data.altText === "string" ? data.altText : "")
+          : null;
         return {
           id: doc.id,
           kind: data.kind,
@@ -148,17 +145,17 @@ export async function GET(_: Request, { params }: RouteContext<"/api/partner/pro
           altText: typeof data.altText === "string" ? data.altText : "",
           moderationStatus: data.moderationStatus ?? data.status ?? "pending",
           isCover: doc.id === (p.coverMediaId ?? null),
-          imageUrl: await safeReadUrl(data.r2ObjectKey),
+          imageUrl: published?.imageUrl ?? null,
         };
       })),
-      documents: documents.docs.map((doc) => { const data = doc.data(); return { id: doc.id, documentType: data.documentType, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: serializeDate(data.createdAt) }; }),
+      documents: documents?.docs.map((doc) => { const data = doc.data(); return { id: doc.id, documentType: data.documentType, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: serializeDate(data.createdAt) }; }) ?? [],
     });
   } catch {
     return Response.json({ error: "Property access required." }, { status: 403 });
   }
 }
 
-export async function PATCH(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]">) {
+const rawPATCH = async function PATCH(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
@@ -189,9 +186,15 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/par
       delete update.latitude;
       delete update.longitude;
     }
-    await ref.update(update);
+    const batch = adminDb.batch();
+    batch.update(ref, update);
+    enqueueProjection(batch, "property_search", propertyId);
+    await batch.commit();
     return Response.json({ ok: true, property: { ...patch, updatedAt: new Date().toISOString() } });
   } catch (error) {
     return Response.json({ error: validationMessage(error) }, { status: 422 });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/partner/properties/[propertyId]", auth: "read", requireAuth: true, cache: "private" });
+export const PATCH = withApiHandler(rawPATCH, { route: "/api/partner/properties/[propertyId]", auth: "strict", requireAuth: true, cache: "private" });

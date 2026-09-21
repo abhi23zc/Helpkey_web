@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -150,6 +150,7 @@ export function BookingCheckout() {
   const [request, setRequest] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [confirmed, setConfirmed] = useState("");
+  const bookingIdempotencyKey = useRef("");
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -231,6 +232,7 @@ export function BookingCheckout() {
     setBusy(true);
     setError("");
     try {
+      if (!bookingIdempotencyKey.current) bookingIdempotencyKey.current = crypto.randomUUID();
       const body = {
         ...input,
         paymentMethod:
@@ -250,7 +252,7 @@ export function BookingCheckout() {
       };
       const response = await fetch("/api/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": bookingIdempotencyKey.current },
         body: JSON.stringify(body),
       });
       const result = (await response.json()) as {

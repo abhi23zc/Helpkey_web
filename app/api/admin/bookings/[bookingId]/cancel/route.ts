@@ -1,8 +1,9 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { requireAdmin } from "@/lib/admin/data";
 import { adminCancelBooking, bookingError } from "@/lib/bookings";
 
-export async function POST(_request: Request, { params }: RouteContext<"/api/admin/bookings/[bookingId]/cancel">) {
+const rawPOST = async function POST(_request: Request, { params }: RouteContext<"/api/admin/bookings/[bookingId]/cancel">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
@@ -14,3 +15,5 @@ export async function POST(_request: Request, { params }: RouteContext<"/api/adm
     return Response.json({ error: bookingError(error) }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/admin/bookings/[bookingId]/cancel", auth: "strict", requireAuth: true, cache: "private" });

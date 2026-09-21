@@ -8,7 +8,9 @@ export function PartnerReviewsPage() {
     <PartnerShell>
       {({ selectedProperty }) => (
         <PartnerReviewsView
+          propertyId={selectedProperty?.id}
           propertyName={selectedProperty?.name ?? "The Balmoral Hotel"}
+          propertySlug={selectedProperty?.slug}
         />
       )}
     </PartnerShell>

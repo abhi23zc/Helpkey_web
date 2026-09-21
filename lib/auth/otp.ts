@@ -3,6 +3,7 @@ import "server-only";
 import crypto from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
+import { providerFetch } from "@/lib/providers/http";
 
 const OTP_COLLECTION = "otpChallenges";
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -60,7 +61,7 @@ async function sendWhatsappOtp(phoneNumber: string, otp: string) {
     `Your Helpkey verification code is ${otp}. It expires in 5 minutes.`,
   );
 
-  const response = await fetch(url, { method: "GET", cache: "no-store" });
+  const response = await providerFetch("whatsapp", url, { method: "GET", timeoutMs: 8_000, idempotent: false });
 
   if (!response.ok) {
     throw new Error("OTP_SEND_FAILED");

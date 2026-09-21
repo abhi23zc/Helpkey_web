@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -29,13 +30,13 @@ async function deleteInBatches(refs: FirebaseFirestore.DocumentReference[]) {
   }
 }
 
-export async function GET(_request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
+const rawGET = async function GET(_request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try { await requireAdmin(user.uid); const { propertyId } = await params; return Response.json(await listingDetail(propertyId)); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to load property." }, { status: 422 }); }
 }
 
-export async function PATCH(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
+const rawPATCH = async function PATCH(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
     await requireAdmin(user.uid); const { propertyId } = await params; const patch = propertyPatchSchema.parse(await request.json()); const ref = adminDb.collection("properties").doc(propertyId); const exists = await ref.get(); if (!exists.exists) throw new Error("PROPERTY_NOT_FOUND");
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/adm
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to save property." }, { status: 422 }); }
 }
 
-export async function DELETE(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
+const rawDELETE = async function DELETE(request: Request, { params }: RouteContext<"/api/admin/properties/[propertyId]">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
@@ -89,3 +90,7 @@ export async function DELETE(request: Request, { params }: RouteContext<"/api/ad
     return Response.json({ error: message }, { status });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/admin/properties/[propertyId]", auth: "read", requireAuth: true, cache: "private" });
+export const PATCH = withApiHandler(rawPATCH, { route: "/api/admin/properties/[propertyId]", auth: "strict", requireAuth: true, cache: "private" });
+export const DELETE = withApiHandler(rawDELETE, { route: "/api/admin/properties/[propertyId]", auth: "strict", requireAuth: true, cache: "private" });

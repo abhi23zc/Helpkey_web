@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { apiFetch } from "@/lib/api/client";
 import type { DashboardUser, Property } from "./types";
 import { setupTasks } from "./types";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
@@ -11,30 +14,18 @@ type DashboardResponse = {
   user: DashboardUser | null;
   properties: Property[];
 };
-
-async function loadPartnerDashboard(): Promise<DashboardResponse> {
-  const response = await fetch("/api/partner/dashboard", { cache: "no-store" });
-  const json = await response.json();
-  if (!response.ok) throw new Error(json.error ?? "Unable to load dashboard.");
-  return {
-    businessName: json.businessName ?? null,
-    currency: json.currency ?? DEFAULT_CURRENCY,
-    user: json.user ?? null,
-    properties: (json.properties as Property[]) ?? [],
-  };
-}
+const EMPTY_PROPERTIES: Property[] = [];
 
 export function usePartnerDashboardData() {
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [businessName, setBusinessName] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY);
-  const [user, setUser] = useState<DashboardUser | null>(null);
+  const shell = useQuery({ queryKey: queryKeys.partnerShell, queryFn: ({ signal }) => apiFetch<DashboardResponse>("/api/partner/dashboard", { signal, cache: "no-store" }), staleTime: 30_000 });
+  const properties = shell.data?.properties ?? EMPTY_PROPERTIES;
+  const businessName = shell.data?.businessName ?? null;
+  const currency = shell.data?.currency ?? DEFAULT_CURRENCY;
+  const user = shell.data?.user ?? null;
   const [selectedPropertyId, setSelectedPropertyId] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("propertyId") ?? "";
   });
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [reportingDate, setReportingDateState] = useState(() => {
     const fallback = new Date().toISOString().slice(0, 10);
     if (typeof window === "undefined") return fallback;
@@ -50,38 +41,20 @@ export function usePartnerDashboardData() {
     window.history.replaceState(null, "", url);
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    loadPartnerDashboard()
-      .then((data) => {
-        if (cancelled) return;
-        setProperties(data.properties);
-        setBusinessName(data.businessName);
-        setCurrency(data.currency);
-        setUser(data.user);
-        setSelectedPropertyId((current) =>
-          data.properties.some((property) => property.id === current) ? current : data.properties[0]?.id || "",
-        );
-      })
-      .catch((cause) => {
-        if (cancelled) return;
-        setError(
-          cause instanceof Error ? cause.message : "Unable to load dashboard."
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const effectivePropertyId = properties.some((property) => property.id === selectedPropertyId) ? selectedPropertyId : properties[0]?.id ?? "";
+
+  const selectProperty = (propertyId: string) => {
+    setSelectedPropertyId(propertyId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("propertyId", propertyId);
+    window.history.replaceState(null, "", url);
+  };
 
   const selectedProperty = useMemo(
     () =>
-      properties.find((property) => property.id === selectedPropertyId) ??
+      properties.find((property) => property.id === effectivePropertyId) ??
       properties[0],
-    [properties, selectedPropertyId]
+    [properties, effectivePropertyId]
   );
 
   const completedSteps =
@@ -94,15 +67,15 @@ export function usePartnerDashboardData() {
   return {
     properties,
     selectedProperty,
-    selectedPropertyId,
-    setSelectedPropertyId,
+    selectedPropertyId: effectivePropertyId,
+    setSelectedPropertyId: selectProperty,
     reportingDate,
     setReportingDate,
     businessName,
     currency: selectedProperty?.currency ?? currency,
     user,
-    error,
-    loading,
+    error: shell.error instanceof Error ? shell.error.message : "",
+    loading: shell.isLoading,
     counts: {
       completedSteps,
       currentStep: selectedProperty?.onboarding?.currentStep ?? 1,

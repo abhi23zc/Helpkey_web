@@ -4,22 +4,35 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "all": "npm run build:workers && concurrently --kill-others-on-fail --names next,dispatcher,worker-1,worker-2 --prefix name \"npm run dev\" \"npm run worker:dispatcher\" \"npm run worker:media\" \"npm run worker:media\"",
+    "all": "npm run build:workers && concurrently --kill-others-on-fail --names next,media-dispatcher,media-worker,projection-dispatcher,projection-worker --prefix name \"npm run dev\" \"npm run worker:dispatcher\" \"npm run worker:media\" \"npm run worker:projection-dispatcher\" \"npm run worker:projection\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "load:test": "tsx scripts/load-test.ts",
+    "projection:backfill": "tsx --env-file=.env.local scripts/projection-backfill.ts",
     "media:backfill": "tsx --env-file=.env.local scripts/media-backfill.ts",
     "media:migrate-legacy-private": "tsx --env-file=.env.local scripts/migrate-legacy-private-media.ts",
     "media:repair-bookings": "tsx --env-file=.env.local scripts/repair-booking-media.ts",
-    "build:workers": "esbuild workers/media/runner.ts workers/media/dispatcher.ts workers/media/cleanup.ts workers/media/migrate-firestore-jobs.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist/workers/media --external:sharp",
+    "reviews:publish-pending": "tsx --env-file=.env.local scripts/publish-pending-reviews.ts",
+    "build:workers": "esbuild workers/media/runner.ts workers/media/dispatcher.ts workers/media/cleanup.ts workers/media/migrate-firestore-jobs.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist/workers/media --external:sharp && esbuild workers/projections/runner.ts workers/projections/dispatcher.ts --bundle --platform=node --target=node20 --format=cjs --outdir=dist/workers/projections --external:sharp",
     "worker:media": "node --env-file=.env.local dist/workers/media/runner.js",
     "worker:dispatcher": "node --env-file=.env.local dist/workers/media/dispatcher.js",
     "worker:cleanup": "node --env-file=.env.local dist/workers/media/cleanup.js",
-    "worker:migrate-firestore-jobs": "node --env-file=.env.local dist/workers/media/migrate-firestore-jobs.js"
+    "worker:migrate-firestore-jobs": "node --env-file=.env.local dist/workers/media/migrate-firestore-jobs.js",
+    "worker:projection": "node --env-file=.env.local dist/workers/projections/runner.js",
+    "worker:projection-dispatcher": "node --env-file=.env.local dist/workers/projections/dispatcher.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
     "@aws-sdk/s3-request-presigner": "^3.1127.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
+    "@tanstack/react-query": "^5.103.2",
     "@types/qrcode.react": "^1.0.5",
     "bullmq": "^6.3.4",
     "firebase": "^12.18.0",
@@ -30,20 +43,26 @@
     "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
+    "@types/autocannon": "^7.12.7",
     "@types/google.maps": "^3.66.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.2.4",
+    "autocannon": "^8.0.0",
     "concurrently": "^10.0.5",
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

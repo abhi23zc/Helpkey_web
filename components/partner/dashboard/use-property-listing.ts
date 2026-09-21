@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
+import { apiFetch } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query/keys";
 
 export type ListingMedia = {
   id: string;
@@ -204,14 +207,19 @@ function buildChecklist(data: ListingResponse): ChecklistItem[] {
   ];
 }
 
-export function usePropertyListing(propertyId: string | undefined) {
-  const [data, setData] = useState<ListingResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [reloadToken, setReloadToken] = useState(0);
-  const loadedPropertyId = useRef<string | undefined>(undefined);
-
-  const reload = useCallback(() => setReloadToken((token) => token + 1), []);
+export function usePropertyListing(propertyId: string | undefined, view: "listing" | "rooms" = "listing") {
+  const queryClient = useQueryClient();
+  const key = useMemo(() => propertyId
+    ? (view === "rooms" ? queryKeys.partnerRooms(propertyId) : queryKeys.partnerListing(propertyId, view))
+    : (["partner", "no-property", view] as const), [propertyId, view]);
+  const query = useQuery({
+    queryKey: key,
+    enabled: Boolean(propertyId),
+    queryFn: ({ signal }) => apiFetch<ListingResponse>(`/api/partner/properties/${propertyId}?view=${view}`, { signal, cache: "no-store" }),
+    staleTime: 30_000,
+  });
+  const data = query.data ?? null;
+  const reload = useCallback(() => void queryClient.invalidateQueries({ queryKey: key, exact: true }), [key, queryClient]);
 
   /**
    * Applies a locally-known change to the in-memory snapshot without a network
@@ -219,8 +227,8 @@ export function usePropertyListing(propertyId: string | undefined) {
    * consistent while avoiding the expensive full-listing GET on every action.
    */
   const applyPatch = useCallback((mutate: (current: ListingResponse) => ListingResponse) => {
-    setData((current) => (current ? mutate(current) : current));
-  }, []);
+    queryClient.setQueryData<ListingResponse>(key, (current) => current ? mutate(current) : current);
+  }, [key, queryClient]);
 
   const patchProperty = useCallback(
     (fields: Partial<ListingProperty>) =>
@@ -318,44 +326,6 @@ export function usePropertyListing(propertyId: string | undefined) {
     [applyPatch],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!propertyId) {
-        setData(null);
-        loadedPropertyId.current = undefined;
-        return;
-      }
-      // Clear stale data only when the property actually changes, so a
-      // background reload() reconcile never blanks the current listing.
-      if (loadedPropertyId.current !== propertyId) {
-        setData(null);
-      }
-      loadedPropertyId.current = propertyId;
-      setLoading(true);
-      setError("");
-      try {
-        const response = await fetch(`/api/partner/properties/${propertyId}`, { cache: "no-store" });
-        const json = await response.json();
-        if (!response.ok) throw new Error(json.error ?? "Unable to load listing.");
-        if (!cancelled) setData(json as ListingResponse);
-      } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Unable to load listing.");
-          setData(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [propertyId, reloadToken]);
-
   const checklist = useMemo(() => (data ? buildChecklist(data) : []), [data]);
 
   const photos = useMemo(
@@ -401,8 +371,8 @@ export function usePropertyListing(propertyId: string | undefined) {
     roomsWithPricing,
     startingPricePaise,
     currency,
-    loading,
-    error,
+    loading: query.isPending,
+    error: query.error instanceof Error ? query.error.message : "",
     reload,
     patchProperty,
     addRoomType,

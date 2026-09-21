@@ -1,6 +1,7 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { verifyOtpChallenge } from "@/lib/auth/otp";
 
-export async function POST(request: Request) {
+const rawPOST = async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       challengeId?: string;
@@ -23,3 +24,5 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/auth/verify-otp", auth: "public", requireAuth: false, cache: "private" });

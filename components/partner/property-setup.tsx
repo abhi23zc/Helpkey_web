@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, BedDouble, Building, Building2, Check, CheckCircle2, ChevronLeft, CircleCheck, CircleHelp, Home, Hotel, ImageIcon, Loader2, LockKeyhole, MapPin, Search, Sparkles, Trash2, Trees, Upload, Users, Warehouse, X } from "lucide-react";
+import { ArrowRight, BadgeCheck, BedDouble, Building, Building2, CalendarClock, Check, CheckCircle2, ChevronLeft, CircleCheck, CircleHelp, Home, Hotel, ImageIcon, IndianRupee, Loader2, LockKeyhole, MapPin, Plus, Search, ShieldCheck, Sparkles, Tag, Trash2, Trees, Upload, Users, Warehouse, X } from "lucide-react";
+import { formatPaise } from "@/lib/currency";
 import { loadGoogleMaps, placesLibrary } from "@/lib/google/maps-loader";
 import { uploadErrorMessage, uploadKycDocument, uploadPropertyPhoto, validateKycDocument, type KycDocumentType, type PropertyPhotoCategory } from "@/lib/partner/upload-client";
 
@@ -888,20 +889,41 @@ function TypeStep({ selected, propertyName, city, confirmed, onContinue, onSave,
   );
 }
 
+type RoomAddPanel = "room" | "policy" | "rate";
+
 function RoomsRates({ propertyId, listing, request, onChanged, onContinue, saving }: { propertyId: string; listing: Listing; request: any; onChanged: () => Promise<void>; onContinue: () => Promise<void>; saving: boolean }) {
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState<"room" | "policy" | "rate" | null>(null);
+  const [notice, setNotice] = useState<{ tone: "info" | "success" | "error"; message: string } | null>(null);
+  const [busy, setBusy] = useState<RoomAddPanel | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [selectedPolicyId, setSelectedPolicyId] = useState("");
-  const policySectionRef = useRef<HTMLFormElement | null>(null);
+  const [openPanel, setOpenPanel] = useState<RoomAddPanel | null>("room");
+  // Bumping this key remounts the add forms after a successful save so their
+  // native inputs reset without us tracking each field in React state.
+  const [formNonce, setFormNonce] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const addSectionRef = useRef<HTMLDivElement | null>(null);
+
   const roomId = selectedRoomId || listing.roomTypes[0]?.id || "";
   const policyId = selectedPolicyId || listing.policies[0]?.id || "";
+  const hasRooms = listing.roomTypes.length > 0;
+  const hasPolicies = listing.policies.length > 0;
+
+  const policyById = new Map(listing.policies.map((policy) => [policy.id, policy] as const));
+  // Policies referenced by a rate cannot be deleted until the rate is removed;
+  // track them so the UI can disable delete instead of failing the request.
+  const policyIdsInUse = new Set(listing.ratePlans.map((rate) => rate.cancellationPolicyId).filter(Boolean));
+  const ratesByRoom = new Map<string, any[]>();
+  for (const rate of listing.ratePlans) {
+    const list = ratesByRoom.get(rate.roomTypeId) ?? [];
+    list.push(rate);
+    ratesByRoom.set(rate.roomTypeId, list);
+  }
   const sellableRoomIds = new Set(listing.ratePlans.filter((rate) => rate.cancellationPolicyId).map((rate) => rate.roomTypeId));
   const roomsMissingRates = listing.roomTypes.filter((room) => !sellableRoomIds.has(room.id));
-  const roomsAndRatesComplete = listing.roomTypes.length > 0 && listing.policies.length > 0 && roomsMissingRates.length === 0;
+  const roomsAndRatesComplete = hasRooms && hasPolicies && roomsMissingRates.length === 0;
 
-  const add = async (kind: "room" | "policy" | "rate", form: FormData) => {
-    setBusy(kind); setNotice("");
+  const add = async (kind: RoomAddPanel, form: FormData) => {
+    setBusy(kind); setNotice(null);
     try {
       let createdRoomId = "";
       if (kind === "room") {
@@ -915,92 +937,345 @@ function RoomsRates({ propertyId, listing, request, onChanged, onContinue, savin
         await request(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId: roomId, name: rateName, code: internalRateCode(rateName), basePricePaise: Math.round(Number(form.get("price")) * 100), cancellationPolicyId: policyId, paymentMode: "full" });
       }
       await onChanged();
+      setFormNonce((value) => value + 1);
       if (createdRoomId) setSelectedRoomId(createdRoomId);
-      setNotice(kind === "room" ? "Room type added. Next, add a cancellation promise." : kind === "policy" ? "Cancellation policy saved. Now set a nightly price." : "This room is ready to sell.");
-      if (kind === "room") {
-        requestAnimationFrame(() => {
-          policySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          policySectionRef.current?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
-        });
-      }
+      // Guide the partner to the next logical action instead of leaving three
+      // forms open at once.
+      const nextPanel: RoomAddPanel | null = kind === "room" ? "policy" : kind === "policy" ? "rate" : null;
+      setOpenPanel(nextPanel);
+      setNotice({
+        tone: "success",
+        message: kind === "room" ? "Room type added. Next, set a cancellation promise." : kind === "policy" ? "Cancellation policy saved. Now link it to a nightly price." : "Nightly rate saved — this room is ready to sell.",
+      });
       return true;
     } catch (error) {
-      setNotice(error instanceof Error ? customerMessage(error.message, "Could not save.") : "Could not save.");
+      setNotice({ tone: "error", message: error instanceof Error ? customerMessage(error.message, "Could not save.") : "Could not save." });
       return false;
     } finally {
       setBusy(null);
     }
   };
 
+  const togglePanel = (panel: RoomAddPanel, enabled: boolean) => {
+    if (!enabled) return;
+    setOpenPanel((current) => (current === panel ? null : panel));
+  };
+
+  const remove = async (kind: "room" | "policy" | "rate", id: string, label: string) => {
+    const endpoint = kind === "room"
+      ? `/api/partner/properties/${propertyId}/room-types/${id}`
+      : kind === "policy"
+        ? `/api/partner/properties/${propertyId}/cancellation-policies/${id}`
+        : `/api/partner/properties/${propertyId}/rate-plans/${id}`;
+    const confirmation = kind === "room"
+      ? `Delete "${label}"? Any rates attached to this room will also be removed.`
+      : kind === "policy"
+        ? `Delete the "${label}" cancellation policy?`
+        : `Delete the "${label}" rate?`;
+    if (typeof window !== "undefined" && !window.confirm(confirmation)) return;
+    setDeletingId(id); setNotice(null);
+    try {
+      await request(endpoint, undefined, "DELETE");
+      // Clear stale selections so the rate form never points at a deleted row.
+      if (kind === "room" && selectedRoomId === id) setSelectedRoomId("");
+      if (kind === "policy" && selectedPolicyId === id) setSelectedPolicyId("");
+      await onChanged();
+      setNotice({ tone: "info", message: `${label} deleted.` });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? customerMessage(error.message, "Could not delete.") : "Could not delete." });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const focusAddPanel = (panel: RoomAddPanel) => {
+    setOpenPanel(panel);
+    requestAnimationFrame(() => {
+      addSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
     <>
-      <Heading title="Add your first room and rate" text="Set up one sellable room first: create the room, choose its cancellation promise, then add a nightly price." />
-      <div className="space-y-4">
-        <form noValidate onSubmit={(event) => { event.preventDefault(); void add("room", new FormData(event.currentTarget)); }} className="rounded-2xl border border-slate-200 p-5">
-          <StepHeading number="1" title="Create a room type" complete={listing.roomTypes.length > 0} text="For example: Deluxe Double." />
-          <Field name="name" label="Room name" />
-          <label className="mt-3 block text-sm font-medium">
-            Short description
-            <textarea required minLength={10} name="description" placeholder="A comfortable room with..." className={input} />
-          </label>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field name="inventory" label="Rooms to sell" type="number" />
-            <Field name="adults" label="Max guests" type="number" />
-          </div>
-          <button disabled={Boolean(busy)} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
-            {busy === "room" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving room...</> : "Save room type"}
-          </button>
-        </form>
-        <form ref={policySectionRef} noValidate onSubmit={(event) => { event.preventDefault(); void add("policy", new FormData(event.currentTarget)); }} className={`rounded-2xl border p-5 ${listing.roomTypes.length ? "border-slate-200" : "border-slate-200 bg-slate-50"}`}>
-          <StepHeading number="2" title="Set a cancellation promise" complete={listing.policies.length > 0} text="Guests see this before booking." />
-          <Field name="policyName" label="Policy name" />
-          <label className="mt-3 block text-sm font-medium">
-            Policy details
-            <textarea required minLength={10} name="policyDescription" placeholder="Free cancellation until..." className={input} />
-          </label>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field name="hours" label="Hours before check-in" type="number" />
-            <Field name="fee" label="Cancellation fee (%)" type="number" />
-          </div>
-          <button disabled={Boolean(busy) || !listing.roomTypes.length} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
-            {busy === "policy" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving policy...</> : "Save cancellation policy"}
-          </button>
-        </form>
-        <form noValidate onSubmit={(event) => { event.preventDefault(); void add("rate", new FormData(event.currentTarget)); }} className={`rounded-2xl border p-5 ${roomId && policyId ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-slate-50"}`}>
-          <StepHeading number="3" title="Add a nightly rate" complete={Boolean(roomId && sellableRoomIds.has(roomId))} text="Link this room to the cancellation policy guests will see." />
-          <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-slate-500">Room type<select value={roomId} onChange={(event) => setSelectedRoomId(event.target.value)} disabled={!listing.roomTypes.length} className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><label className="text-xs font-bold uppercase tracking-wider text-slate-500">Cancellation policy<select value={policyId} onChange={(event) => setSelectedPolicyId(event.target.value)} disabled={!listing.policies.length} className={input}>{listing.policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name}</option>)}</select></label><Field name="rateName" label="Rate name" /><Field name="price" label="Price per night (INR)" type="number" /></div>
-          <button disabled={Boolean(busy) || !roomId || !policyId} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>{busy === "rate" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving rate...</> : "Save nightly rate"}</button>
-        </form>
+      <Heading title="Rooms & rates" text="Build one sellable room: create the room type, add a cancellation promise, then attach a nightly price. You can add more rooms and rates the same way." />
+
+      {/* Progress checklist */}
+      <div className="mb-6 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-3">
+        <ChecklistItem icon={BedDouble} label="Room type" done={hasRooms} hint={hasRooms ? `${listing.roomTypes.length} added` : "None yet"} />
+        <ChecklistItem icon={ShieldCheck} label="Cancellation policy" done={hasPolicies} hint={hasPolicies ? `${listing.policies.length} added` : "None yet"} />
+        <ChecklistItem icon={Tag} label="Sellable rate" done={roomsAndRatesComplete} hint={roomsAndRatesComplete ? "All rooms priced" : `${roomsMissingRates.length} room${roomsMissingRates.length === 1 ? "" : "s"} unpriced`} />
       </div>
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <Summary title="Room types" count={listing.roomTypes.length} items={listing.roomTypes.map((room) => room.name)} />
-        <Summary title="Policies" count={listing.policies.length} items={listing.policies.map((policy) => policy.name)} />
-        <Summary title="Rates" count={listing.ratePlans.length} items={listing.ratePlans.map((rate) => rate.name)} />
+
+      <div ref={addSectionRef} className="space-y-3">
+        <AddPanel
+          icon={BedDouble}
+          title="Create a room type"
+          text="For example: Deluxe Double."
+          complete={hasRooms}
+          open={openPanel === "room"}
+          enabled
+          onToggle={() => togglePanel("room", true)}
+        >
+          <form key={`room-${formNonce}`} noValidate onSubmit={(event) => { event.preventDefault(); void add("room", new FormData(event.currentTarget)); }}>
+            <Field name="name" label="Room name" placeholder="Deluxe Double" />
+            <label className="mt-3 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Short description
+              <textarea required minLength={10} name="description" placeholder="A comfortable room with a king bed, city view and free Wi-Fi..." className={input} />
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field name="inventory" label="Rooms to sell" type="number" placeholder="e.g. 10" />
+              <Field name="adults" label="Max guests" type="number" placeholder="e.g. 2" />
+            </div>
+            <button disabled={Boolean(busy)} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
+              {busy === "room" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving room...</> : <><Plus className="h-4 w-4" /> Save room type</>}
+            </button>
+          </form>
+        </AddPanel>
+
+        <AddPanel
+          icon={ShieldCheck}
+          title="Set a cancellation promise"
+          text={hasRooms ? "Guests see this before booking." : "Add a room type first."}
+          complete={hasPolicies}
+          open={openPanel === "policy"}
+          enabled={hasRooms}
+          onToggle={() => togglePanel("policy", hasRooms)}
+        >
+          <form key={`policy-${formNonce}`} noValidate onSubmit={(event) => { event.preventDefault(); void add("policy", new FormData(event.currentTarget)); }}>
+            <Field name="policyName" label="Policy name" placeholder="Free cancellation" />
+            <label className="mt-3 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Policy details
+              <textarea required minLength={10} name="policyDescription" placeholder="Free cancellation until 24 hours before check-in..." className={input} />
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Field name="hours" label="Hours before check-in" type="number" placeholder="e.g. 24" />
+              <Field name="fee" label="Cancellation fee (%)" type="number" placeholder="e.g. 0" />
+            </div>
+            <button disabled={Boolean(busy) || !hasRooms} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
+              {busy === "policy" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving policy...</> : <><Plus className="h-4 w-4" /> Save cancellation policy</>}
+            </button>
+          </form>
+        </AddPanel>
+
+        <AddPanel
+          icon={Tag}
+          title="Add a nightly rate"
+          text={hasRooms && hasPolicies ? "Link a room to the cancellation policy guests will see." : "Add a room and a policy first."}
+          complete={roomsAndRatesComplete && listing.ratePlans.length > 0}
+          open={openPanel === "rate"}
+          enabled={hasRooms && hasPolicies}
+          onToggle={() => togglePanel("rate", hasRooms && hasPolicies)}
+        >
+          <form key={`rate-${formNonce}`} noValidate onSubmit={(event) => { event.preventDefault(); void add("rate", new FormData(event.currentTarget)); }}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Room type
+                <select value={roomId} onChange={(event) => setSelectedRoomId(event.target.value)} disabled={!hasRooms} className={input}>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Cancellation policy
+                <select value={policyId} onChange={(event) => setSelectedPolicyId(event.target.value)} disabled={!hasPolicies} className={input}>{listing.policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name}</option>)}</select>
+              </label>
+              <Field name="rateName" label="Rate name" placeholder="Standard rate" />
+              <Field name="price" label="Price per night (INR)" type="number" placeholder="e.g. 2500" />
+            </div>
+            <button disabled={Boolean(busy) || !roomId || !policyId} className={`mt-5 inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap ${button}`}>
+              {busy === "rate" ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving rate...</> : <><Plus className="h-4 w-4" /> Save nightly rate</>}
+            </button>
+          </form>
+        </AddPanel>
       </div>
-      {roomsMissingRates.length > 0 && (
-        <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
-          {roomsMissingRates.length === 1 ? `${roomsMissingRates[0].name} still needs a nightly rate.` : `${roomsMissingRates.length} room types still need rates: ${roomsMissingRates.map((room) => room.name).join(", ")}.`}
+
+      {notice && (
+        <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 rounded-xl border p-3 text-sm font-medium ${notice.tone === "error" ? "border-rose-200 bg-rose-50 text-rose-900" : notice.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+          {notice.message}
         </p>
       )}
-      {notice && <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm">{notice}</p>}
-      <button type="button" disabled={saving || Boolean(busy) || !roomsAndRatesComplete} onClick={() => void onContinue()} className="mt-7 w-full rounded-xl bg-[#0b1f3a] p-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
-        {!listing.roomTypes.length || !listing.policies.length ? "Add a room and cancellation policy to continue" : roomsMissingRates.length ? `Add rate${roomsMissingRates.length === 1 ? "" : "s"} for ${roomsMissingRates.length} remaining room type${roomsMissingRates.length === 1 ? "" : "s"}` : saving ? "Saving…" : "Continue to facilities"}
+
+      {/* Detailed review of everything created so far */}
+      <div className="mt-8 border-t border-slate-100 pt-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-extrabold text-[#071633]">Your rooms &amp; rates</h2>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{listing.roomTypes.length} room{listing.roomTypes.length === 1 ? "" : "s"} · {listing.ratePlans.length} rate{listing.ratePlans.length === 1 ? "" : "s"}</span>
+        </div>
+
+        {!hasRooms ? (
+          <div className="mt-4 grid place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
+            <BedDouble className="h-8 w-8 text-slate-300" />
+            <p className="mt-2 text-sm font-semibold text-slate-600">No rooms yet</p>
+            <p className="mt-0.5 text-xs text-slate-500">Create your first room type above to get started.</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {listing.roomTypes.map((room) => (
+              <RoomDetailCard
+                key={room.id}
+                room={room}
+                rates={ratesByRoom.get(room.id) ?? []}
+                policyById={policyById}
+                sellable={sellableRoomIds.has(room.id)}
+                deletingId={deletingId}
+                onAddRate={() => { setSelectedRoomId(room.id); focusAddPanel("rate"); }}
+                onRemoveRoom={() => void remove("room", room.id, room.name)}
+                onRemoveRate={(rateId, rateName) => void remove("rate", rateId, rateName)}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasPolicies && (
+          <div className="mt-6">
+            <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-500">Cancellation policies</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {listing.policies.map((policy) => <PolicyDetailCard key={policy.id} policy={policy} inUse={policyIdsInUse.has(policy.id)} deleting={deletingId === policy.id} onRemove={() => void remove("policy", policy.id, policy.name)} />)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {roomsMissingRates.length > 0 && (
+        <p role="status" className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+          {roomsMissingRates.length === 1 ? `${roomsMissingRates[0].name} still needs a nightly rate before it can be sold.` : `${roomsMissingRates.length} room types still need rates: ${roomsMissingRates.map((room) => room.name).join(", ")}.`}
+        </p>
+      )}
+
+      <button type="button" disabled={saving || Boolean(busy) || !roomsAndRatesComplete} onClick={() => void onContinue()} className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b1f3a] p-3 font-bold text-white transition hover:bg-[#061633] disabled:cursor-not-allowed disabled:opacity-50">
+        {!hasRooms || !hasPolicies ? "Add a room and cancellation policy to continue" : roomsMissingRates.length ? `Add rate${roomsMissingRates.length === 1 ? "" : "s"} for ${roomsMissingRates.length} remaining room type${roomsMissingRates.length === 1 ? "" : "s"}` : saving ? "Saving…" : <>Continue to facilities <ArrowRight className="h-4 w-4" /></>}
       </button>
     </>
   );
 }
 
-function StepHeading({ number, title, text, complete }: { number: string; title: string; text: string; complete: boolean }) {
-  return <div className="flex gap-3"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-extrabold ${complete ? "bg-emerald-100 text-emerald-700" : "bg-[#092442] text-white"}`}>{complete ? <Check className="h-4 w-4" /> : number}</span><div><h2 className="font-bold text-[#071633]">{title}</h2><p className="mt-1 text-sm text-slate-500">{text}</p></div></div>;
+function ChecklistItem({ icon: Icon, label, done, hint }: { icon: typeof BedDouble; label: string; done: boolean; hint: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${done ? "bg-[#092442] text-white" : "bg-white text-slate-400 ring-1 ring-slate-200"}`}>
+        <Icon className="h-4 w-4" strokeWidth={2} />
+      </span>
+      <div className="min-w-0">
+        <p className={`truncate text-sm font-bold ${done ? "text-[#071633]" : "text-slate-600"}`}>{label}</p>
+        <p className={`truncate text-xs font-medium ${done ? "text-emerald-600" : "text-slate-400"}`}>{hint}</p>
+      </div>
+    </div>
+  );
+}
+
+function AddPanel({ icon: Icon, title, text, complete, open, enabled, onToggle, children }: { icon: typeof BedDouble; title: string; text: string; complete: boolean; open: boolean; enabled: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <div className={`overflow-hidden rounded-2xl border transition ${open ? "border-[#092442]/30 shadow-[0_8px_30px_rgba(7,22,51,0.05)]" : "border-slate-200"} ${!enabled ? "opacity-60" : ""}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={!enabled}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 p-4 text-left disabled:cursor-not-allowed"
+      >
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${open ? "bg-[#092442] text-white" : complete ? "bg-[#092442]/5 text-[#092442]" : "bg-slate-100 text-slate-400"}`}>
+          <Icon className="h-5 w-5" strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-[#071633]">{title}</p>
+          <p className="mt-0.5 truncate text-sm text-slate-500">{text}</p>
+        </div>
+        {complete && <span className="hidden shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 sm:inline-flex"><BadgeCheck className="h-3 w-3" /> Added</span>}
+        <ChevronLeft className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "-rotate-90" : "rotate-180"}`} />
+      </button>
+      {open && <div className="border-t border-slate-100 p-5 pt-4">{children}</div>}
+    </div>
+  );
+}
+
+function IconButton({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || disabled}
+      aria-label={label}
+      title={label}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+    >
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+    </button>
+  );
+}
+
+function RoomDetailCard({ room, rates, policyById, sellable, deletingId, onAddRate, onRemoveRoom, onRemoveRate }: { room: any; rates: any[]; policyById: Map<string, any>; sellable: boolean; deletingId: string | null; onAddRate: () => void; onRemoveRoom: () => void; onRemoveRate: (rateId: string, rateName: string) => void }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#092442]/5 text-[#092442]"><BedDouble className="h-4 w-4" /></span>
+            <h3 className="truncate text-base font-extrabold text-[#071633]">{room.name}</h3>
+            {sellable ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700"><BadgeCheck className="h-3 w-3" /> Sellable</span>
+            ) : (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">Needs a rate</span>
+            )}
+          </div>
+          {room.description && <p className="mt-1 line-clamp-2 max-w-prose text-sm text-slate-600">{room.description}</p>}
+        </div>
+        <IconButton label={`Delete ${room.name}`} busy={deletingId === room.id} onClick={onRemoveRoom} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1"><Users className="h-3.5 w-3.5 text-slate-400" /> Up to {room.maxAdults} guest{room.maxAdults === 1 ? "" : "s"}</span>
+        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1"><Home className="h-3.5 w-3.5 text-slate-400" /> {room.inventory} room{room.inventory === 1 ? "" : "s"} to sell</span>
+      </div>
+
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Rates</p>
+          <button type="button" onClick={onAddRate} className="inline-flex items-center gap-1 text-xs font-bold text-[#092442] hover:underline"><Plus className="h-3.5 w-3.5" /> Add rate</button>
+        </div>
+        {rates.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No rate yet — add a nightly price so guests can book this room.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {rates.map((rate) => {
+              const policy = rate.cancellationPolicyId ? policyById.get(rate.cancellationPolicyId) : null;
+              return (
+                <li key={rate.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 truncate text-sm font-bold text-[#071633]"><Tag className="h-3.5 w-3.5 text-slate-400" /> {rate.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500"><ShieldCheck className="h-3 w-3" /> {policy ? policy.name : "No cancellation policy"}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <p className="flex items-center gap-0.5 text-sm font-extrabold text-[#092442]"><IndianRupee className="h-3.5 w-3.5" />{formatPaise(rate.basePricePaise).replace("₹", "")}<span className="ml-1 text-xs font-semibold text-slate-400">/night</span></p>
+                    <IconButton label={`Delete ${rate.name}`} busy={deletingId === rate.id} onClick={() => onRemoveRate(rate.id, rate.name)} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PolicyDetailCard({ policy, inUse, deleting, onRemove }: { policy: any; inUse: boolean; deleting: boolean; onRemove: () => void }) {
+  const feeLabel = Number(policy.cancellationFeePercent) === 0 ? "No cancellation fee" : `${policy.cancellationFeePercent}% cancellation fee`;
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#092442]/5 text-[#092442]"><ShieldCheck className="h-4 w-4" /></span>
+          <h4 className="truncate font-extrabold text-[#071633]">{policy.name}</h4>
+        </div>
+        <IconButton label={inUse ? "Remove the rate using this policy before deleting it" : `Delete ${policy.name}`} busy={deleting} disabled={inUse} onClick={onRemove} />
+      </div>
+      {policy.description && <p className="mt-1 line-clamp-2 text-sm text-slate-600">{policy.description}</p>}
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1"><CalendarClock className="h-3.5 w-3.5 text-slate-400" /> Free until {policy.refundableUntilHours}h before check-in</span>
+        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1">{feeLabel}</span>
+      </div>
+      {inUse && <p className="mt-2 text-xs font-medium text-slate-400">In use by a rate — delete that rate first to remove this policy.</p>}
+    </div>
+  );
 }
 
 function internalRateCode(rateName: string) {
   const code = rateName.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 28);
   return code.length >= 2 ? `${code}_HK` : "STANDARD_HK";
-}
-
-function Summary({ title, count, items }: { title: string; count: number; items: string[] }) {
-  return <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p><p className="mt-1 text-2xl font-bold">{count}</p>{items.slice(0, 2).map((item, index) => <p key={`${title}-${item}-${index}`} className="mt-1 truncate text-sm text-slate-600">{item}</p>)}</div>;
 }
 
 const facilityGroups = [
@@ -1093,7 +1368,8 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
     let cancelled = false;
     const missing = photos.filter((asset) => !asset.imageUrl).map((asset) => asset.id);
     if (!missing.length) return;
-    void fetch(`/api/partner/properties/${propertyId}/media/preview-urls`, { cache: "no-store" }).then(async (response) => {
+    const search = missing.slice(0, 20).map((id) => `id=${encodeURIComponent(id)}`).join("&");
+    void fetch(`/api/partner/properties/${propertyId}/media/preview-urls?${search}`, { cache: "no-store" }).then(async (response) => {
       const json = await response.json();
       if (!response.ok) throw new Error(json.error ?? "Unable to load previews.");
       if (!cancelled) setPreviewUrls(Object.fromEntries(json.previews.map((item: { id: string; url: string }) => [item.id, item.url])));

@@ -28,22 +28,15 @@ export type { ReviewAction, ReviewEventInput } from "@/lib/partner/review-events
 
 /** Ordered (newest-first) audit timeline for a property. */
 export async function listReviewEvents(propertyId: string, max = 50) {
-  // Fetch by propertyId only (single-field index) and sort in memory to avoid a
-  // composite (propertyId + createdAt) index requirement. Per-property event
-  // counts are small.
+  const limit = Math.min(Math.max(max, 1), 50);
   const snap = await adminDb
     .collection("propertyReviewEvents")
     .where("propertyId", "==", propertyId)
-    .limit(200)
+    .orderBy("createdAt", "desc")
+    .limit(limit)
     .get();
   return snap.docs
-    .map((doc) => ({
-      doc,
-      createdAtMs: (doc.data().createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0,
-    }))
-    .sort((a, b) => b.createdAtMs - a.createdAtMs)
-    .slice(0, max)
-    .map(({ doc }) => clean({ id: doc.id, ...doc.data() }));
+    .map((doc) => clean({ id: doc.id, ...doc.data() }));
 }
 
 export function propertySummary(id: string, raw: FirebaseFirestore.DocumentData) {
@@ -133,9 +126,9 @@ export async function updateUser(adminId: string, userId: string, input: z.infer
   const nextStatus = input.accountStatus ?? target.data()?.accountStatus ?? "active";
   const removesOwnAdmin = userId === adminId && (!nextRoles.includes("admin") || nextStatus !== "active");
   if (removesOwnAdmin) throw new Error("You cannot remove or suspend your own admin access.");
-  const activeAdmins = (await adminDb.collection("users").limit(500).get()).docs.filter((doc) => Array.isArray(doc.data().roles) && doc.data().roles.includes("admin") && doc.data().accountStatus !== "suspended" && doc.data().isActive !== false);
+  const activeAdminCount = (await adminDb.collection("users").where("roles", "array-contains", "admin").where("accountStatus", "==", "active").where("isActive", "==", true).count().get()).data().count;
   const targetIsActiveAdmin = currentRoles.includes("admin") && target.data()?.accountStatus !== "suspended" && target.data()?.isActive !== false;
-  if (targetIsActiveAdmin && (!nextRoles.includes("admin") || nextStatus !== "active") && activeAdmins.length <= 1) throw new Error("The final active admin cannot be removed or suspended.");
+  if (targetIsActiveAdmin && (!nextRoles.includes("admin") || nextStatus !== "active") && activeAdminCount <= 1) throw new Error("The final active admin cannot be removed or suspended.");
   await ref.update({ ...(input.roles ? { roles: nextRoles } : {}), ...(input.accountStatus ? { accountStatus: input.accountStatus, isActive: input.accountStatus === "active" } : {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: adminId });
 }
 

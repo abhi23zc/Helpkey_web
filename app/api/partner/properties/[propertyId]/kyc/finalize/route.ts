@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -13,7 +14,7 @@ function isExpectedDocument(bytes: Uint8Array, mimeType: string) {
   return (mimeType === "image/jpeg" && jpeg) || (mimeType === "image/png" && png) || (mimeType === "application/pdf" && pdf);
 }
 
-export async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/kyc/finalize">) {
+const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/kyc/finalize">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   let originalKey: string | null = null;
@@ -50,3 +51,5 @@ export async function POST(request: Request, { params }: RouteContext<"/api/part
     return Response.json({ error: error instanceof Error ? error.message : "Unable to finalize document." }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/partner/properties/[propertyId]/kyc/finalize", auth: "strict", requireAuth: true, cache: "private" });

@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
@@ -77,7 +78,7 @@ function bookingDate(data: FirebaseFirestore.DocumentData, field: "createdAt" | 
   return iso(data[field])?.slice(0, 10) ?? null;
 }
 
-export async function GET(request: Request) {
+const rawGET = async function GET(request: Request) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
 
@@ -87,8 +88,8 @@ export async function GET(request: Request) {
     const propertyRef = await propertyOwner(user.uid, input.propertyId);
     const [propertySnap, bookingsSnap, roomsSnap] = await Promise.all([
       propertyRef.get(),
-      adminDb.collection("bookings").where("propertyId", "==", input.propertyId).limit(500).get(),
-      adminDb.collection("roomTypes").where("propertyId", "==", input.propertyId).limit(100).get(),
+      adminDb.collection("bookings").where("propertyId", "==", input.propertyId).where("checkOut", ">=", addDays(input.date, -31)).orderBy("checkOut").limit(50).get(),
+      adminDb.collection("roomTypes").where("propertyId", "==", input.propertyId).limit(50).get(),
     ]);
     const property = propertySnap.data() ?? {};
     const bookings: Array<FirebaseFirestore.DocumentData & { id: string }> = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -170,3 +171,5 @@ export async function GET(request: Request) {
     return Response.json({ error: message }, { status: message === "Property access required." ? 403 : 422 });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/partner/dashboard/overview", auth: "read", requireAuth: true, cache: "private" });

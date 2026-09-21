@@ -1,8 +1,7 @@
 "use client";
 
-import { ArrowRight, Camera, ChevronDown, MessageCircle, Star } from "lucide-react";
-import { ChangeEvent, useEffect, useState } from "react";
-import { useAuth } from "@/components/auth/auth-provider";
+import { ArrowRight, Star, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type ReviewSummary = {
@@ -27,14 +26,7 @@ type PublicReview = {
   text: string;
   submittedAt: string | null;
   photos: Array<{ id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string }>;
-};
-
-type OwnReview = {
-  id: string;
-  rating: number;
-  text: string;
-  status: "pending" | "approved" | "rejected";
-  photoIds: string[];
+  partnerReply: { text: string; repliedAt: string | null } | null;
 };
 
 const scoreLabel = (score: number) =>
@@ -59,25 +51,16 @@ const initials = (name: string) =>
 
 export function Reviews({
   property,
-  onLogin,
 }: {
   property: Property;
-  onLogin: () => void;
 }) {
-  const { appUser, loading } = useAuth();
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [publicError, setPublicError] = useState("");
-  const [own, setOwn] = useState<OwnReview | null>(null);
-  const [rating, setRating] = useState(5);
-  const [text, setText] = useState("");
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [allReviewsOpen, setAllReviewsOpen] = useState(false);
 
-  const loadPublic = async (nextPage: number) => {
+  const loadPublic = useCallback(async (nextPage: number) => {
     try {
       setPublicError("");
       const response = await fetch(
@@ -96,170 +79,38 @@ export function Reviews({
         "We couldn’t load guest reviews right now. Please try again shortly."
       );
     }
-  };
+  }, [property.slug]);
 
   useEffect(() => {
     void Promise.resolve().then(() => loadPublic(page));
-  }, [page, property.slug]);
-
-  useEffect(() => {
-    if (!appUser) {
-      queueMicrotask(() => setOwn(null));
-      return;
-    }
-    void fetch(`/api/reviews/${encodeURIComponent(property.id)}`, {
-      cache: "no-store",
-    }).then(async (response) => {
-      if (!response.ok) return;
-      const data = (await response.json()) as { review: OwnReview | null };
-      setOwn(data.review);
-      if (data.review) {
-        setRating(data.review.rating);
-        setText(data.review.text);
-      }
-    });
-  }, [appUser, property.id]);
-
-  const upload = async (files: FileList | null) => {
-    if (!files?.length || !own) {
-      setFormError("Save your review before adding photos.");
-      return;
-    }
-    if (files.length > 5 - own.photoIds.length) {
-      setFormError("You can attach up to five photos.");
-      return;
-    }
-    setSaving(true);
-    setFormError("");
-    try {
-      for (const file of Array.from(files)) {
-        if (
-          !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
-          file.size > 12 * 1024 * 1024
-        )
-          throw new Error(
-            "Photos must be JPEG, PNG, or WebP and 12 MB or smaller."
-          );
-        const checksum = Array.from(
-          new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))
-        )
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("");
-        const begin = await fetch(
-          `/api/reviews/${encodeURIComponent(property.id)}/photos/upload-url`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileName: file.name,
-              mimeType: file.type,
-              sizeBytes: file.size,
-              checksum,
-            }),
-          }
-        );
-        const uploadData = (await begin.json()) as {
-          uploadId?: string;
-          uploadUrl?: string;
-          headers?: Record<string, string>;
-          error?: string;
-        };
-        if (!begin.ok || !uploadData.uploadUrl || !uploadData.uploadId)
-          throw new Error(uploadData.error ?? "Unable to start photo upload.");
-        if (
-          !(
-            await fetch(uploadData.uploadUrl, {
-              method: "PUT",
-              headers: uploadData.headers,
-              body: file,
-            })
-          ).ok
-        )
-          throw new Error("Photo upload failed.");
-        const finish = await fetch(
-          `/api/reviews/${encodeURIComponent(property.id)}/photos/finalize`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ uploadId: uploadData.uploadId }),
-          }
-        );
-        const finishData = (await finish.json()) as { error?: string };
-        if (!finish.ok) throw new Error(finishData.error ?? "Unable to save photo.");
-      }
-      setOwn((current) =>
-        current
-          ? {
-              ...current,
-              status: "pending",
-              photoIds: [
-                ...current.photoIds,
-                ...Array.from(files).map((file) => file.name),
-              ],
-            }
-          : current
-      );
-      setNotice("Photos added. Your review is now pending moderation.");
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error ? cause.message : "Unable to upload photos."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const submit = async () => {
-    if (!appUser) {
-      onLogin();
-      return;
-    }
-    setSaving(true);
-    setFormError("");
-    setNotice("");
-    try {
-      const response = await fetch(
-        `/api/reviews/${encodeURIComponent(property.id)}`,
-        {
-          method: own ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rating, text }),
-        }
-      );
-      const data = (await response.json()) as {
-        review?: OwnReview;
-        error?: string;
-      };
-      if (!response.ok)
-        throw new Error(data.error ?? "Unable to submit review.");
-      setOwn(data.review ?? null);
-      setEditorOpen(false);
-      setNotice(
-        own
-          ? "Your changes are pending moderation."
-          : "Thanks — your review is pending moderation."
-      );
-      await loadPublic(1);
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error ? cause.message : "Unable to submit review."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [page, loadPublic]);
 
   const summary = property.reviewSummary;
-  const avg = summary ? summary.average : property.ratingAverage || 4.9;
-  const totalCount = summary ? summary.count : property.ratingCount || total || 428;
+  const avg = summary?.average ?? property.ratingAverage ?? 0;
+  const totalCount = summary?.count ?? property.ratingCount ?? total;
+  const ratingBuckets = [5, 4, 3, 2, 1].map((rating) => ({
+    rating,
+    count: summary?.buckets[String(rating) as keyof ReviewSummary["buckets"]] ?? 0,
+  }));
+  const maxBucket = Math.max(1, ...ratingBuckets.map((bucket) => bucket.count));
+  const shownReviews = reviews.slice(0, 2);
 
-  // Sub-categories matching Image 1 design
-  const subCategories = [
-    { label: "Cleanliness", score: Math.min(5.0, Math.max(1.0, Math.round((avg + 0.1) * 10) / 10)) },
-    { label: "Service", score: Math.min(5.0, Math.max(1.0, Math.round(avg * 10) / 10)) },
-    { label: "Location", score: Math.min(5.0, Math.max(1.0, Math.round((avg + 0.1) * 10) / 10)) },
-    { label: "Value", score: Math.min(5.0, Math.max(1.0, Math.round(Math.max(1.0, avg - 0.2) * 10) / 10)) },
-  ];
+  const ReviewItem = ({ review, compact = false }: { review: PublicReview; compact?: boolean }) => (
+    <article className={`border-b border-slate-100 last:border-b-0 ${compact ? "py-5" : "py-6"}`}>
+      <div className="flex items-start gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eef2fa] text-xs font-bold text-[#092442]">{initials(review.reviewerName)}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-[#092442]">{review.reviewerName}<span className="ml-1.5 font-normal text-slate-400">• {review.submittedAt ? new Date(review.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Verified guest"}</span></p>
+            <span className="inline-flex items-center gap-1 rounded-sm bg-[#092442] px-2 py-1 text-xs font-bold text-white">{review.rating.toFixed(0)} <Star className="h-3 w-3 fill-current" /></span>
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-700">{review.text}</p>
+          {review.photos.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{review.photos.map((photo) => <a key={photo.id} href={photo.imageUrl} target="_blank" rel="noreferrer" className="h-14 w-14 overflow-hidden rounded-lg border border-slate-200"><PublicMediaImage src={photo.imageUrl} srcSet={photo.imageSrcSet} alt={photo.altText} sizes="56px" className="h-full w-full object-cover" /></a>)}</div>}
+          {review.partnerReply && <div className="mt-4 rounded-lg border-l-2 border-[#c89b3c] bg-[#fbf5e8] px-4 py-3"><p className="text-xs font-bold text-[#092442]">Response from the property</p><p className="mt-1 text-sm leading-relaxed text-slate-700">{review.partnerReply.text}</p>{review.partnerReply.repliedAt && <p className="mt-1.5 text-[11px] text-slate-500">{new Date(review.partnerReply.repliedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>}</div>}
+        </div>
+      </div>
+    </article>
+  );
 
   return (
     <section id="reviews" className="scroll-mt-24">
@@ -268,55 +119,24 @@ export function Reviews({
         <h2 className="text-xl md:text-2xl font-bold tracking-tight text-[#0F172A]">
           Guest Reviews
         </h2>
-        <a
-          href="#reviews"
+        <button
+          type="button"
+          onClick={() => setAllReviewsOpen(true)}
           className="group inline-flex items-center gap-1.5 text-xs md:text-sm font-semibold text-[#0F172A] hover:text-slate-600 transition"
         >
           Read all {totalCount} reviews
           <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </a>
+        </button>
       </header>
 
-      {/* Summary Score Card matching Image 1 */}
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] items-center gap-6 md:gap-10">
-          {/* Rating Score Badge */}
-          <div className="flex flex-col items-start justify-center md:border-r md:border-slate-100 md:pr-8">
-            <span className="text-5xl md:text-6xl font-extrabold tracking-tight text-[#0F172A]">
-              {avg.toFixed(1)}
-            </span>
-            <div className="mt-2.5 flex items-center gap-1 text-amber-400">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star key={star} className="h-4 w-4 fill-amber-400 text-amber-400" />
-              ))}
-            </div>
-            <p className="mt-2 text-xs md:text-sm font-medium text-slate-500">
-              {scoreLabel(avg)}
-            </p>
+      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="grid md:grid-cols-[290px_1fr]">
+          <div className="flex flex-col items-center justify-center border-b border-slate-200 px-6 py-7 md:border-b-0 md:border-r">
+            <span className="inline-flex items-center gap-1 rounded bg-[#c89b3c] px-3 py-2 text-2xl font-extrabold text-[#092442]">{avg.toFixed(1)} <Star className="h-4 w-4 fill-current" /></span>
+            <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#092442]">{scoreLabel(avg)}</p>
+            <p className="mt-1 text-xs text-slate-500">{totalCount} ratings from verified stays</p>
           </div>
-
-          {/* Sub-Category Rating Progress Bars */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-            {subCategories.map((cat) => {
-              const percent = Math.min(100, Math.max(0, (cat.score / 5) * 100));
-              return (
-                <div key={cat.label} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs md:text-sm font-medium">
-                    <span className="text-slate-600">{cat.label}</span>
-                    <span className="font-semibold text-[#0F172A]">
-                      {cat.score.toFixed(1)}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-[#0F172A] transition-all duration-500"
-                      style={{ width: `${percent}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <div className="space-y-2.5 px-6 py-6">{ratingBuckets.map(({ rating, count }) => <div key={rating} className="flex items-center gap-3 text-xs"><span className="w-5 text-right font-semibold text-[#092442]">{rating} <Star className="inline h-3 w-3 fill-[#c89b3c] text-[#c89b3c]" /></span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#c89b3c] transition-all duration-500" style={{ width: `${(count / maxBucket) * 100}%` }} /></div><span className="w-10 text-right text-slate-500">{totalCount ? Math.round((count / totalCount) * 100) : 0}%</span></div>)}</div>
         </div>
       </div>
 
@@ -329,100 +149,7 @@ export function Reviews({
           {publicError}
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {reviews.length > 0 ? (
-            reviews.map((review) => (
-              <article
-                key={review.id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition hover:border-slate-300"
-              >
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-bold text-white shadow-sm">
-                      {initials(review.reviewerName)}
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A]">
-                        {review.reviewerName}
-                      </h3>
-                      <p className="mt-0.5 text-xs font-medium text-slate-400">
-                        {review.submittedAt
-                          ? `Guest • ${new Date(review.submittedAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
-                          : "Verified guest"}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-xs md:text-sm leading-relaxed text-slate-600">
-                    &ldquo;{review.text}&rdquo;
-                  </p>
-                </div>
-
-                {review.photos.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2 pt-3 border-t border-slate-100">
-                    {review.photos.map((photo) => (
-                      <a
-                        key={photo.id}
-                        href={photo.imageUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="h-14 w-14 overflow-hidden rounded-lg border border-slate-200 hover:opacity-90"
-                      >
-                        <PublicMediaImage
-                          src={photo.imageUrl}
-                          srcSet={photo.imageSrcSet}
-                          alt={photo.altText}
-                          sizes="56px"
-                          className="h-full w-full object-cover"
-                        />
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </article>
-            ))
-          ) : (
-            // Pre-populated realistic sample cards matching Image 1 if no reviews yet
-            <>
-              <article className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-bold text-white shadow-sm">
-                      SJ
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A]">Sarah Jenkins</h3>
-                      <p className="mt-0.5 text-xs font-medium text-slate-400">
-                        Business traveler • Oct 2024
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-xs md:text-sm leading-relaxed text-slate-600">
-                    &ldquo;Impeccable service. The business center was exactly what I needed, and the concierge arranged my meetings flawlessly. The room was quiet, perfectly appointed, and the bed was incredibly comfortable.&rdquo;
-                  </p>
-                </div>
-              </article>
-
-              <article className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0F172A] text-xs font-bold text-white shadow-sm">
-                      MR
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A]">Michael Roberts</h3>
-                      <p className="mt-0.5 text-xs font-medium text-slate-400">
-                        Leisure • Sept 2024
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-xs md:text-sm leading-relaxed text-slate-600">
-                    &ldquo;A true 5-star experience. The views of the city from our suite were breathtaking. Dining at their Michelin-starred restaurant was the highlight of our trip. Will absolutely return.&rdquo;
-                  </p>
-                </div>
-              </article>
-            </>
-          )}
-        </div>
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white px-6">{shownReviews.length ? shownReviews.map((review) => <ReviewItem key={review.id} review={review} compact />) : <p className="py-8 text-center text-sm text-slate-500">No guest reviews yet. Be the first to share your stay.</p>}</div>
       )}
 
       {/* Pagination controls */}
@@ -445,116 +172,8 @@ export function Reviews({
         </div>
       )}
 
-      {/* Write / Manage Review Accordion Section */}
-      <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <button
-          type="button"
-          onClick={() => (appUser ? setEditorOpen((value) => !value) : onLogin())}
-          className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition hover:bg-slate-50"
-        >
-          <span className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-[#0F172A]">
-              <MessageCircle className="h-5 w-5" />
-            </span>
-            <span>
-              <span className="block text-sm font-bold text-[#0F172A]">
-                {own ? "Manage your review" : "Write a review"}
-              </span>
-              <span className="mt-0.5 block text-xs text-slate-500">
-                {own
-                  ? `Status: ${own.status}`
-                  : "Tell future guests about your stay."}
-              </span>
-            </span>
-          </span>
-          {!loading && !appUser ? (
-            <span className="rounded-xl bg-[#0F172A] px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition">
-              Sign in to review
-            </span>
-          ) : (
-            <ChevronDown
-              className={`h-5 w-5 text-slate-400 transition-transform ${
-                editorOpen ? "rotate-180" : ""
-              }`}
-            />
-          )}
-        </button>
+      {allReviewsOpen && <div className="fixed inset-0 z-[80] flex justify-end bg-[#061224]/65" role="dialog" aria-modal="true" aria-label="All guest reviews"><button type="button" aria-label="Close reviews" className="absolute inset-0 cursor-default" onClick={() => setAllReviewsOpen(false)} /><aside className="relative h-full w-full max-w-[540px] overflow-y-auto bg-white p-6 shadow-2xl sm:p-7"><div className="flex items-center justify-between gap-4"><h3 className="text-xl font-bold text-[#092442]">{totalCount} Guest Reviews</h3><button type="button" onClick={() => setAllReviewsOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-[#092442]" aria-label="Close"><X className="h-5 w-5" /></button></div><div className="mt-5 flex items-center gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4"><span className="inline-flex items-center gap-1 rounded bg-[#c89b3c] px-2.5 py-1.5 text-lg font-extrabold text-[#092442]">{avg.toFixed(1)} <Star className="h-3.5 w-3.5 fill-current" /></span><div><p className="text-sm font-bold text-[#092442]">{scoreLabel(avg)}</p><p className="mt-0.5 text-xs text-slate-500">Based on verified guest stays</p></div></div><div className="mt-4 divide-y divide-slate-100">{reviews.length ? reviews.map((review) => <ReviewItem key={review.id} review={review} />) : <p className="py-8 text-center text-sm text-slate-500">No guest reviews yet.</p>}</div>{total > 6 && <div className="mt-5 flex justify-end gap-2"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-[#092442] disabled:opacity-40">Previous</button><button disabled={page * 6 >= total} onClick={() => setPage((value) => value + 1)} className="rounded-lg bg-[#092442] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Next reviews</button></div>}</aside></div>}
 
-        {editorOpen && (
-          <div className="border-t border-slate-100 px-6 py-6">
-            <p className="text-sm font-bold text-[#0F172A]">Your rating</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 5].map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setRating(value)}
-                  aria-label={`${value} stars`}
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl border text-sm font-bold transition ${
-                    rating === value
-                      ? "border-[#0F172A] bg-[#0F172A] text-white"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                  }`}
-                >
-                  <Star
-                    className={`h-4 w-4 ${
-                      rating === value ? "fill-current" : ""
-                    }`}
-                  />
-                </button>
-              ))}
-            </div>
-
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              maxLength={3000}
-              placeholder="What did you enjoy? What could be better?"
-              className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-3.5 text-sm text-[#0F172A] placeholder:text-slate-400 outline-none transition focus:border-[#0F172A] focus:ring-1 focus:ring-[#0F172A]"
-            />
-
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-[#0F172A] hover:bg-slate-50 transition">
-                <Camera className="h-4 w-4" />
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="sr-only"
-                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    void upload(event.target.files)
-                  }
-                />
-                Add photos
-              </label>
-
-              <button
-                disabled={saving || text.trim().length < 10}
-                onClick={() => void submit()}
-                className="rounded-xl bg-[#0F172A] px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving
-                  ? "Saving…"
-                  : own
-                    ? "Save changes"
-                    : "Submit review"}
-              </button>
-            </div>
-
-            {formError && (
-              <p role="alert" className="mt-3 text-xs font-medium text-red-600">
-                {formError}
-              </p>
-            )}
-          </div>
-        )}
-
-        {notice && (
-          <p className="border-t border-slate-100 bg-emerald-50 px-6 py-3 text-xs font-medium text-emerald-700">
-            {notice}
-          </p>
-        )}
-      </section>
     </section>
   );
 }

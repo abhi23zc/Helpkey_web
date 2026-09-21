@@ -7,7 +7,7 @@ function DashboardCard({ children, className = "" }: { children: React.ReactNode
 }
 
 /** A dashboard-shaped App Router fallback shared by every partner route. */
-export default function PartnerLoading() {
+export function PartnerWorkspaceSkeleton() {
   return (
     <main aria-busy="true" aria-live="polite" className="min-h-screen bg-[#f7f5f0] pl-0 font-sans text-[#061224] lg:pl-20 min-[1440px]:pl-[248px]">
       <span className="sr-only">Loading partner workspace</span>
@@ -33,4 +33,8 @@ export default function PartnerLoading() {
       </section>
     </main>
   );
+}
+
+export default function PartnerLoading() {
+  return <PartnerWorkspaceSkeleton />;
 }

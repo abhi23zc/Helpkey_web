@@ -301,7 +301,7 @@ export function PartnerRoomsRatesView({
   propertyId?: string;
   propertyName?: string;
 }) {
-  const listing = usePropertyListing(propertyId);
+  const listing = usePropertyListing(propertyId, "rooms");
   const { data, property } = listing;
   // The platform is INR-only; narrow the string to the currency literal.
   const currency = listing.currency as CurrencyCode;

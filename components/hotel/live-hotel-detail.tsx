@@ -33,6 +33,9 @@ import { Reviews } from "@/components/hotel/hotel-reviews";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { staySearchFromParams, withStaySearch, type StaySearch } from "@/lib/customer/stay-search";
 import { amenityLabel } from "@/lib/customer/amenities";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { apiFetch } from "@/lib/api/client";
 
 type PropertyImage = { id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string };
 type ReviewSummary = {
@@ -104,57 +107,21 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const stay = useMemo(() => staySearchFromParams(new URLSearchParams(searchParams.toString())), [searchParams]);
-  const [property, setProperty] = useState<Property | null>(null);
-  const [rooms, setRooms] = useState<BookableRoom[]>([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const propertyQuery = useQuery({ queryKey: queryKeys.property(slug), queryFn: ({ signal }) => apiFetch<{ property: Property }>(`/api/properties/${encodeURIComponent(slug)}`, { signal }), staleTime: 60_000 });
+  const availability = useMemo(() => { const params = new URLSearchParams(); if (stay?.checkIn && stay.checkOut) { params.set("checkIn", stay.checkIn); params.set("checkOut", stay.checkOut); params.set("adults", String(stay.adults)); params.set("children", String(stay.children)); params.set("infants", String(stay.infants)); } return params; }, [stay]);
+  const roomsQuery = useQuery({ queryKey: queryKeys.bookable(slug, Object.fromEntries(availability)), queryFn: ({ signal }) => apiFetch<{ rooms: BookableRoom[] }>(`/api/properties/${encodeURIComponent(slug)}/bookable?${availability}`, { signal }), staleTime: 60_000 });
+  const property = propertyQuery.data?.property ?? null;
+  const rooms = roomsQuery.data?.rooms ?? [];
+  const roomsLoading = roomsQuery.isLoading;
+  const error = propertyQuery.error instanceof Error ? propertyQuery.error.message : "";
   const [saved, setSaved] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string>("");
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   useEffect(() => {
-    void fetch(`/api/properties/${encodeURIComponent(slug)}`, { cache: "no-store" })
-      .then(async (response) => {
-        const body = (await response.json()) as { property?: Property; error?: string };
-        if (!response.ok) throw new Error(body.error ?? "Unable to load property.");
-        setProperty(body.property ?? null);
-      })
-      .catch((cause) =>
-        setError(cause instanceof Error ? cause.message : "Unable to load property.")
-      );
-  }, [slug]);
-
-  useEffect(() => {
     if (searchParams.get("reserve") !== "1") return;
     document.getElementById("reserve")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [searchParams]);
-
-  useEffect(() => {
-    void Promise.resolve().then(() => {
-      setRoomsLoading(true);
-      const availability = new URLSearchParams();
-      if (stay?.checkIn && stay.checkOut) {
-        availability.set("checkIn", stay.checkIn);
-        availability.set("checkOut", stay.checkOut);
-        availability.set("adults", String(stay.adults));
-        availability.set("children", String(stay.children));
-        availability.set("infants", String(stay.infants));
-      }
-      return fetch(`/api/properties/${encodeURIComponent(slug)}/bookable?${availability}`, {
-        cache: "no-store",
-      }).then(async (response) => {
-        const body = (await response.json()) as { rooms?: BookableRoom[] };
-        const next = response.ok ? body.rooms ?? [] : [];
-        setRooms(next);
-        setSelectedChoice(
-          (current) =>
-            current || (next[0]?.rates[0] ? `${next[0].id}:${next[0].rates[0].id}` : "")
-        );
-      });
-    })
-      .catch(() => setRooms([]))
-      .finally(() => setRoomsLoading(false));
-  }, [slug, stay]);
 
   if (error)
     return (
@@ -185,6 +152,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
     );
 
   const rating = property.ratingAverage;
+  const effectiveSelectedChoice = selectedChoice || (rooms[0]?.rates[0] ? `${rooms[0].id}:${rooms[0].rates[0].id}` : "");
   const reviewCount = property.ratingCount;
   const location = `${property.city}${property.state ? `, ${property.state}` : ""}`;
   const amenities = property.amenityCodes.map(amenityLabel);
@@ -336,7 +304,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                       price={cheapest.basePricePaise}
                       currency={property.currency}
                       image={room.imageUrl || property.coverImageUrl}
-                      selected={selectedChoice.startsWith(`${room.id}:`)}
+                      selected={effectiveSelectedChoice.startsWith(`${room.id}:`)}
                       onSelect={() => setSelectedChoice(choice)}
                       cancellation={Boolean(cheapest.cancellation)}
                       premium={index === 0 && rooms.length > 1}
@@ -346,7 +314,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
               </div>
             </section>
 
-            <Reviews property={property} onLogin={() => setIsLoginOpen(true)} />
+            <Reviews property={property} />
           </div>
 
           <BookingCard
@@ -354,7 +322,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
             property={property}
             rating={rating}
             rooms={rooms}
-            selectedChoice={selectedChoice}
+            selectedChoice={effectiveSelectedChoice}
             onChoiceChange={setSelectedChoice}
             initialStay={stay}
             onStayChange={(next) => router.replace(`/hotels/${slug}?${withStaySearch(new URLSearchParams(searchParams.toString()), next)}`, { scroll: false })}

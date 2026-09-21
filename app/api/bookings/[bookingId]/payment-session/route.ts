@@ -1,9 +1,10 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { bookingError } from "@/lib/bookings";
 
-export async function POST(_request: Request, { params }: RouteContext<"/api/bookings/[bookingId]/payment-session">) {
+const rawPOST = async function POST(_request: Request, { params }: RouteContext<"/api/bookings/[bookingId]/payment-session">) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
@@ -29,3 +30,5 @@ export async function POST(_request: Request, { params }: RouteContext<"/api/boo
     return Response.json({ error: bookingError(error) }, { status: 422 });
   }
 }
+
+export const POST = withApiHandler(rawPOST, { route: "/api/bookings/[bookingId]/payment-session", auth: "strict", requireAuth: true, cache: "private" });

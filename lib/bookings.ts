@@ -5,6 +5,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { resolvePublicImage } from "@/lib/media-resolver";
+import { providerFetch } from "@/lib/providers/http";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 const HOLD_TTL_MS = 10 * 60_000;
@@ -62,6 +63,10 @@ function asNumber(value: unknown, fallback = 0) {
 
 function asIso(value: unknown) {
   return typeof (value as { toDate?: unknown })?.toDate === "function" ? (value as { toDate: () => Date }).toDate().toISOString() : null;
+}
+
+function searchableTokens(values: unknown[]) {
+  return [...new Set(values.flatMap((value) => String(value ?? "").toLocaleLowerCase().trim().split(/\s+/)).filter(Boolean))].slice(0, 40);
 }
 
 function inventoryRef(propertyId: string, roomTypeId: string, day: string) {
@@ -230,6 +235,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       paidPaise: 0,
       bookingStatus: input.paymentMethod === "pay_at_property" ? "confirmed" : "pending_payment",
       inventoryReleased: false,
+      searchTokens: searchableTokens([confirmationCode, quoteData.propertyName, quoteData.roomType.name, input.adultGuestNames[0], input.leadEmail, input.leadPhone]),
       expiresAt: input.paymentMethod === "pay_at_property" ? null : expiresAt,
       createdAt: FieldValue.serverTimestamp(),
       createdBy: uid,
@@ -280,10 +286,10 @@ export async function createBooking(uid: string, raw: unknown) {
   if (input.paymentMethod === "online") {
     try {
       const credentials = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString("base64");
-      const response = await fetch("https://api.razorpay.com/v1/orders", {
+      const response = await providerFetch("razorpay", "https://api.razorpay.com/v1/orders", {
         method: "POST",
         headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: quoteData.payableNowPaise, currency: quoteData.currency, receipt: booking.confirmationCode, notes: { bookingId: booking.id } }),
+        body: JSON.stringify({ amount: quoteData.payableNowPaise, currency: quoteData.currency, receipt: booking.confirmationCode, notes: { bookingId: booking.id } }), timeoutMs: 8_000, idempotent: false,
       });
       const order = await response.json() as { id?: string };
       if (!response.ok || !order.id) throw new Error("PAYMENT_ORDER_CREATION_FAILED");
@@ -406,4 +412,30 @@ export async function serializeBookingWithResolvedMedia(id: string, data: Fireba
     if (resolved) { imageUrl = resolved.imageUrl; break; }
   }
   return { ...serializeBooking(id, { ...data, propertyCoverImageUrl: imageUrl }), propertyCoverImageUrl: imageUrl ?? "/balmoral_hotel.png" };
+}
+
+/** Resolves booking covers with two getAll calls, independent of page size. */
+export async function serializeBookingsWithResolvedMedia(rows: FirebaseFirestore.QueryDocumentSnapshot[]) {
+  const propertyIds = [...new Set(rows.map((row) => row.data().propertyId).filter((id): id is string => typeof id === "string" && Boolean(id)))];
+  const properties = propertyIds.length ? await adminDb.getAll(...propertyIds.map((id) => adminDb.collection("properties").doc(id))) : [];
+  const propertyById = new Map(properties.map((doc) => [doc.id, doc.data() ?? {}]));
+  const mediaIds = [...new Set(rows.flatMap((row) => {
+    const data = row.data();
+    const current = propertyById.get(data.propertyId)?.coverMediaId;
+    return [data.propertyCoverMediaId, current].filter((id): id is string => typeof id === "string" && Boolean(id));
+  }))];
+  const media = mediaIds.length ? await adminDb.getAll(...mediaIds.map((id) => adminDb.collection("mediaAssets").doc(id))) : [];
+  const mediaById = new Map(media.map((doc) => [doc.id, doc]));
+  return Promise.all(rows.map(async (row) => {
+    const data = row.data();
+    const ids = [propertyById.get(data.propertyId)?.coverMediaId, data.propertyCoverMediaId].filter((id): id is string => typeof id === "string");
+    let imageUrl: string | null = null;
+    for (const id of ids) {
+      const asset = mediaById.get(id); const raw = asset?.data();
+      if (!asset || !raw || raw.propertyId !== data.propertyId) continue;
+      const resolved = await resolvePublicImage(asset.id, raw, typeof raw.altText === "string" ? raw.altText : "");
+      if (resolved) { imageUrl = resolved.imageUrl; break; }
+    }
+    return { ...serializeBooking(row.id, { ...data, propertyCoverImageUrl: imageUrl }), propertyCoverImageUrl: imageUrl ?? "/balmoral_hotel.png" };
+  }));
 }

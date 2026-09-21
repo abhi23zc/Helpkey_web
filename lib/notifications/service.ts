@@ -2,6 +2,7 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
+import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
 
 /**
  * In-app notifications (notifications/{id}) per HELPKEY_DATABASE_SPEC.
@@ -142,16 +143,20 @@ export interface NotificationDto {
 /** Lists a user's notifications, newest-first, with an unread count. */
 export async function listNotifications(
   userId: string,
-  options?: { unreadOnly?: boolean; limit?: number },
-): Promise<{ notifications: NotificationDto[]; unreadCount: number }> {
-  const limit = Math.min(Math.max(options?.limit ?? 20, 1), 100);
-
-  // Fetch by userId only (single-field index, always available) and sort/cap in
-  // memory. A per-user notification set is small, so this avoids a composite
-  // (userId + createdAt) index requirement and never hard-fails on a missing
-  // index. We over-fetch a bounded window before capping to `limit`.
+  options?: { unreadOnly?: boolean; limit?: number; cursor?: string },
+): Promise<{ notifications: NotificationDto[]; unreadCount: number; nextCursor: string | null; hasMore: boolean }> {
+  const limit = Math.min(Math.max(options?.limit ?? 20, 1), 50);
+  let query: FirebaseFirestore.Query = adminDb.collection("notifications").where("userId", "==", userId);
+  if (options?.unreadOnly) query = query.where("readAt", "==", null);
+  query = query.orderBy("createdAt", "desc").orderBy("__name__", "desc");
+  if (options?.cursor) {
+    const cursor = decodeCursor(options.cursor);
+    const createdAt = cursor.values[0];
+    if (typeof createdAt !== "number") throw new Error("INVALID_CURSOR");
+    query = query.startAfter(new Date(createdAt), cursor.id);
+  }
   const [ownedSnap, unreadSnap] = await Promise.all([
-    adminDb.collection("notifications").where("userId", "==", userId).limit(200).get(),
+    query.limit(limit + 1).get(),
     adminDb
       .collection("notifications")
       .where("userId", "==", userId)
@@ -161,8 +166,8 @@ export async function listNotifications(
       .catch(() => null),
   ]);
 
-  const sorted = ownedSnap.docs
-    .map((doc) => {
+  const hasMore = ownedSnap.size > limit;
+  const rows = ownedSnap.docs.slice(0, limit).map((doc) => {
       const d = doc.data();
       return {
         id: doc.id,
@@ -175,11 +180,8 @@ export async function listNotifications(
         createdAtMs: (d.createdAt as { toMillis?: () => number })?.toMillis?.() ?? 0,
         createdAt: iso(d.createdAt),
       };
-    })
-    .sort((a, b) => b.createdAtMs - a.createdAtMs);
-
-  const filtered = (options?.unreadOnly ? sorted.filter((n) => n.readAtRaw == null) : sorted).slice(0, limit);
-  const notifications: NotificationDto[] = filtered.map(({ id, eventType, title, body, data, readAt, createdAt }) => ({
+    });
+  const notifications: NotificationDto[] = rows.map(({ id, eventType, title, body, data, readAt, createdAt }) => ({
     id,
     eventType,
     title,
@@ -189,16 +191,14 @@ export async function listNotifications(
     createdAt,
   }));
 
-  // Prefer the aggregation count; fall back to counting the fetched window if
-  // the aggregation is unavailable.
-  const unreadCount = unreadSnap ? unreadSnap.data().count : sorted.filter((n) => n.readAtRaw == null).length;
-
-  return { notifications, unreadCount };
+  const unreadCount = unreadSnap ? unreadSnap.data().count : rows.filter((n) => n.readAtRaw == null).length;
+  const last = rows.at(-1);
+  return { notifications, unreadCount, hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [last.createdAtMs], id: last.id }) : null };
 }
 
 /** Marks the given notifications read; only affects docs owned by `userId`. */
 export async function markNotificationsRead(userId: string, ids: string[]): Promise<number> {
-  const unique = [...new Set(ids)].slice(0, 100);
+  const unique = [...new Set(ids)].slice(0, 50);
   if (!unique.length) return 0;
 
   const refs = unique.map((id) => adminDb.collection("notifications").doc(id));

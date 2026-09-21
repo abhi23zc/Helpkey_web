@@ -1,9 +1,11 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireRole } from "@/lib/partner/service";
 import { serializeBooking } from "@/lib/bookings";
+import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,7 +29,7 @@ function genCode() {
   return "HK-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-export async function GET(request: Request) {
+const rawGET = async function GET(request: Request) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
@@ -40,29 +42,26 @@ export async function GET(request: Request) {
     const memberships = await adminDb.collection("propertyMemberships").where("userId", "==", user.uid).where("status", "==", "active").get();
     const allowed = new Set(memberships.docs.map((doc) => doc.data().propertyId).filter(Boolean));
     if (propertyId && !allowed.has(propertyId)) throw new Error("FORBIDDEN");
-    if (!propertyId && allowed.size === 0) return Response.json({ bookings: [] });
-
-    let rows: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-    if (propertyId) {
-      let query: FirebaseFirestore.Query = adminDb.collection("bookings").where("propertyId", "==", propertyId);
-      if (status && status !== "all") query = query.where("bookingStatus", "==", status);
-      rows = (await query.limit(200).get()).docs;
-    } else {
-      const chunks = [...allowed].slice(0, 10);
-      rows = (await Promise.all(chunks.map((id) => adminDb.collection("bookings").where("propertyId", "==", id).limit(100).get()))).flatMap((snap) => snap.docs);
-    }
-
-    const bookings = rows
-      .map((doc) => serializeBooking(doc.id, doc.data()))
-      .filter((booking) => (!status || status === "all" || booking.bookingStatus === status) && (!search || [booking.confirmationCode, booking.propertyName, booking.roomName, booking.leadGuest?.name, booking.leadGuest?.email, booking.leadGuest?.phone].some((value) => String(value ?? "").toLowerCase().includes(search))))
-      .sort((a, b) => String(b.checkIn).localeCompare(String(a.checkIn)));
-    return Response.json({ bookings });
+    if (!propertyId && allowed.size === 0) return Response.json({ bookings: [], hasMore: false, nextCursor: null });
+    const selectedPropertyId = propertyId ?? [...allowed][0];
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 25, 1), 50);
+    let query: FirebaseFirestore.Query = adminDb.collection("bookings").where("propertyId", "==", selectedPropertyId);
+    if (status && status !== "all") query = query.where("bookingStatus", "==", status);
+    if (search) query = query.where("searchTokens", "array-contains", search);
+    query = query.orderBy("checkIn", "desc").orderBy("__name__", "desc");
+    const rawCursor = url.searchParams.get("cursor");
+    if (rawCursor) { const cursor = decodeCursor(rawCursor); query = query.startAfter(cursor.values[0], cursor.id); }
+    const snapshot = await query.limit(limit + 1).get();
+    const page = snapshot.docs.slice(0, limit);
+    const hasMore = snapshot.size > limit;
+    const last = page.at(-1);
+    return Response.json({ bookings: page.map((doc) => serializeBooking(doc.id, doc.data())), propertyId: selectedPropertyId, hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [String(last.data().checkIn ?? "")], id: last.id }) : null });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load reservations." }, { status: 403 });
   }
 }
 
-export async function POST(request: Request) {
+const rawPOST = async function POST(request: Request) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
@@ -132,6 +131,7 @@ export async function POST(request: Request) {
       createdBy: user.uid,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
+      searchTokens: [...new Set([confirmationCode, propertyName, input.roomDescription, input.guestName, input.guestEmail, input.guestPhone].flatMap((value) => String(value ?? "").toLowerCase().trim().split(/\s+/)).filter(Boolean))].slice(0, 40),
     });
 
     return Response.json({ bookingId: ref.id, confirmationCode }, { status: 201 });
@@ -142,3 +142,6 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to create booking." }, { status: 422 });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/partner/bookings", auth: "read", requireAuth: true, cache: "private" });
+export const POST = withApiHandler(rawPOST, { route: "/api/partner/bookings", auth: "strict", requireAuth: true, cache: "private" });

@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { apiFetch } from "@/lib/api/client";
 
 export type NotificationItem = {
   id: string;
@@ -17,61 +20,19 @@ export type NotificationItem = {
  * Refreshes on an interval and on window focus. No realtime layer needed.
  */
 export function useNotifications(pollMs = 60_000) {
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications?limit=20", { cache: "no-store" });
-      if (!res.ok) return;
-      const json = (await res.json()) as { notifications: NotificationItem[]; unreadCount: number };
-      setItems(json.notifications ?? []);
-      setUnreadCount(json.unreadCount ?? 0);
-    } catch {
-      // Best-effort; leave the last known state in place.
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Defer the initial fetch a tick so no setState runs synchronously in the
-    // effect body; `refresh` itself only sets state after an awaited fetch.
-    const kickoff = window.setTimeout(() => {
-      if (!cancelled) void refresh();
-    }, 0);
-    const interval = window.setInterval(() => {
-      if (!cancelled) void refresh();
-    }, pollMs);
-    const onFocus = () => void refresh();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(kickoff);
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [refresh, pollMs]);
+  const client = useQueryClient();
+  const key = queryKeys.notifications(false);
+  const query = useQuery({ queryKey: key, queryFn: ({ signal }) => apiFetch<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications?limit=20", { signal, cache: "no-store" }), refetchInterval: () => typeof document !== "undefined" && document.visibilityState === "visible" ? pollMs : false, refetchOnWindowFocus: true, staleTime: 10_000 });
+  const items = useMemo(() => query.data?.notifications ?? [], [query.data?.notifications]);
+  const unreadCount = query.data?.unreadCount ?? 0;
+  const mutation = useMutation({ mutationFn: (ids: string[]) => apiFetch("/api/notifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }), onMutate: async (ids) => { await client.cancelQueries({ queryKey: key }); const previous = client.getQueryData(key); client.setQueryData(key, { notifications: items.map((item) => ids.includes(item.id) ? { ...item, readAt: new Date().toISOString() } : item), unreadCount: Math.max(0, unreadCount - ids.length) }); return { previous }; }, onError: (_error, _ids, context) => client.setQueryData(key, context?.previous), onSettled: () => client.invalidateQueries({ queryKey: key }) });
 
   const markRead = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
-      // Optimistic: clear locally, then reconcile.
-      setItems((current) => current.map((item) => (ids.includes(item.id) ? { ...item, readAt: new Date().toISOString() } : item)));
-      setUnreadCount((count) => Math.max(0, count - ids.length));
-      try {
-        await fetch("/api/notifications", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids }),
-        });
-      } finally {
-        void refresh();
-      }
+      await mutation.mutateAsync(ids);
     },
-    [refresh],
+    [mutation],
   );
 
   const markAllRead = useCallback(() => {
@@ -79,5 +40,5 @@ export function useNotifications(pollMs = 60_000) {
     return markRead(unreadIds);
   }, [items, markRead]);
 
-  return { items, unreadCount, loading, refresh, markRead, markAllRead };
+  return { items, unreadCount, loading: query.isLoading, refresh: query.refetch, markRead, markAllRead };
 }

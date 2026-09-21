@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CalendarDays,
   CheckCircle2,
   Clock,
   Edit,
@@ -11,10 +11,14 @@ import {
   Hotel,
   MapPin,
   RefreshCw,
+  Star,
   XCircle,
 } from "lucide-react";
 import { SiteHeader } from "@/components/shared/site-header";
 import { BookingReceiptModal, BookingReceiptData } from "./booking-receipt-modal";
+import { BookingReview, BookingReviewModal } from "./booking-review-modal";
+import { apiFetch } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query/keys";
 
 type Booking = {
   id: string;
@@ -52,6 +56,7 @@ type Booking = {
   paymentMethod: string | null;
   razorpayOrderId: string | null;
   createdAt?: string | null;
+  review: BookingReview | null;
 };
 
 declare global {
@@ -118,43 +123,24 @@ async function loadRazorpay() {
 }
 
 export function MyBookingsPage() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const bookingsQuery = useQuery({
+    queryKey: queryKeys.bookings,
+    queryFn: ({ signal }) => apiFetch<{ bookings: Booking[]; hasMore: boolean; nextCursor: string | null }>("/api/bookings/mine", { signal, cache: "no-store" }),
+    staleTime: 0,
+  });
+  const bookings = useMemo(() => bookingsQuery.data?.bookings ?? [], [bookingsQuery.data?.bookings]);
+  const loading = bookingsQuery.isPending || bookingsQuery.isFetching;
   const [error, setError] = useState("");
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("upcoming");
   const [busy, setBusy] = useState<string | null>(null);
   const [receiptBooking, setReceiptBooking] = useState<BookingReceiptData | null>(
     null
   );
+  const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+  const [reviewNotice, setReviewNotice] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/bookings/mine", { cache: "no-store" });
-      const body = (await response.json()) as {
-        bookings?: Booking[];
-        error?: string;
-      };
-      if (!response.ok)
-        throw new Error(
-          body.error === "UNAUTHENTICATED"
-            ? "Sign in to view your bookings."
-            : "Unable to load bookings."
-        );
-      setBookings(body.bookings ?? []);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to load bookings."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void Promise.resolve().then(() => load());
-  }, []);
+  const load = async () => { setError(""); await bookingsQuery.refetch(); };
 
   const visible = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -272,6 +258,12 @@ export function MyBookingsPage() {
     }
   };
 
+  const updateReview = (propertyId: string, review: BookingReview) => {
+    queryClient.setQueryData<{ bookings: Booking[]; hasMore: boolean; nextCursor: string | null }>(queryKeys.bookings, (current) => current ? { ...current, bookings: current.bookings.map((booking) => booking.propertyId === propertyId ? { ...booking, review } : booking) } : current);
+    setReviewBooking((current) => current?.propertyId === propertyId ? { ...current, review } : current);
+    setReviewNotice("Your review is now published and visible to other guests.");
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f7f3] text-[#141b2b] font-sans">
       <SiteHeader onLoginClick={() => {}} />
@@ -329,6 +321,13 @@ export function MyBookingsPage() {
           </div>
         )}
 
+        {reviewNotice && (
+          <div className="mb-8 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900 flex items-center justify-between">
+            <span>{reviewNotice}</span>
+            <button type="button" onClick={() => setReviewNotice("")} className="text-emerald-700 hover:text-emerald-900 text-xs font-bold underline">Dismiss</button>
+          </div>
+        )}
+
         {/* Loading State Skeleton */}
         {loading && (
           <div className="space-y-6">
@@ -383,12 +382,7 @@ export function MyBookingsPage() {
 
               const isConfirmed = booking.bookingStatus === "confirmed";
               const isPending = booking.bookingStatus === "pending_payment";
-              const isCancelled = [
-                "cancelled",
-                "no_show",
-                "expired",
-                "payment_failed",
-              ].includes(booking.bookingStatus);
+              const canRateStay = tab === "past" && booking.bookingStatus === "completed";
 
               const locationStr = [
                 booking.propertyCity,
@@ -556,6 +550,17 @@ export function MyBookingsPage() {
                         </Link>
                       )}
 
+                      {canRateStay && (
+                        <button
+                          type="button"
+                          onClick={() => setReviewBooking(booking)}
+                          className="px-5 py-2.5 rounded-xl bg-[#0b1f3a] text-white font-semibold text-sm hover:bg-opacity-90 transition-colors flex items-center gap-2 shadow-sm"
+                        >
+                          <Star className="h-4 w-4" />
+                          {booking.review ? "Manage review" : "Rate your stay"}
+                        </button>
+                      )}
+
                       {/* Get Receipt Modal Trigger */}
                       <button
                         type="button"
@@ -579,6 +584,7 @@ export function MyBookingsPage() {
         booking={receiptBooking}
         onClose={() => setReceiptBooking(null)}
       />
+      <BookingReviewModal booking={reviewBooking} onClose={() => setReviewBooking(null)} onSaved={updateReview} />
 
       {/* Page Footer */}
       <footer className="bg-white border-t border-[#e5e1d8] mt-auto">

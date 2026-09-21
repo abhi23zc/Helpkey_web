@@ -3,6 +3,7 @@ import "server-only";
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
+import { providerFetch } from "@/lib/providers/http";
 import { adminDb } from "@/lib/firebase/admin";
 import { deletePrivateObject, getPrivateObject, putPrivateObject } from "@/lib/r2";
 
@@ -60,7 +61,7 @@ async function limited(operatorId: string, aadhaarFingerprint: string) { const s
 async function cashfree(environment: LabEnvironment, path: string, body: Record<string, unknown>) {
   const auth = credentials(environment), started = Date.now();
   let response: Response;
-  try { response = await fetch(`${environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", "x-client-id": auth.clientId, "x-client-secret": auth.clientSecret }, body: JSON.stringify(body), cache: "no-store" }); }
+  try { response = await providerFetch("cashfree", `${environment === "production" ? PRODUCTION_BASE : SANDBOX_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", "x-client-id": auth.clientId, "x-client-secret": auth.clientSecret }, body: JSON.stringify(body), timeoutMs: 10_000, idempotent: false }); }
   catch { throw new Error("CASHFREE_NETWORK_ERROR"); }
   const text = await response.text(); let json: ProviderResponse = {}; try { json = text ? JSON.parse(text) as ProviderResponse : {}; } catch { json = { message: "Provider returned a non-JSON response" }; }
   return { ok: response.ok, status: response.status, json, timingMs: Date.now() - started };

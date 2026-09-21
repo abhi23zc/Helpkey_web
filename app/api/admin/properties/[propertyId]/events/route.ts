@@ -1,7 +1,8 @@
+import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { listReviewEvents, requireAdmin } from "@/lib/admin/data";
 
-export async function GET(_: Request, { params }: { params: Promise<{ propertyId: string }> }) {
+const rawGET = async function GET(_: Request, { params }: { params: Promise<{ propertyId: string }> }) {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: "Unauthenticated." }, { status: 401 });
   try {
@@ -13,3 +14,5 @@ export async function GET(_: Request, { params }: { params: Promise<{ propertyId
     return Response.json({ error: "Admin access required." }, { status: 403 });
   }
 }
+
+export const GET = withApiHandler(rawGET, { route: "/api/admin/properties/[propertyId]/events", auth: "read", requireAuth: true, cache: "private" });
