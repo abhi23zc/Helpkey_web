@@ -1,5 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "../lib/firebase/admin";
+// Scripts run outside Next.js, so use the worker Firebase adapter rather than
+// the application module that imports Next's `server-only` marker.
+import { db as adminDb } from "../workers/media/firebase";
 
 type ProjectionKind = "property_search" | "review_summary" | "daily_metrics" | "dashboard_summary" | "cache_invalidation";
 function enqueueProjection(tx: FirebaseFirestore.Transaction, jobKind: ProjectionKind, entityId: string) {

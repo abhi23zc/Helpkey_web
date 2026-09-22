@@ -251,6 +251,18 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
     [applyPatch],
   );
 
+  const removeRoomType = useCallback(
+    (roomTypeId: string) =>
+      applyPatch((current) => ({
+        ...current,
+        roomTypes: current.roomTypes.filter((room) => room.id !== roomTypeId),
+        // Rate plans are cascade-deleted server-side; drop them locally too so
+        // metrics and the starting-rate derive correctly without a refetch.
+        ratePlans: current.ratePlans.filter((rate) => rate.roomTypeId !== roomTypeId),
+      })),
+    [applyPatch],
+  );
+
   const addRatePlan = useCallback(
     (rate: ListingRatePlan) =>
       applyPatch((current) => ({ ...current, ratePlans: [...current.ratePlans, rate] })),
@@ -377,6 +389,7 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
     patchProperty,
     addRoomType,
     updateRoomType,
+    removeRoomType,
     addRatePlan,
     updateRatePlan,
     addPolicy,
@@ -392,5 +405,5 @@ export type PropertyListingData = ReturnType<typeof usePropertyListing>;
 /** Local-mutation callbacks editors use to update the snapshot without a refetch. */
 export type ListingMutations = Pick<
   PropertyListingData,
-  "patchProperty" | "addRoomType" | "updateRoomType" | "addRatePlan" | "updateRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "removeMedia" | "addDocument" | "reload"
+  "patchProperty" | "addRoomType" | "updateRoomType" | "removeRoomType" | "addRatePlan" | "updateRatePlan" | "addPolicy" | "addMedia" | "setCoverMedia" | "removeMedia" | "addDocument" | "reload"
 >;

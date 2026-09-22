@@ -1358,6 +1358,11 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
   const [coverPendingId, setCoverPendingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // IDs uploaded during this session already showed a local thumbnail while in
+  // the queue; they don't need a signed R2 preview afterwards. Combined with a
+  // per-id fetched set, this avoids re-signing on every listing.media change.
+  const sessionUploadedIds = useRef<Set<string>>(new Set());
+  const fetchedPreviewIds = useRef<Set<string>>(new Set());
   const photos = listing.media.filter((asset) => asset.kind === "property_image");
   const photoCount = photos.length;
   const activeUploads = queue.filter((item) => !["failed"].includes(item.status)).length;
@@ -1365,23 +1370,37 @@ function PhotoStep({ propertyId, listing, onChanged, onContinue }: { propertyId:
   const updateQueueItem = (id: string, patch: Partial<QueuedPhoto>) => setQueue((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
 
   useEffect(() => {
-    let cancelled = false;
-    const missing = photos.filter((asset) => !asset.imageUrl).map((asset) => asset.id);
+    // Only sign previews for pre-existing photos that still lack a published
+    // imageUrl, were not uploaded in this session, and haven't been fetched
+    // already. Debounced so a burst of finalizes triggers a single request.
+    const missing = photos
+      .filter((asset) => !asset.imageUrl && !sessionUploadedIds.current.has(asset.id) && !fetchedPreviewIds.current.has(asset.id))
+      .map((asset) => asset.id);
     if (!missing.length) return;
-    const search = missing.slice(0, 20).map((id) => `id=${encodeURIComponent(id)}`).join("&");
-    void fetch(`/api/partner/properties/${propertyId}/media/preview-urls?${search}`, { cache: "no-store" }).then(async (response) => {
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error ?? "Unable to load previews.");
-      if (!cancelled) setPreviewUrls(Object.fromEntries(json.previews.map((item: { id: string; url: string }) => [item.id, item.url])));
-    }).catch(() => { if (!cancelled) setStatus("Your photos are saved, but their previews could not be loaded yet."); });
-    return () => { cancelled = true; };
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const batch = missing.slice(0, 20);
+      const search = batch.map((id) => `id=${encodeURIComponent(id)}`).join("&");
+      void fetch(`/api/partner/properties/${propertyId}/media/preview-urls?${search}`, { cache: "no-store" }).then(async (response) => {
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error ?? "Unable to load previews.");
+        if (cancelled) return;
+        batch.forEach((id) => fetchedPreviewIds.current.add(id));
+        setPreviewUrls((current) => ({ ...current, ...Object.fromEntries(json.previews.map((item: { id: string; url: string }) => [item.id, item.url])) }));
+      }).catch(() => { if (!cancelled) setStatus("Your photos are saved, but their previews could not be loaded yet."); });
+    }, 400);
+
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [propertyId, listing.media]);
 
   const uploadOne = async (item: QueuedPhoto) => {
     updateQueueItem(item.id, { status: "hashing", progress: 0, error: undefined });
     try {
       updateQueueItem(item.id, { status: "uploading", progress: 1 });
-      await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }));
+      const finalized = await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }));
+      // Remember this id so the preview effect never re-signs it after finalize.
+      if (finalized?.mediaId) sessionUploadedIds.current.add(finalized.mediaId);
       updateQueueItem(item.id, { status: "finalizing", progress: 100 });
       await onChanged();
       URL.revokeObjectURL(item.previewUrl);

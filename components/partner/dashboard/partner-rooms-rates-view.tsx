@@ -13,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { type CurrencyCode, formatPaise } from "@/lib/currency";
@@ -342,6 +343,27 @@ export function PartnerRoomsRatesView({
     setEditorOpen(true);
   };
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteRoom = async (roomId: string, roomName: string) => {
+    if (deletingId) return;
+    const relatedRates = data?.ratePlans.filter((rate) => rate.roomTypeId === roomId).length ?? 0;
+    const rateNote = relatedRates > 0 ? ` This will also remove ${relatedRates} rate plan${relatedRates === 1 ? "" : "s"}.` : "";
+    if (!window.confirm(`Delete "${roomName}"?${rateNote} This cannot be undone.`)) return;
+    setDeletingId(roomId);
+    setDeleteError(null);
+    try {
+      await requestJson(`/api/partner/properties/${propertyId}/room-types/${roomId}`, undefined, "DELETE");
+      // Close the drawer if the deleted room was open, then drop it locally.
+      if (selectedId === roomId) closeEditor();
+      listing.removeRoomType(roomId);
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : "Could not delete this room type.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   /* ---------- derived metrics (real data only) ---------- */
   const totalRooms = rows.reduce((sum, row) => sum + (row.room.inventory || 0), 0);
   const activeCategories = rows.length;
@@ -441,6 +463,13 @@ export function PartnerRoomsRatesView({
       {/* Room Types */}
       <div className="space-y-3">
         <h2 className="text-lg font-bold text-[#061224]">Room Types</h2>
+
+        {deleteError && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700" role="alert">
+            <span>{deleteError}</span>
+            <button type="button" onClick={() => setDeleteError(null)} className="shrink-0 rounded-md px-2 py-1 text-rose-600 hover:bg-rose-100">Dismiss</button>
+          </div>
+        )}
 
         {rows.length === 0 ? (
           <div className="grid min-h-[220px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-white/60 p-8 text-center">
@@ -543,6 +572,16 @@ export function PartnerRoomsRatesView({
                           Availability
                         </button>
                         <button type="button" onClick={(e) => { e.stopPropagation(); openEditor(room.id, "rates"); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all">Manage rates</button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void deleteRoom(room.id, room.name); }}
+                          disabled={deletingId === room.id}
+                          aria-label={`Delete ${room.name}`}
+                          title="Delete room type"
+                          className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+                        >
+                          {deletingId === room.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
                       </div>
                     </div>
                   );

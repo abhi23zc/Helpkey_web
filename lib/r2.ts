@@ -8,6 +8,10 @@ import { apiContext } from "@/lib/api/context";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
 
 const PRIVATE_READ_SECONDS = 5 * 60;
+// Authenticated moderation previews (partner/admin dashboards) may hold a
+// slightly longer link so repeat views reuse one signature instead of
+// re-signing. Never applied to finalize responses or KYC reads.
+const PRIVATE_PREVIEW_SECONDS = 15 * 60;
 const PRIVATE_UPLOAD_SECONDS = 15 * 60;
 type BucketConfig = { bucket: string; client: S3Client };
 
@@ -47,11 +51,34 @@ export async function createPrivateUploadUrl(key: string, contentType: string, c
   return { uploadUrl: await getSignedUrl(client, command, { expiresIn: seconds, unhoistableHeaders: new Set(["x-amz-meta-sha256"]) }), headers: { "Content-Type": contentType, "x-amz-meta-sha256": checksum }, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
 }
 
-export async function createPrivateReadUrl(key: string, expiresSeconds = PRIVATE_READ_SECONDS) {
+type PrivateReadOptions = {
+  /** Requested lifetime; clamped to `maxSeconds`. */
+  expiresSeconds?: number;
+  /**
+   * Upper bound for the signed lifetime. Defaults to the standard 5-minute
+   * read cap. Preview routes pass `PRIVATE_PREVIEW_SECONDS`.
+   */
+  maxSeconds?: number;
+  /**
+   * Skip the per-object rate-limit check. Batch callers enforce a single
+   * combined limit for the whole request instead of one check per object.
+   */
+  skipRateLimit?: boolean;
+};
+
+/** Longer-lived read cap for authenticated moderation previews. */
+export const PRIVATE_PREVIEW_MAX_SECONDS = PRIVATE_PREVIEW_SECONDS;
+
+export async function createPrivateReadUrl(key: string, options: number | PrivateReadOptions = {}) {
+  const normalized: PrivateReadOptions = typeof options === "number" ? { expiresSeconds: options } : options;
+  const maxSeconds = normalized.maxSeconds ?? PRIVATE_READ_SECONDS;
+  const requested = normalized.expiresSeconds ?? maxSeconds;
   const objectKey = validObjectKey(key);
-  const actor = apiContext.actor();
-  if (actor) await enforceRateLimit({ bucket: "private-media", identifier: actor.uid, limit: 60, windowSeconds: 60, failClosed: true });
-  const seconds = Math.min(expiresSeconds, PRIVATE_READ_SECONDS);
+  if (!normalized.skipRateLimit) {
+    const actor = apiContext.actor();
+    if (actor) await enforceRateLimit({ bucket: "private-media", identifier: actor.uid, limit: 60, windowSeconds: 60, failClosed: true });
+  }
+  const seconds = Math.max(1, Math.min(requested, maxSeconds));
   const signedCacheKey = cacheKey("signed-media", createHash("sha256").update(objectKey).digest("hex"), seconds);
   const cached = await withRedis((redis) => redis.get(signedCacheKey));
   if (cached) return JSON.parse(cached) as { url: string; expiresAt: string };

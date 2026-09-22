@@ -1,10 +1,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { Job } from "bullmq";
 import { db } from "../media/firebase";
+import { publicObjectUrl } from "../media/r2";
 import type { ProjectionJob } from "./queue";
 import { projectionConnection } from "./queue";
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+type PublicVariant = Record<string, unknown> & { url: string };
 const cacheRedis = projectionConnection();
 export async function closeProjectionProcessor() { await cacheRedis.quit(); }
 
@@ -32,10 +34,20 @@ async function propertySearch(propertyId: string) {
   const amenityById = new Map(amenities.docs.map((doc) => [doc.id, doc.data().code]).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
   const ids = [...new Set([...(Array.isArray(data.amenityIds) ? data.amenityIds : []), ...rooms.docs.flatMap((room) => Array.isArray(room.data().amenityIds) ? room.data().amenityIds : [])])];
   const prices = rates.docs.map((rate) => rate.data().basePricePaise).filter((price): price is number => Number.isSafeInteger(price) && price >= 0);
-  const cover = media.docs.find((doc) => doc.id === data.coverMediaId)?.data()?.publication?.variants;
+  const coverAsset = media.docs.find((doc) => doc.id === data.coverMediaId)?.data();
+  const cover = coverAsset?.publication?.variants;
   const rawVariants: unknown[] = cover && typeof cover === "object" ? Object.values(cover as Record<string, unknown>) : [];
-  const largest = rawVariants.filter((variant): variant is Record<string, unknown> => Boolean(variant && typeof variant === "object")).sort((a, b) => Number(b.width ?? 0) - Number(a.width ?? 0))[0] ?? null;
-  const variants = rawVariants.filter((variant): variant is Record<string, unknown> => Boolean(variant && typeof variant === "object" && typeof (variant as Record<string, unknown>).url === "string")).sort((a, b) => Number(a.width ?? 0) - Number(b.width ?? 0));
+  const approvedPublishedCover = (coverAsset?.moderationStatus ?? coverAsset?.status) === "approved" && coverAsset?.publication?.status === "published";
+  const variants: PublicVariant[] = approvedPublishedCover ? rawVariants.flatMap<PublicVariant>((variant) => {
+    if (!variant || typeof variant !== "object") return [];
+    const item = variant as Record<string, unknown>;
+    if (typeof item.objectKey !== "string") return [];
+    try { return [{ ...item, url: publicObjectUrl(item.objectKey) }]; } catch { return []; }
+  }).sort((a, b) => Number(a.width ?? 0) - Number(b.width ?? 0)) : [];
+  // A media asset can have an incomplete variant object. Only choose a cover
+  // from publishable variants, otherwise Firestore rejects `imageUrl: undefined`
+  // and the entire search projection is retried forever.
+  const largest = [...variants].sort((a, b) => Number(b.width ?? 0) - Number(a.width ?? 0))[0] ?? null;
   const searchTokens = [...new Set([data.name, data.address?.city, data.address?.state, data.propertyType].flatMap((value) => normalize(value).split(/\s+/)).filter(Boolean))].slice(0, 40);
   await propertyRef.set({
     normalizedName: normalize(data.name),
@@ -47,7 +59,7 @@ async function propertySearch(propertyId: string) {
     amenityCodes: ids.flatMap((id) => amenityById.get(String(id)) ?? []),
     freeCancellation: Array.isArray(data.cancellationPolicyIds) && data.cancellationPolicyIds.length > 0,
     searchTokens,
-    publicCover: largest ? { imageUrl: largest.url, srcSet: variants.map((variant) => `${variant.url} ${variant.width}w`).join(", "), width: Number(largest.width ?? 1), height: Number(largest.height ?? 1), checksum: String(data.coverSourceChecksum ?? "") } : null,
+    publicCover: largest ? { imageUrl: largest.url, srcSet: variants.map((variant) => `${variant.url} ${variant.width}w`).join(", "), width: Number(largest.width ?? 1), height: Number(largest.height ?? 1), checksum: String(coverAsset?.publication?.sourceChecksum ?? "") } : null,
     searchProjectionVersion: 1,
     searchProjectionUpdatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
