@@ -1,9 +1,9 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-unused-expressions */
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { apiFetch } from "@/lib/api/client";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -103,8 +103,20 @@ export function LiveSearchResults() {
   const searchParams = useSearchParams();
   const query = useMemo(() => searchParams.toString(), [searchParams]);
 
-  const search = useQuery({ queryKey: queryKeys.search({ query }), queryFn: ({ signal }) => apiFetch<{ properties: Property[] }>(`/api/search/properties?${query}`, { signal }), staleTime: 60_000, placeholderData: (previous) => previous });
-  const properties = search.data?.properties ?? [];
+  const search = useInfiniteQuery({
+    queryKey: queryKeys.search({ query }),
+    queryFn: ({ pageParam, signal }) => {
+      // Append the cursor for pages after the first; the base query already
+      // carries all active filters/sort from the URL.
+      const url = pageParam ? `/api/search/properties?${query}&cursor=${encodeURIComponent(pageParam)}` : `/api/search/properties?${query}`;
+      return apiFetch<{ properties: Property[]; hasMore: boolean; nextCursor: string | null }>(url, { signal });
+    },
+    initialPageParam: "" as string,
+    getNextPageParam: (last) => (last.hasMore && last.nextCursor ? last.nextCursor : undefined),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const properties = useMemo(() => search.data?.pages?.flatMap((page) => page.properties) ?? [], [search.data]);
   const loading = search.isLoading;
   const error = search.error instanceof Error ? search.error.message : "";
   const [destination, setDestination] = useState(searchParams.get("destination") ?? "");
@@ -451,6 +463,22 @@ export function LiveSearchResults() {
                 ))
               )}
             </div>
+
+            {!loading && !error && search.hasNextPage && (
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void search.fetchNextPage()}
+                  disabled={search.isFetchingNextPage}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-[#061224] shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {search.isFetchingNextPage ? "Loading more stays…" : "Show more stays"}
+                </button>
+                {activeFilterCount > 0 && (
+                  <p className="text-xs font-medium text-slate-400">Some fetched stays may be hidden by your active filters.</p>
+                )}
+              </div>
+            )}
           </section>
         </div>
       </main>

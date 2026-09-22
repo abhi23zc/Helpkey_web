@@ -120,7 +120,7 @@ async function filterAvailability(cards: CatalogSearchProperty[], input: Catalog
   return cards.filter((card) => available.has(card.id));
 }
 
-export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
+export type CatalogSuggestion = { label: string; city: string; slug: string | null; type: "property" | "city"; imageUrl: string | null };
 
 export async function amenityCodeMap() {
   const snapshot = await adminDb.collection("amenities").limit(500).get();
@@ -343,13 +343,19 @@ export async function searchCatalogPage(input: CatalogSearch): Promise<CatalogPa
   const destination = input.destination.trim().toLocaleLowerCase();
   if (destination) query = query.where("normalizedCity", "==", destination);
   if (input.propertyType) query = query.where("propertyType", "==", input.propertyType);
+  // Firestore permits a range/inequality filter on only one field, and the
+  // first orderBy must match that field. We therefore pick a single inequality
+  // field (price when a price range is requested, otherwise rating) and enforce
+  // any secondary numeric bound in memory (see the post-fetch rating filter).
+  const priceOrdered = input.sort === "price_low_to_high" || input.sort === "price_high_to_low" || input.minPricePaise !== undefined || input.maxPricePaise !== undefined;
   if (input.minPricePaise !== undefined) query = query.where("minimumPricePaise", ">=", input.minPricePaise);
   if (input.maxPricePaise !== undefined) query = query.where("minimumPricePaise", "<=", input.maxPricePaise);
-  if (input.minRating !== undefined && input.minPricePaise === undefined && input.maxPricePaise === undefined) query = query.where("ratingAverage", ">=", input.minRating);
-  if (input.amenities.length === 1) query = query.where("amenityCodes", "array-contains", input.amenities[0]);
-  const priceOrdered = input.sort === "price_low_to_high" || input.sort === "price_high_to_low" || input.minPricePaise !== undefined || input.maxPricePaise !== undefined;
   const ratingOrdered = !destination && !priceOrdered && (input.minRating !== undefined || ["rating_high_to_low", "rating_low_to_high", "top_reviewed", "rating_and_price", "best_reviewed_lowest_price"].includes(input.sort));
-  const orderField = priceOrdered ? "minimumPricePaise" : ratingOrdered ? "ratingAverage" : "ratingAverage";
+  // Only push the rating inequality to Firestore when rating is also the sole
+  // ordering field; otherwise it would conflict with the price/name ordering.
+  if (input.minRating !== undefined && ratingOrdered) query = query.where("ratingAverage", ">=", input.minRating);
+  if (input.amenities.length === 1) query = query.where("amenityCodes", "array-contains", input.amenities[0]);
+  const orderField = priceOrdered ? "minimumPricePaise" : "ratingAverage";
   const orderDirection: FirebaseFirestore.OrderByDirection = input.sort === "price_high_to_low" || input.sort === "rating_high_to_low" || input.sort === "top_reviewed" || input.sort === "top_picks" ? "desc" : "asc";
   query = query.orderBy(orderField, orderDirection).orderBy("__name__", orderDirection);
   if (input.cursor) {
@@ -385,20 +391,40 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
   const term = query.trim().toLocaleLowerCase();
   if (term.length < 2) return [];
   const base = adminDb.collection("properties").where("status", "==", "active").where("approvalStatus", "==", "approved").where("isBookable", "==", true);
-  const [byName, byCity] = await Promise.all([
-    base.where("normalizedName", ">=", term).where("normalizedName", "<=", `${term}\uf8ff`).orderBy("normalizedName").limit(5).get(),
-    base.where("normalizedCity", ">=", term).where("normalizedCity", "<=", `${term}\uf8ff`).orderBy("normalizedCity").limit(5).get(),
+  // The first whitespace token drives the token-contains scan; searchTokens holds
+  // whole normalized words (name/city/state/type), so this surfaces mid-string
+  // word matches (e.g. "taj" → "Hotel Taj Palace") that prefix scans miss.
+  const firstToken = term.split(/\s+/)[0];
+  const [byName, byCity, byToken] = await Promise.all([
+    base.where("normalizedName", ">=", term).where("normalizedName", "<=", `${term}\uf8ff`).orderBy("normalizedName").limit(8).get(),
+    base.where("normalizedCity", ">=", term).where("normalizedCity", "<=", `${term}\uf8ff`).orderBy("normalizedCity").limit(8).get(),
+    base.where("searchTokens", "array-contains", firstToken).limit(12).get(),
   ]);
-  const documents = [...new Map([...byName.docs, ...byCity.docs].map((doc) => [doc.id, doc])).values()];
-  const matches = documents.map((doc) => {
+  const documents = [...new Map([...byName.docs, ...byCity.docs, ...byToken.docs].map((doc) => [doc.id, doc])).values()];
+  // Rank: name starts-with term > city starts-with term > any token starts-with
+  // the term > plain substring, then alphabetical. Higher score sorts first.
+  const score = (name: string, city: string, tokens: string[]) => {
+    const n = name.toLocaleLowerCase(), c = city.toLocaleLowerCase();
+    if (n.startsWith(term)) return 4;
+    if (c.startsWith(term)) return 3;
+    if (tokens.some((token) => token.startsWith(term) || token.startsWith(firstToken))) return 2;
+    if (`${n} ${c}`.includes(term)) return 1;
+    return 0;
+  };
+  const ranked = documents.map((doc) => {
     const data = doc.data(); const name = typeof data.name === "string" ? data.name : "";
     const city = typeof data.address?.city === "string" ? data.address.city : "";
-    return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const };
-  }).filter((item) => `${item.label} ${item.city}`.toLocaleLowerCase().includes(term))
-    .sort((a, b) => Number(b.label.toLocaleLowerCase().startsWith(term)) - Number(a.label.toLocaleLowerCase().startsWith(term)) || a.label.localeCompare(b.label));
+    const tokens = Array.isArray(data.searchTokens) ? data.searchTokens.filter((token: unknown): token is string => typeof token === "string") : [];
+    // publicCover is written by the search projection worker once a cover
+    // image has been processed; reuse it here rather than issuing another read.
+    const imageUrl = typeof data.publicCover?.imageUrl === "string" ? data.publicCover.imageUrl : null;
+    return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const, imageUrl, rank: score(name, city, tokens) };
+  }).filter((item) => item.rank > 0)
+    .sort((a, b) => b.rank - a.rank || a.label.localeCompare(b.label));
+  const matches: CatalogSuggestion[] = ranked.map(({ label, city, slug, type, imageUrl }) => ({ label, city, slug, type, imageUrl }));
   const cities = [...new Set(matches.map((item) => item.city).filter(Boolean))]
     .sort((a, b) => Number(b.toLocaleLowerCase().startsWith(term)) - Number(a.toLocaleLowerCase().startsWith(term)) || a.localeCompare(b))
-    .map((city) => ({ label: city, city, slug: null, type: "city" as const }));
+    .map((city) => ({ label: city, city, slug: null, type: "city" as const, imageUrl: null }));
   // Keep both useful property matches and city shortcuts visible; a city with many
   // hotels should not make its city suggestion disappear behind the first five cards.
   return [...matches.slice(0, 5), ...cities.slice(0, 3)];

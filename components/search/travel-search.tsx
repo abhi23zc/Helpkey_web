@@ -1,8 +1,11 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, @typescript-eslint/no-unused-expressions */
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query/keys";
 import {
   Building2,
   Calendar,
@@ -23,7 +26,7 @@ import {
 } from "lucide-react";
 import { placesLibrary } from "@/lib/google/maps-loader";
 
-type HelpkeySuggestion = { label: string; city: string; slug: string | null; type: "property" | "city" };
+type HelpkeySuggestion = { label: string; city: string; slug: string | null; type: "property" | "city"; imageUrl: string | null };
 type GoogleSuggestion = { label: string; secondary: string; isHotel: boolean; prediction: any };
 type Place = { id: string; name: string; address: string; lat: number; lng: number; city: string };
 type Props = { initial?: URLSearchParams; amenities?: string[]; compact?: boolean };
@@ -200,14 +203,17 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
   const [infants, setInfants] = useState(Number(initial?.get("infants") ?? 0));
   const [stayType, setStayType] = useState<"overnight" | "dayuse">("overnight");
 
-  const [helpkey, setHelpkey] = useState<HelpkeySuggestion[]>([]);
   const [google, setGoogle] = useState<GoogleSuggestion[]>([]);
   const [open, setOpen] = useState<"destination" | "dates" | "guests" | null>(null);
   const [active, setActive] = useState(-1);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mapsError, setMapsError] = useState("");
   const [place, setPlace] = useState<Place | null>(null);
+  const [locating, setLocating] = useState(false);
+  // Separate from suggestion loading: covers resolving a picked Google place.
+  const [resolving, setResolving] = useState(false);
+  // Debounced term shared by both suggestion sources; updated 280ms after typing.
+  const [term, setTerm] = useState("");
 
   const token = useRef<any>(null);
 
@@ -220,70 +226,95 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
   }, []);
 
   useEffect(() => {
+    // Debounce keystrokes into `term`; clear suggestions when the field is too
+    // short or a concrete place is already selected.
     if (destination.trim().length < 2 || place) {
-      setHelpkey([]);
+      setTerm("");
+      return;
+    }
+    const value = destination.trim();
+    const timer = setTimeout(() => setTerm(value), 280);
+    return () => clearTimeout(timer);
+  }, [destination, place]);
+
+  // Helpkey suggestions via react-query: shared caching, dedupe, and automatic
+  // request cancellation replace the previous manual fetch + request-id guard.
+  const helpkeyQuery = useQuery({
+    queryKey: queryKeys.suggestions(term),
+    queryFn: ({ signal }) => apiFetch<{ suggestions?: HelpkeySuggestion[] }>(`/api/search/suggestions?q=${encodeURIComponent(term)}`, { signal }),
+    enabled: term.length >= 2,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const helpkey = term.length >= 2 ? helpkeyQuery.data?.suggestions ?? [] : [];
+
+  useEffect(() => {
+    // Google Places autocomplete stays on the Maps JS SDK (not our API), keyed on
+    // the same debounced term. A monotonic id guards against out-of-order results.
+    if (!term) {
       setGoogle([]);
       return;
     }
     const id = ++request.current;
-    setLoading(true);
-    const timer = setTimeout(async () => {
-      const helpkeyTask = fetch(`/api/search/suggestions?q=${encodeURIComponent(destination)}`)
-        .then(async (response) => {
-          if (!response.ok) throw new Error("Could not load Helpkey suggestions.");
-          return response.json() as Promise<{ suggestions?: HelpkeySuggestion[] }>;
-        })
-        .then((data) => {
-          if (id === request.current) setHelpkey(data.suggestions ?? []);
-        })
-        .catch(() => {
-          if (id === request.current) setHelpkey([]);
-        });
-
-      const googleTask = (async () => {
-        try {
-          const { AutocompleteSuggestion, AutocompleteSessionToken } = (await placesLibrary()) as any;
-          token.current ??= new AutocompleteSessionToken();
-          const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-            input: destination,
-            includedRegionCodes: ["IN"],
-            includedPrimaryTypes: ["locality", "sublocality", "administrative_area_level_2", "lodging"],
-            sessionToken: token.current,
-          });
-          if (id !== request.current) return;
-          setGoogle(
-            (result.suggestions ?? [])
-              .map((item: any) => {
-                const prediction = item.placePrediction;
-                const types = prediction?.types ?? [];
-                return {
-                  label: prediction?.text?.text ?? "",
-                  secondary: prediction?.secondaryText?.text ?? "",
-                  isHotel: types.includes("lodging"),
-                  prediction,
-                };
-              })
-              .filter((item: GoogleSuggestion) => item.label && item.prediction)
-          );
-          if (id === request.current) setMapsError("");
-        } catch {
-          if (id === request.current) {
-            setGoogle([]);
-            setMapsError("Google location suggestions are temporarily unavailable. You can still search Helpkey stays or enter a destination.");
-          }
-        }
-      })();
-
+    let cancelled = false;
+    (async () => {
       try {
-        await Promise.all([helpkeyTask, googleTask]);
-      } finally {
-        if (id === request.current) setLoading(false);
+        const { AutocompleteSuggestion, AutocompleteSessionToken } = (await placesLibrary()) as any;
+        token.current ??= new AutocompleteSessionToken();
+        const result = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: term,
+          includedRegionCodes: ["IN"],
+          includedPrimaryTypes: ["locality", "sublocality", "administrative_area_level_2", "lodging"],
+          sessionToken: token.current,
+        });
+        if (cancelled || id !== request.current) return;
+        setGoogle(
+          (result.suggestions ?? [])
+            .map((item: any) => {
+              const prediction = item.placePrediction;
+              const types = prediction?.types ?? [];
+              return {
+                label: prediction?.text?.text ?? "",
+                secondary: prediction?.secondaryText?.text ?? "",
+                isHotel: types.includes("lodging"),
+                prediction,
+              };
+            })
+            .filter((item: GoogleSuggestion) => item.label && item.prediction)
+        );
+        setMapsError("");
+      } catch {
+        if (cancelled || id !== request.current) return;
+        setGoogle([]);
+        setMapsError("Google location suggestions are temporarily unavailable. You can still search Helpkey stays or enter a destination.");
       }
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [destination, place]);
+    })();
+    return () => { cancelled = true; };
+  }, [term]);
+
+  const loading = (helpkeyQuery.isFetching && term.length >= 2) || resolving;
 
   const chooseHelpkey = (item: HelpkeySuggestion) => {
+    // A property suggestion is a specific hotel, not a destination string —
+    // sending its name through the city-based search would match nothing (it
+    // isn't a normalizedCity value). Go straight to the hotel page instead.
+    if (item.type === "property" && item.slug) {
+      const p = new URLSearchParams(initial?.toString());
+      p.delete("destination");
+      p.delete("placeId");
+      p.delete("placeName");
+      p.delete("placeAddress");
+      p.delete("placeLat");
+      p.delete("placeLng");
+      if (checkIn) p.set("checkIn", checkIn);
+      if (checkOut) p.set("checkOut", checkOut);
+      p.set("adults", String(Math.max(1, adults)));
+      p.set("children", String(Math.max(0, children)));
+      p.set("infants", String(Math.max(0, infants)));
+      setOpen(null);
+      router.push(`/hotels/${item.slug}${p.toString() ? `?${p}` : ""}`);
+      return;
+    }
     setDestination(item.type === "property" ? item.label : item.city);
     setPlace(null);
     setOpen(null);
@@ -291,7 +322,7 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
 
   const chooseGoogle = async (item: GoogleSuggestion) => {
     try {
-      setLoading(true);
+      setResolving(true);
       const placeResult = item.prediction.toPlace();
       await placeResult.fetchFields({
         fields: ["id", "displayName", "formattedAddress", "location", "addressComponents"],
@@ -311,7 +342,7 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
       setError("Could not use that location. Please choose another suggestion.");
     } finally {
       token.current = null;
-      setLoading(false);
+      setResolving(false);
     }
   };
 
@@ -319,6 +350,33 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
     ...helpkey.map((x) => ({ kind: "h" as const, value: x })),
     ...google.map((x) => ({ kind: "g" as const, value: x })),
   ];
+
+  const useNearbyLocation = () => {
+    if (locating) return;
+    if (!navigator.geolocation) {
+      setError("Location is not available in this browser. Enter a destination instead.");
+      return;
+    }
+    setLocating(true);
+    setError("");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        // Feed the real coordinates through the same `place` channel Google uses
+        // so search() serializes placeLat/placeLng and enables distance sorting.
+        setPlace({ id: "", name: "Nearby stays", address: "Your current location", lat: latitude, lng: longitude, city: "Nearby" });
+        setDestination("Nearby stays");
+        setActive(-1);
+        setOpen(null);
+        setLocating(false);
+      },
+      () => {
+        setError("We couldn't access your location. Allow location access or enter a destination.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
+    );
+  };
 
   const search = () => {
     if (!checkIn || !checkOut || checkOut <= checkIn) return setError("Choose a check-out date after check-in.");
@@ -328,15 +386,20 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
     p.set("adults", String(Math.max(1, adults)));
     p.set("children", String(Math.max(0, children)));
     p.set("infants", String(Math.max(0, infants)));
-    if (destination.trim()) p.set("destination", destination.trim());
+    // A coordinate-only "Nearby" search has a place with lat/lng but no placeId;
+    // its label must not be sent as a city filter (which would match nothing).
+    const coordinatesOnly = Boolean(place && !place.id);
+    if (destination.trim() && !coordinatesOnly) p.set("destination", destination.trim());
     else p.delete("destination");
     amenities.forEach((x) => p.append("amenity", x));
     if (place) {
-      p.set("placeId", place.id);
+      if (place.id) p.set("placeId", place.id);
       p.set("placeName", place.name);
       p.set("placeAddress", place.address);
       p.set("placeLat", String(place.lat));
       p.set("placeLng", String(place.lng));
+      // With coordinates and no city text, rank by proximity to the location.
+      if (coordinatesOnly && !p.get("sort")) p.set("sort", "distance_from_downtown");
     }
     router.push(`/search?${p}`);
   };
@@ -580,21 +643,12 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                          () => { setDestination("Nearby"); setOpen(null); },
-                          () => { setDestination("Nearby"); setOpen(null); }
-                        );
-                      } else {
-                        setDestination("Nearby");
-                        setOpen(null);
-                      }
-                    }}
-                    className="flex items-center gap-2 rounded-full bg-blue-50/90 border border-blue-200/60 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition"
+                    onClick={useNearbyLocation}
+                    disabled={locating}
+                    className="flex items-center gap-2 rounded-full bg-blue-50/90 border border-blue-200/60 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 transition"
                   >
-                    <Navigation className="h-4 w-4" />
-                    <span>Find Nearby Stays</span>
+                    <Navigation className={`h-4 w-4 ${locating ? "animate-spin" : ""}`} />
+                    <span>{locating ? "Locating…" : "Find Nearby Stays"}</span>
                   </button>
                 </div>
 
@@ -686,8 +740,13 @@ export function TravelSearch({ initial, amenities = [], compact = false }: Props
                             active === i ? "bg-slate-100" : "hover:bg-slate-50"
                           }`}
                         >
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#F4F4F6] text-slate-800">
-                            <Building2 className="h-5 w-5" strokeWidth={1.75} />
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#F4F4F6] text-slate-800">
+                            {item.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- CDN thumbnail, not a static asset.
+                              <img src={item.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                            ) : (
+                              <Building2 className="h-5 w-5" strokeWidth={1.75} />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[15px] font-semibold text-slate-900 tracking-tight">{item.label}</p>

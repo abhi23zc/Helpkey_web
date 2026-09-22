@@ -2,6 +2,7 @@ export const queryKeys = {
   auth: ["auth"] as const,
   home: ["catalog", "home"] as const,
   search: (filters: Record<string, unknown>) => ["catalog", "search", filters] as const,
+  suggestions: (term: string) => ["catalog", "suggestions", term] as const,
   property: (slug: string) => ["catalog", "property", slug] as const,
   bookable: (slug: string, stay: Record<string, unknown>) => ["catalog", "bookable", slug, stay] as const,
   notifications: (unreadOnly = false) => ["notifications", { unreadOnly }] as const,
