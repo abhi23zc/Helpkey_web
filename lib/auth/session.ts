@@ -1,25 +1,24 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuth } from "@/lib/firebase/admin";
 import { getUserByUid } from "@/lib/auth/users";
 import { apiContext, type ApiAuthMode } from "@/lib/api/context";
 import { cacheKey, withRedis } from "@/lib/redis";
+import { credentialDigest, selectCredential, type Credential } from "@/lib/auth/credential";
 import type { AppUser } from "@/types/auth";
 
 export const SESSION_COOKIE_NAME = "helpkey_session";
 export const SESSION_EXPIRES_IN = 1000 * 60 * 60 * 24 * 5;
 const SESSION_CACHE_SECONDS = 60;
 
-const cookieDigest = (cookie: string) => createHash("sha256").update(cookie).digest("hex");
 const sessionKey = (digest: string) => cacheKey("session", digest);
 const userSessionsKey = (uid: string) => cacheKey("user-sessions", uid);
 
-async function cacheSession(cookie: string, user: AppUser) {
-  const digest = cookieDigest(cookie);
+async function cacheSession(credential: Credential, user: AppUser) {
+  const digest = credentialDigest(credential);
   await withRedis(async (redis) => {
     const pipeline = redis.pipeline();
     pipeline.set(sessionKey(digest), JSON.stringify(user), "EX", SESSION_CACHE_SECONDS);
@@ -38,8 +37,8 @@ export async function invalidateUserSessions(uid: string) {
   });
 }
 
-async function invalidateCookie(cookie: string) {
-  const digest = cookieDigest(cookie);
+async function invalidateCredential(credential: Credential) {
+  const digest = credentialDigest(credential);
   const cached = await withRedis((redis) => redis.get(sessionKey(digest)));
   await withRedis(async (redis) => {
     await redis.del(sessionKey(digest));
@@ -68,36 +67,55 @@ export async function setSessionCookie(idToken: string) {
 export async function clearSessionCookie() {
   const cookieStore = await cookies();
   const cookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (cookie) await invalidateCookie(cookie);
+  if (cookie) await invalidateCredential({ kind: "cookie", value: cookie });
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-async function resolveAuthenticatedUser(mode: Exclude<ApiAuthMode, "public">): Promise<AppUser | null> {
-  const sessionCookie = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+/**
+ * Ends the caller's session whichever way it authenticated. A bearer client holds no cookie: dropping the
+ * server-side cache entry stops the token being served from cache; the app then discards its tokens.
+ */
+export async function signOutRequest() {
+  const credential = await requestCredential();
+  if (credential?.kind === "idToken") await invalidateCredential(credential);
+  await clearSessionCookie();
+}
 
-  if (!sessionCookie) {
+async function requestCredential(): Promise<Credential | null> {
+  const [headerStore, cookieStore] = await Promise.all([headers(), cookies()]);
+  return selectCredential(headerStore.get("authorization"), cookieStore.get(SESSION_COOKIE_NAME)?.value);
+}
+
+async function resolveAuthenticatedUser(mode: Exclude<ApiAuthMode, "public">): Promise<AppUser | null> {
+  const credential = await requestCredential();
+
+  if (!credential) {
     return null;
   }
 
   try {
     if (mode === "read") {
-      const cached = await withRedis((redis) => redis.get(sessionKey(cookieDigest(sessionCookie))));
+      const cached = await withRedis((redis) => redis.get(sessionKey(credentialDigest(credential))));
       if (cached) {
         const user = JSON.parse(cached) as AppUser;
         if (user.isActive && user.accountStatus === "active") return user;
       }
     }
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie, mode === "strict");
+    // "strict" also checks revocation. Browser cookies and app ID tokens are different JWTs, verified differently.
+    const decoded =
+      credential.kind === "idToken"
+        ? await adminAuth.verifyIdToken(credential.value, mode === "strict")
+        : await adminAuth.verifySessionCookie(credential.value, mode === "strict");
     const user = await getUserByUid(decoded.uid);
 
     if (!user?.isActive) {
       return null;
     }
 
-    await cacheSession(sessionCookie, user);
+    await cacheSession(credential, user);
     return user;
   } catch {
-    await invalidateCookie(sessionCookie);
+    await invalidateCredential(credential);
     return null;
   }
 }

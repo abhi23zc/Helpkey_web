@@ -1,8 +1,8 @@
 import { withApiHandler } from "@/lib/api/handler";
-import { clearSessionCookie } from "@/lib/auth/session";
+import { signOutRequest } from "@/lib/auth/session";
 
 const rawPOST = async function POST() {
-  await clearSessionCookie();
+  await signOutRequest();
 
   return Response.json({ ok: true });
 }

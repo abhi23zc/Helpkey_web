@@ -23,6 +23,36 @@ export function amenityLabel(value: string) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+/** Legacy spellings that must collapse to one filterable code ("Wi-Fi" and "wifi" are the same amenity). */
+const AMENITY_ALIASES: Record<string, string> = {
+  wi_fi: "wifi",
+  fast_wi_fi: "fast_wifi",
+  ac: "air_conditioning",
+  air_conditioner: "air_conditioning",
+  pool: "swimming_pool",
+};
+
+/** Stable, filterable identity for an amenity across catalog codes and legacy labels. */
+export function canonicalAmenityKey(value: string) {
+  const key = amenityKey(value);
+  return AMENITY_ALIASES[key] ?? key;
+}
+
+/**
+ * Builds the `amenityCodes` stored on a property's search projection. Ids that are not in the
+ * amenities catalog (legacy labels such as "Wi-Fi") are kept and canonicalised instead of dropped,
+ * otherwise search and amenity filters silently match nothing.
+ */
+export function projectAmenityCodes(ids: readonly unknown[], codeById: ReadonlyMap<string, string>) {
+  const codes = new Set<string>();
+  for (const id of ids) {
+    if (typeof id !== "string" || !id.trim()) continue;
+    const key = canonicalAmenityKey(codeById.get(id) ?? id);
+    if (key) codes.add(key);
+  }
+  return [...codes];
+}
+
 /** Resolves IDs through the amenities catalog while retaining legacy labels. */
 export function resolveAmenityCodes(
   amenityIds: unknown,

@@ -5,6 +5,7 @@ import { adminAuth } from "@/lib/firebase/admin";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
 import { clientIp, privateFingerprint } from "@/lib/api/request";
 import { ApiException } from "@/lib/api/errors";
+import { CLIENT_HEADER, MOBILE_CLIENT } from "@/lib/api/csrf";
 
 const rawPOST = async function POST(request: Request) {
   try {
@@ -24,7 +25,9 @@ const rawPOST = async function POST(request: Request) {
       fullName: body.fullName,
     });
 
-    await setSessionCookie(body.idToken);
+    // Browsers get an HttpOnly session cookie. The native app keeps its own tokens and authenticates each
+    // request with `Authorization: Bearer <ID token>`, so it must not receive a cookie it cannot use.
+    if (request.headers.get(CLIENT_HEADER) !== MOBILE_CLIENT) await setSessionCookie(body.idToken);
 
     return Response.json({ user });
   } catch (error) {

@@ -3,7 +3,7 @@ import "server-only";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { resolvePublicImage } from "@/lib/media-resolver";
-import { amenityKey, resolveAmenityCodes } from "@/lib/customer/amenities";
+import { canonicalAmenityKey, resolveAmenityCodes } from "@/lib/customer/amenities";
 import { apiContext } from "@/lib/api/context";
 import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
 
@@ -82,7 +82,16 @@ export type CatalogProperty = {
 };
 export type CatalogImage = { id: string; imageUrl: string; imageSrcSet: string; width: number; height: number; altText: string };
 export type CatalogReviewSummary = { count: number; ratingSum: number; average: number; buckets: Record<"1" | "2" | "3" | "4" | "5", number> };
-export type CatalogDetailProperty = CatalogProperty & { images: CatalogImage[]; reviewSummary: CatalogReviewSummary | null };
+export type CatalogAddress = { line1: string | null; line2: string | null; landmark: string | null; city: string | null; state: string | null; postalCode: string | null };
+export type CatalogDetailProperty = CatalogProperty & {
+  images: CatalogImage[];
+  reviewSummary: CatalogReviewSummary | null;
+  description: string;
+  address: CatalogAddress;
+  coordinates: { latitude: number; longitude: number } | null;
+  checkInTime: string;
+  checkOutTime: string;
+};
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null };
 export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean };
 
@@ -354,7 +363,8 @@ export async function searchCatalogPage(input: CatalogSearch): Promise<CatalogPa
   // Only push the rating inequality to Firestore when rating is also the sole
   // ordering field; otherwise it would conflict with the price/name ordering.
   if (input.minRating !== undefined && ratingOrdered) query = query.where("ratingAverage", ">=", input.minRating);
-  if (input.amenities.length === 1) query = query.where("amenityCodes", "array-contains", input.amenities[0]);
+  const wantedAmenities = input.amenities.map(canonicalAmenityKey).filter(Boolean);
+  if (wantedAmenities.length === 1) query = query.where("amenityCodes", "array-contains", wantedAmenities[0]);
   const orderField = priceOrdered ? "minimumPricePaise" : "ratingAverage";
   const orderDirection: FirebaseFirestore.OrderByDirection = input.sort === "price_high_to_low" || input.sort === "rating_high_to_low" || input.sort === "top_reviewed" || input.sort === "top_picks" ? "desc" : "asc";
   query = query.orderBy(orderField, orderDirection).orderBy("__name__", orderDirection);
@@ -372,7 +382,7 @@ export async function searchCatalogPage(input: CatalogSearch): Promise<CatalogPa
     apiContext.projectionFallback();
     cards = [...cards, ...await legacyCards(missing)];
   }
-  cards = cards.filter((property) => input.amenities.every((code) => property.amenityCodes.some((amenity) => amenityKey(amenity) === amenityKey(code))));
+  cards = cards.filter((property) => wantedAmenities.every((code) => property.amenityCodes.some((amenity) => canonicalAmenityKey(amenity) === code)));
   if (input.minRating !== undefined) cards = cards.filter((property) => property.ratingAverage >= input.minRating!);
   if (input.checkIn && input.checkOut) cards = await filterAvailability(cards, input);
   const last = pageDocs.at(-1);
@@ -432,10 +442,20 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
 
 export async function homeCatalog() {
   const properties = await searchCatalog({ destination: "", adults: 2, children: 0, infants: 0, amenities: [], sort: "top_picks", limit: 24 });
-  const cities = [...properties.reduce((counts, property) => {
-    if (property.city) counts.set(property.city, (counts.get(property.city) ?? 0) + 1);
-    return counts;
-  }, new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 4).map(([city, propertyCount]) => ({ city, propertyCount }));
+  // `properties` is already ranked by top_picks, so the first cover image seen for a
+  // city is from its best-ranked property. `imageUrl` is additive; older clients ignore it.
+  const cityStats = properties.reduce((stats, property) => {
+    if (!property.city) return stats;
+    const entry = stats.get(property.city) ?? { propertyCount: 0, imageUrl: null as string | null };
+    entry.propertyCount += 1;
+    entry.imageUrl ??= property.coverImageUrl;
+    stats.set(property.city, entry);
+    return stats;
+  }, new Map<string, { propertyCount: number; imageUrl: string | null }>());
+  const cities = [...cityStats.entries()]
+    .sort((a, b) => b[1].propertyCount - a[1].propertyCount || a[0].localeCompare(b[0]))
+    .slice(0, 4)
+    .map(([city, { propertyCount, imageUrl }]) => ({ city, propertyCount, imageUrl }));
   return { recommendations: properties.slice(0, 4), cities };
 }
 
@@ -457,5 +477,18 @@ export async function catalogPropertyBySlug(slug: string): Promise<CatalogDetail
     const amenityIds = room.data().amenityIds;
     return Array.isArray(amenityIds) ? amenityIds.filter((id): id is string => typeof id === "string") : [];
   });
-  return { ...publicCatalogProperty(await propertyCard(doc, codesById, roomAmenityIds)), images, reviewSummary };
+  // Explicit allow-list: the property document also holds owner, KYC and onboarding data that must never be public.
+  const text = (value: unknown, max = 200) => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null);
+  const time = (value: unknown, fallback: string) => (typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : fallback);
+  const geo = data.geoPoint;
+  return {
+    ...publicCatalogProperty(await propertyCard(doc, codesById, roomAmenityIds)),
+    images,
+    reviewSummary,
+    description: text(data.description, 6000) ?? "",
+    address: { line1: text(data.address?.line1), line2: text(data.address?.line2), landmark: text(data.address?.landmark), city: text(data.address?.city, 120), state: text(data.address?.state, 120), postalCode: text(data.address?.postalCode, 12) },
+    coordinates: typeof geo?.latitude === "number" && typeof geo?.longitude === "number" ? { latitude: geo.latitude, longitude: geo.longitude } : null,
+    checkInTime: time(data.checkInTime, "14:00"),
+    checkOutTime: time(data.checkOutTime, "11:00"),
+  };
 }

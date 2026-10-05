@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { Job } from "bullmq";
 import { db } from "../media/firebase";
 import { publicObjectUrl } from "../media/r2";
+import { projectAmenityCodes } from "../../lib/customer/amenities";
 import type { ProjectionJob } from "./queue";
 import { projectionConnection } from "./queue";
 
@@ -56,7 +57,7 @@ async function propertySearch(propertyId: string) {
     minimumPricePaise: prices.length ? Math.min(...prices) : null,
     ratingAverage: Number(data.reviewSummary?.average ?? data.ratingAverage ?? 0),
     ratingCount: Number(data.reviewSummary?.count ?? data.ratingCount ?? 0),
-    amenityCodes: ids.flatMap((id) => amenityById.get(String(id)) ?? []),
+    amenityCodes: projectAmenityCodes(ids, amenityById),
     freeCancellation: Array.isArray(data.cancellationPolicyIds) && data.cancellationPolicyIds.length > 0,
     searchTokens,
     publicCover: largest ? { imageUrl: largest.url, srcSet: variants.map((variant) => `${variant.url} ${variant.width}w`).join(", "), width: Number(largest.width ?? 1), height: Number(largest.height ?? 1), checksum: String(coverAsset?.publication?.sourceChecksum ?? "") } : null,

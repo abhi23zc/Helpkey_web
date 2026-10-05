@@ -5,6 +5,7 @@ import type { AppUser } from "@/types/auth";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { apiContext, type ApiAuthMode, type ApiRequestContext } from "@/lib/api/context";
 import { ApiException, toApiException } from "@/lib/api/errors";
+import { validateOrigin } from "@/lib/api/csrf";
 
 export type ApiSuccess<T, M = undefined> = { data: T; meta?: M; requestId: string };
 export type ApiError = { error: { code: string; message: string; fieldErrors?: Record<string, string[]> }; requestId: string };
@@ -23,18 +24,6 @@ export type ApiHandlerOptions = {
 function requestId(request: Request) {
   const supplied = request.headers.get("x-request-id");
   return supplied && /^[a-zA-Z0-9._:-]{8,128}$/.test(supplied) ? supplied : randomUUID();
-}
-
-function validateOrigin(request: Request) {
-  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
-  if (request.headers.get("sec-fetch-site") === "cross-site") throw new ApiException("CSRF_REJECTED", 403, "Cross-site requests are not allowed.");
-  const origin = request.headers.get("origin");
-  if (!origin) {
-    if (process.env.NODE_ENV === "production" && !["same-origin", "same-site"].includes(request.headers.get("sec-fetch-site") ?? "")) throw new ApiException("CSRF_REJECTED", 403, "A trusted request origin is required.");
-    return;
-  }
-  const expectedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  if (!expectedHost || new URL(origin).host !== expectedHost) throw new ApiException("CSRF_REJECTED", 403, "The request origin is not allowed.");
 }
 
 async function validateBodySize(request: Request, maximum: number) {
