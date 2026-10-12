@@ -201,7 +201,7 @@ function SupportSection() {
 
 function HelpFooter() {
   const columns = [
-    ["Privacy Policy", "Terms of Service"],
+    ["Privacy Policy", "Account Deletion", "Terms of Service"],
     ["Cookie Policy", "Sustainability"],
     ["Careers", "Press"],
   ];
@@ -225,7 +225,7 @@ function HelpFooter() {
               {column.map((item) => (
                 <Link
                   key={item}
-                  href="/help"
+                  href={item === "Privacy Policy" ? "/privacy-policy" : item === "Account Deletion" ? "/delete-account" : "/help"}
                   className="text-[15px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
                 >
                   {item}

@@ -43,6 +43,7 @@ const adminNav = [
   { href: "/admin/properties", label: "Properties", icon: Building2, exact: false, disabled: false },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarDays, exact: false, disabled: false },
   { href: "/admin/users", label: "Users", icon: Users, exact: false, disabled: false },
+  { href: "/admin/privacy-requests", label: "Privacy Requests", icon: ShieldCheck, exact: false, disabled: false },
   { href: "/admin/aadhaar-lab", label: "Aadhaar Lab", icon: Fingerprint, exact: false, disabled: false },
   { href: "/admin/reviews", label: "Reviews", icon: MessageSquare, exact: false, disabled: false },
   { href: "/admin/payments", label: "Payments", icon: WalletCards, exact: false, disabled: true },
