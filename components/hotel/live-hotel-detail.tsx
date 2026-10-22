@@ -7,8 +7,8 @@ import {
 import { useSavedHotels } from "@/components/wishlist/use-saved-hotels";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUpDown,
   Bath,
@@ -57,7 +57,11 @@ import {
   type StaySearch,
 } from "@/lib/customer/stay-search";
 import { canonicalAmenityKey, amenityLabel } from "@/lib/customer/amenities";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { ApiClientError, apiFetch } from "@/lib/api/client";
 import { buildTimeOptions } from "@/components/shared/form-controls";
@@ -66,6 +70,7 @@ import { HotelLocation } from "@/components/hotel/hotel-location";
 import { GuestRules } from "@/components/hotel/guest-rules";
 import type { CatalogDetailProperty } from "@/lib/customer/catalog";
 import { localParts } from "@/lib/booking/domain";
+import { checkoutInputFromSearchParams } from "@/lib/booking/checkout";
 
 type Property = CatalogDetailProperty;
 type BookableRoom = {
@@ -243,6 +248,7 @@ function formatHotelTime(timeStr?: string | null, fallback = "12:00 PM") {
 }
 
 export function LiveHotelDetail({ slug }: { slug: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const stay = useMemo(
     () => staySearchFromParams(new URLSearchParams(searchParams.toString())),
@@ -992,13 +998,25 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
             selectedChoice={effectiveSelectedChoice}
             onChoiceChange={setSelectedChoice}
             initialStay={stay}
-            onStayChange={(next) =>
-              window.history.replaceState(
-                null,
-                "",
-                `/hotels/${encodeURIComponent(slug)}?${withStaySearch(new URLSearchParams(searchParams.toString()), next)}`,
-              )
-            }
+            onStayChange={(next) => {
+              const params = withStaySearch(
+                new URLSearchParams(searchParams.toString()),
+                next,
+              );
+              // A changed guest count must never reuse a quoted price, but it
+              // can retain the guest's room/rate preference. The following
+              // availability request determines whether that preference still
+              // exists for the new party and supplies its fresh price.
+              if (effectiveSelectedChoice) {
+                const [roomTypeId, ratePlanId] =
+                  effectiveSelectedChoice.split(":");
+                params.set("roomTypeId", roomTypeId);
+                params.set("ratePlanId", ratePlanId);
+              }
+              router.replace(`/hotels/${encodeURIComponent(slug)}?${params}`, {
+                scroll: false,
+              });
+            }}
           />
         </div>
       </main>
@@ -1403,10 +1421,12 @@ function BookingCard({
   initialStay: StaySearch | null;
   onStayChange: (value: StaySearch) => void;
 }) {
+  const queryClient = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
   const [today] = useState(
     () => localParts(Date.now(), property.timezone ?? "Asia/Kolkata").date,
   );
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const hourly = initialStay?.bookingMode === "hourly";
   const [checkIn, setCheckIn] = useState(initialStay?.checkIn ?? "");
   const [checkOut, setCheckOut] = useState(initialStay?.checkOut ?? "");
@@ -1422,6 +1442,21 @@ function BookingCard({
   const [openPopover, setOpenPopover] = useState<
     "calendar" | "guests" | "rooms" | null
   >(null);
+  const arrivalTimeOptions = useMemo(() => {
+    const options = buildTimeOptions(15);
+    if (checkIn !== today) return options;
+
+    const currentLocalTime = localParts(
+      currentTime,
+      property.timezone ?? "Asia/Kolkata",
+    ).time;
+    return options.filter((option) => option.value > currentLocalTime);
+  }, [checkIn, currentTime, property.timezone, today]);
+  const displayedArrivalTime = arrivalTimeOptions.some(
+    (option) => option.value === arrivalTime,
+  )
+    ? arrivalTime
+    : (arrivalTimeOptions[0]?.value ?? "");
 
   const [roomId, rateId] = selectedChoice.split(":");
   const selectedRoom = rooms.find((room) => room.id === roomId);
@@ -1460,7 +1495,13 @@ function BookingCard({
     infants === initialStay?.infants &&
     checkIn >= today &&
     (initialStay?.bookingMode === "hourly"
-      ? Boolean(initialStay.arrivalTime && initialStay.durationMinutes)
+      ? Boolean(
+          initialStay.arrivalTime &&
+          initialStay.durationMinutes &&
+          arrivalTimeOptions.some(
+            (option) => option.value === initialStay.arrivalTime,
+          ),
+        )
       : checkOut > checkIn) &&
     adults > 0 &&
     capacityOk,
@@ -1482,6 +1523,13 @@ function BookingCard({
     children: String(children),
     infants: String(infants),
   }).toString();
+  const checkoutInput = useMemo(
+    () =>
+      checkoutInputFromSearchParams(
+        Object.fromEntries(new URLSearchParams(query)),
+      ),
+    [query],
+  );
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -1505,6 +1553,11 @@ function BookingCard({
     return () => document.removeEventListener("keydown", escape);
   }, [openPopover]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const hourlyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -1512,28 +1565,55 @@ function BookingCard({
     },
     [],
   );
-  const persistStay = (next: Partial<StaySearch>) => {
-    const value = {
-      ...initialStay,
-      ...(hourly ? { arrivalTime, durationMinutes } : {}),
+  const persistStay = useCallback(
+    (next: Partial<StaySearch>, debounce = false) => {
+      const value = {
+        ...initialStay,
+        ...(hourly ? { arrivalTime, durationMinutes } : {}),
+        checkIn,
+        checkOut,
+        adults,
+        children,
+        infants,
+        ...next,
+      };
+      if (
+        (value.bookingMode === "hourly" && value.checkIn) ||
+        (value.checkIn && value.checkOut && value.checkOut > value.checkIn) ||
+        (!value.checkIn && !value.checkOut)
+      ) {
+        if (value.bookingMode === "hourly" || debounce) {
+          if (hourlyTimer.current) clearTimeout(hourlyTimer.current);
+          hourlyTimer.current = setTimeout(() => onStayChange(value), 350);
+        } else onStayChange(value);
+      }
+    },
+    [
+      adults,
+      arrivalTime,
       checkIn,
       checkOut,
-      adults,
       children,
+      durationMinutes,
+      hourly,
       infants,
-      ...next,
-    };
-    if (
-      (value.bookingMode === "hourly" && value.checkIn) ||
-      (value.checkIn && value.checkOut && value.checkOut > value.checkIn) ||
-      (!value.checkIn && !value.checkOut)
-    ) {
-      if (value.bookingMode === "hourly") {
-        if (hourlyTimer.current) clearTimeout(hourlyTimer.current);
-        hourlyTimer.current = setTimeout(() => onStayChange(value), 350);
-      } else onStayChange(value);
-    }
-  };
+      initialStay,
+      onStayChange,
+    ],
+  );
+
+  useEffect(() => {
+    if (!hourly || !arrivalTimeOptions.length) return;
+    if (arrivalTimeOptions.some((option) => option.value === arrivalTime))
+      return;
+
+    const nextArrivalTime = arrivalTimeOptions[0].value;
+    const timer = window.setTimeout(() => {
+      setArrivalTime(nextArrivalTime);
+      persistStay({ arrivalTime: nextArrivalTime, durationMinutes });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [arrivalTime, arrivalTimeOptions, durationMinutes, hourly, persistStay]);
 
   const switchMode = (bookingMode: "overnight" | "hourly") => {
     const date =
@@ -1658,7 +1738,7 @@ function BookingCard({
                 Local arrival time
                 <select
                   aria-label="Local arrival time"
-                  value={arrivalTime}
+                  value={displayedArrivalTime}
                   onChange={(event) => {
                     setArrivalTime(event.target.value);
                     persistStay({
@@ -1667,8 +1747,9 @@ function BookingCard({
                     });
                   }}
                   className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                  disabled={!arrivalTimeOptions.length}
                 >
-                  {buildTimeOptions(15).map((option) => (
+                  {arrivalTimeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -1705,22 +1786,11 @@ function BookingCard({
                 </select>
               </label>
             </div>
-            <p className="border-t border-slate-200 pt-3">
-              Departure:{" "}
-              {selected?.endAt
-                ? new Date(selected.endAt).toLocaleString("en-IN", {
-                    timeZone: property.timezone ?? "Asia/Kolkata",
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "Choose a matching room and rate"}
-            </p>
-            <p className="font-normal text-slate-500">
-              Times are local to this property. Cleaning time is outside your
-              guest stay.
-            </p>
+            {checkIn === today && !arrivalTimeOptions.length && (
+              <p className="text-amber-700">
+                No arrival times remain today. Please choose a later date.
+              </p>
+            )}
           </div>
         )}
         {!hourly && (
@@ -1851,7 +1921,10 @@ function BookingCard({
                 value={adults}
                 min={1}
                 max={12}
-                onChange={setAdults}
+                onChange={(value) => {
+                  setAdults(value);
+                  persistStay({ adults: value }, true);
+                }}
               />
               <GuestCounterRow
                 label="Children"
@@ -1859,7 +1932,10 @@ function BookingCard({
                 value={children}
                 min={0}
                 max={10}
-                onChange={setChildren}
+                onChange={(value) => {
+                  setChildren(value);
+                  persistStay({ children: value }, true);
+                }}
               />
               <GuestCounterRow
                 label="Infants"
@@ -1867,18 +1943,11 @@ function BookingCard({
                 value={infants}
                 min={0}
                 max={10}
-                onChange={setInfants}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  persistStay({ adults, children, infants });
-                  setOpenPopover(null);
+                onChange={(value) => {
+                  setInfants(value);
+                  persistStay({ infants: value }, true);
                 }}
-                className="mt-3 w-full rounded-xl bg-[var(--hk-navy)] py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
-              >
-                Apply
-              </button>
+              />
             </div>
           )}
         </div>
@@ -1971,6 +2040,20 @@ function BookingCard({
               if (!selected?.validUntil || selected.validUntil <= Date.now()) {
                 event.preventDefault();
                 onRefresh();
+                return;
+              }
+              if (checkoutInput) {
+                void queryClient.prefetchQuery({
+                  queryKey: queryKeys.checkoutQuote(checkoutInput),
+                  queryFn: ({ signal }) =>
+                    apiFetch<{ quote: unknown }>("/api/bookings/quote", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(checkoutInput),
+                      signal,
+                    }),
+                  staleTime: 5 * 60_000,
+                });
               }
             }}
             className="mt-5 block rounded-xl bg-[var(--hk-navy)] py-3.5 text-center text-sm font-bold text-white shadow-md hover:bg-slate-800 transition active:scale-[0.99]"

@@ -14,6 +14,7 @@ export { bookingInput, createBookingInput, paymentVerificationInput } from "@/li
 import { enqueueBookingNotification } from "@/lib/booking/notifications";
 import { evaluateStay, allocateIntervals, canonicalStatus, assertTransition, cancellationRefund } from "@/lib/booking/domain";
 import { calendarRef, hasCapacity, readAvailability, writeAllocation } from "@/lib/booking/inventory";
+import type { CheckoutDisplay, CheckoutInput } from "@/lib/booking/checkout";
 
 const HOLD_TTL_MS = 10 * 60_000;
 const cancellableStatuses = new Set(["pending_payment", "confirmed"]);
@@ -61,6 +62,52 @@ async function propertyCover(propertyData: FirebaseFirestore.DocumentData) {
   return { id: media.id, checksum: typeof data.checksum === "string" ? data.checksum : null, url: resolved?.imageUrl ?? null };
 }
 
+/**
+ * Presentation-only data for checkout. It deliberately does not include a
+ * price or availability claim; those are supplied by the short-lived quote.
+ */
+export async function checkoutDisplay(input: CheckoutInput): Promise<CheckoutDisplay | null> {
+  const propertyPromise = adminDb.collection("properties").where("slug", "==", input.propertySlug).limit(1).get();
+  const [propertyResult, room, rate] = await Promise.all([
+    propertyPromise,
+    adminDb.collection("roomTypes").doc(input.roomTypeId).get(),
+    adminDb.collection("ratePlans").doc(input.ratePlanId).get(),
+  ]);
+  const property = propertyResult.docs[0];
+  const propertyData = property?.data();
+  const roomData = room.data();
+  const rateData = rate.data();
+  if (!property || !propertyData || !room.exists || !rate.exists || roomData?.propertyId !== property.id || rateData?.propertyId !== property.id || rateData?.roomTypeId !== room.id) return null;
+  try {
+    const evaluated = evaluateStay(input, propertyData, roomData, rateData);
+    const cover = await propertyCover(propertyData);
+    return {
+      propertyName: propertyData.name ?? "Property",
+      propertyCity: propertyData.address?.city ?? propertyData.city ?? null,
+      propertyState: propertyData.address?.state ?? propertyData.state ?? null,
+      propertyAddress: [propertyData.address?.line1, propertyData.address?.line2, propertyData.address?.landmark, propertyData.address?.city, propertyData.address?.state, propertyData.address?.postalCode].filter((value): value is string => typeof value === "string" && Boolean(value.trim())).join(", ") || null,
+      propertyRatingAverage: typeof propertyData.reviewSummary?.average === "number" && propertyData.reviewSummary.count > 0 ? propertyData.reviewSummary.average : typeof propertyData.ratingAverage === "number" ? propertyData.ratingAverage : 0,
+      propertyCoverImageUrl: cover.url,
+      propertyRules: publicGuestPolicies(propertyData),
+      timezone: propertyData.timezone ?? "Asia/Kolkata",
+      roomType: { id: room.id, name: roomData.name ?? "Room" },
+      ratePlan: { id: rate.id, name: rateData.name ?? "Standard", paymentMode: evaluated.paymentMode === "deposit" || evaluated.paymentMode === "pay_at_property" ? evaluated.paymentMode : "full" },
+      bookingMode: input.bookingMode,
+      checkIn: input.checkIn,
+      checkOut: evaluated.checkOut,
+      arrivalTime: evaluated.arrivalTime,
+      departureTime: evaluated.departureTime,
+      nights: evaluated.nights,
+      durationMinutes: evaluated.durationMinutes,
+      adults: input.adults,
+      children: input.children,
+      infants: input.infants,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function bookingError(error: unknown) {
   if (error instanceof z.ZodError) {
     const field = error.issues[0]?.path.join(".");
@@ -103,16 +150,45 @@ export function bookingError(error: unknown) {
 }
 
 export async function quote(input: BookingInput) {
+  return (await quoteWithTiming(input)).quote;
+}
 
+export type QuoteTiming = Record<"property" | "roomRate" | "inventory" | "policy" | "total", number>;
 
-  const property = (await adminDb.collection("properties").where("slug", "==", input.propertySlug).limit(1).get()).docs[0];
+export async function quoteWithTiming(input: BookingInput): Promise<{ quote: Awaited<ReturnType<typeof buildQuote>>; timing: QuoteTiming }> {
+  const started = performance.now();
+  const timing: QuoteTiming = { property: 0, roomRate: 0, inventory: 0, policy: 0, total: 0 };
+  // TypeScript's BookingInput type does not remove runtime properties. In
+  // particular, createBooking passes a CreateBookingInput containing guest
+  // data and the previous fingerprint. Parse at this shared boundary so both
+  // callers evaluate and hash only the same ordered, defaulted stay fields.
+  const quote = await buildQuote(bookingInput.parse(input), timing);
+  timing.total = Math.round(performance.now() - started);
+  if (process.env.NODE_ENV !== "production") console.info(JSON.stringify({ event: "booking.quote", timing }));
+  return { quote, timing };
+}
+
+async function buildQuote(input: BookingInput, timing: QuoteTiming) {
+  let stage = performance.now();
+  const propertyRead = (async () => {
+    const started = performance.now();
+    const result = await adminDb.collection("properties").where("slug", "==", input.propertySlug).limit(1).get();
+    timing.property = Math.round(performance.now() - started);
+    return result.docs[0];
+  })();
+  const roomRateRead = (async () => {
+    const started = performance.now();
+    const result = await Promise.all([
+      adminDb.collection("roomTypes").doc(input.roomTypeId).get(),
+      adminDb.collection("ratePlans").doc(input.ratePlanId).get(),
+    ]);
+    timing.roomRate = Math.round(performance.now() - started);
+    return result;
+  })();
+  const [property, [room, rate]] = await Promise.all([propertyRead, roomRateRead]);
   const propertyData = property?.data();
   if (!property || propertyData?.status !== "active" || propertyData?.approvalStatus !== "approved" || propertyData?.isBookable !== true) throw new Error("PROPERTY_NOT_AVAILABLE");
 
-  const [room, rate] = await Promise.all([
-    adminDb.collection("roomTypes").doc(input.roomTypeId).get(),
-    adminDb.collection("ratePlans").doc(input.ratePlanId).get(),
-  ]);
   const roomData = room.data();
   const rateData = rate.data();
   if (!room.exists || roomData?.propertyId !== property.id || roomData.status !== "active") throw new Error("ROOM_NOT_AVAILABLE");
@@ -125,16 +201,20 @@ export async function quote(input: BookingInput) {
   if (input.bookingMode === "hourly" && propertyData.inventoryEngine !== "interval_v1") throw new Error("INVENTORY_CUTOVER_REQUIRED");
   const nights = dateRange(evaluated.checkIn, evaluated.checkOut);
   const inventory = asNumber(roomData.totalInventory, 0);
+  stage = performance.now();
   if (propertyData.inventoryEngine === "interval_v1") {
     if (!await readAvailability(property.id, room.id, evaluated, inventory)) throw new Error("SOLD_OUT_FOR_DATES");
   } else {
     const docs = await adminDb.getAll(...nights.map((day) => inventoryRef(property.id, room.id, day)));
     if (inventory <= 0 || docs.some((doc) => asNumber(doc.data()?.reserved) >= inventory)) throw new Error("SOLD_OUT_FOR_DATES");
   }
+  timing.inventory = Math.round(performance.now() - stage);
   const { subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, payableNowPaise, paymentMode, depositBasisPoints } = evaluated;
   const nightlyPricePaise = evaluated.unitPricePaise;
 
-  const [cover, policy] = await Promise.all([propertyCover(propertyData ?? {}), rateData.cancellationPolicyId ? adminDb.collection("cancellationPolicies").doc(rateData.cancellationPolicyId).get() : Promise.resolve(null)]);
+  stage = performance.now();
+  const policy = await (rateData.cancellationPolicyId ? adminDb.collection("cancellationPolicies").doc(rateData.cancellationPolicyId).get() : Promise.resolve(null));
+  timing.policy = Math.round(performance.now() - stage);
   const policyData = policy?.data();
   if (rateData.cancellationPolicyId && (!policyData || policyData.propertyId !== property.id || policyData.status !== "active")) throw new Error("RATE_NOT_AVAILABLE");
   return {
@@ -143,15 +223,6 @@ export async function quote(input: BookingInput) {
     propertyId: property.id,
     propertySlug: input.propertySlug,
     propertyName: propertyData?.name ?? "Property",
-    propertyRules: publicGuestPolicies(propertyData ?? {}),
-    propertyCity: propertyData?.address?.city ?? propertyData?.city ?? null,
-    propertyState: propertyData?.address?.state ?? propertyData?.state ?? null,
-    propertyRatingAverage: typeof propertyData?.reviewSummary?.average === "number" && propertyData.reviewSummary.count > 0 ? propertyData.reviewSummary.average : typeof propertyData?.ratingAverage === "number" ? propertyData.ratingAverage : 0,
-    propertyCoverImageUrl: cover.url,
-    propertyCoverMediaId: cover.id,
-    propertyCoverSourceChecksum: cover.checksum,
-    checkInTime: evaluated.arrivalTime,
-    checkOutTime: evaluated.departureTime,
     currency: propertyData?.currency ?? "INR",
     roomType: { id: room.id, name: roomData.name ?? "Room" },
     ratePlan: { id: rate.id, name: rateData.name ?? "Standard", paymentMode, depositBasisPoints },
@@ -172,6 +243,9 @@ export async function quote(input: BookingInput) {
     breakfastIncluded: rateData.breakfastIncluded === true,
     cancellationPolicyId: rateData.cancellationPolicyId ?? null,
     cancellationPolicy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null,
+    quotedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    fingerprint: createHash("sha256").update(JSON.stringify({ input, evaluated, policy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null, breakfastIncluded: rateData.breakfastIncluded === true })).digest("hex"),
   };
 }
 
@@ -220,8 +294,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     const initialStatus = input.paymentMethod === "pay_at_property" ? "confirmed" : "pending_payment";
     tx.create(adminDb.collection("bookings").doc(id).collection("events").doc(), { from: null, to: initialStatus, actorId: uid, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, id, quoteData.propertyId, uid, initialStatus);
-    const { propertyCoverImageUrl: _renderedCoverUrl, ...persistedQuote } = quoteData;
-    void _renderedCoverUrl;
+    const persistedQuote = quoteData;
     tx.create(adminDb.collection("bookings").doc(id), {
       ...persistedQuote,
       quoteSnapshot: persistedQuote,
@@ -237,7 +310,9 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
         email: input.leadEmail.toLowerCase(),
         phone: input.leadPhone,
         adultGuestNames: input.adultGuestNames,
+        adultAadhaarLastFour: input.adultAadhaarLastFour ?? null,
       },
+      bookingContact: input.bookingContact ?? null,
       specialRequest: input.specialRequest || null,
       billing: input.billing,
       termsAcceptance: { version: "2026-09", cancellationPolicyId: quoteData.cancellationPolicyId, acceptedAt: FieldValue.serverTimestamp() },
@@ -323,8 +398,10 @@ export async function createBooking(uid: string, raw: unknown, idempotencyKey?: 
   }
   if (!input.termsAccepted) throw new Error("TERMS_ACCEPTANCE_REQUIRED");
   if (input.adultGuestNames.length !== input.adults) throw new Error("ADULT_GUEST_NAMES_REQUIRED");
+  if (input.adultAadhaarLastFour && input.adultAadhaarLastFour.length !== input.adults) throw new Error("ADULT_AADHAAR_REQUIRED");
   const quoteData = await quote(input);
   if (input.expectedTotalPaise !== undefined && input.expectedTotalPaise !== quoteData.totalPaise) throw new Error("QUOTE_CHANGED");
+  if (input.quoteFingerprint !== undefined && input.quoteFingerprint !== quoteData.fingerprint) throw new Error("QUOTE_CHANGED");
   if ((quoteData.ratePlan.paymentMode === "pay_at_property") !== (input.paymentMethod === "pay_at_property")) throw new Error("PAYMENT_METHOD_NOT_AVAILABLE");
   if (input.paymentMethod === "online" && quoteData.payableNowPaise < 100) throw new Error("MINIMUM_ONLINE_PAYMENT_1_RUPEE");
   if (input.paymentMethod === "online" && (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET)) throw new Error("ONLINE_PAYMENT_NOT_CONFIGURED");
@@ -499,6 +576,7 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     children: data.children ?? 0,
     infants: data.infants ?? 0,
     leadGuest: data.leadGuest ?? null,
+    bookingContact: data.bookingContact ?? null,
     specialRequest: data.specialRequest ?? null,
     subtotalPaise: data.subtotalPaise ?? 0,
     taxPaise: data.taxPaise ?? 0,

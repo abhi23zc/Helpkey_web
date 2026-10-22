@@ -5,6 +5,7 @@ export const queryKeys = {
   suggestions: (term: string) => ["catalog", "suggestions", term] as const,
   property: (slug: string) => ["catalog", "property", slug] as const,
   bookable: (slug: string, stay: Record<string, unknown>) => ["catalog", "bookable", slug, stay] as const,
+  checkoutQuote: (stay: Record<string, unknown>) => ["booking", "quote", stay] as const,
   notifications: (unreadOnly = false) => ["notifications", { unreadOnly }] as const,
   partnerShell: ["partner", "shell"] as const,
   partnerOverview: (propertyId: string) => ["partner", propertyId, "overview"] as const,

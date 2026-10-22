@@ -1,8 +1,8 @@
 "use client";
 
 import { guestScoreLabel as scoreLabel } from "@/lib/customer/offer";
-import { ArrowRight, Star, X, MessageSquare, CheckCircle2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Star, X, MessageSquare, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { useDialog } from "@/components/shared/use-dialog";
@@ -23,14 +23,33 @@ type Property = {
   ratingCount?: number;
 };
 
+type ReviewPhoto = {
+  id: string;
+  imageUrl: string;
+  imageSrcSet?: string;
+  width?: number;
+  height?: number;
+  altText: string;
+};
+
 type PublicReview = {
   id: string;
   reviewerName: string;
   rating: number;
   text: string;
   submittedAt: string | null;
-  photos: Array<{ id: string; imageUrl: string; imageSrcSet?: string; width?: number; height?: number; altText: string }>;
+  photos: ReviewPhoto[];
   partnerReply: { text: string; repliedAt: string | null } | null;
+};
+
+type SelectedPhoto = {
+  id: string;
+  imageUrl: string;
+  imageSrcSet?: string;
+  altText?: string;
+  reviewId?: string;
+  reviewerName?: string;
+  rating?: number;
 };
 
 const initials = (name: string) =>
@@ -48,9 +67,16 @@ export function Reviews({
   property: Property;
 }) {
   const [allReviewsOpen, setAllReviewsOpen] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [nearViewport, setNearViewport] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
-  const dialogRef = useDialog(allReviewsOpen, () => setAllReviewsOpen(false));
+
+  const handleCloseAll = useCallback(() => {
+    setAllReviewsOpen(false);
+    setSelectedPhoto(null);
+  }, []);
+
+  const dialogRef = useDialog(allReviewsOpen, handleCloseAll);
 
   useEffect(() => {
     const element = sectionRef.current;
@@ -94,8 +120,108 @@ export function Reviews({
   const maxBucket = Math.max(1, ...ratingBuckets.map((bucket) => bucket.count));
   const shownReviews = reviews.slice(0, 2);
 
-  const ReviewItem = ({ review, compact = false }: { review: PublicReview; compact?: boolean }) => (
-    <article className={`border-b border-slate-100 last:border-b-0 ${compact ? "py-5" : "py-6"}`}>
+  // Flattened list of all review photos across loaded reviews
+  const allPhotos: SelectedPhoto[] = reviews.flatMap((r) =>
+    r.photos.map((p) => ({
+      id: p.id,
+      imageUrl: p.imageUrl,
+      imageSrcSet: p.imageSrcSet,
+      altText: p.altText,
+      reviewId: r.id,
+      reviewerName: r.reviewerName,
+      rating: r.rating,
+    })),
+  );
+
+  const activePhotoIndex = selectedPhoto
+    ? allPhotos.findIndex((p) => p.id === selectedPhoto.id)
+    : -1;
+  const activePhoto =
+    activePhotoIndex >= 0 ? allPhotos[activePhotoIndex] : selectedPhoto;
+
+  const scrollToReview = (reviewId: string) => {
+    const element = document.getElementById(`modal-review-${reviewId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  };
+
+  const handleOpenPhotoFromPage = (photo: ReviewPhoto, review: PublicReview) => {
+    setSelectedPhoto({
+      id: photo.id,
+      imageUrl: photo.imageUrl,
+      imageSrcSet: photo.imageSrcSet,
+      altText: photo.altText,
+      reviewId: review.id,
+      reviewerName: review.reviewerName,
+      rating: review.rating,
+    });
+    setAllReviewsOpen(true);
+    setTimeout(() => scrollToReview(review.id), 120);
+  };
+
+  const handleSelectPhotoInModal = (photo: ReviewPhoto, review: PublicReview) => {
+    setSelectedPhoto({
+      id: photo.id,
+      imageUrl: photo.imageUrl,
+      imageSrcSet: photo.imageSrcSet,
+      altText: photo.altText,
+      reviewId: review.id,
+      reviewerName: review.reviewerName,
+      rating: review.rating,
+    });
+  };
+
+  const handlePrevPhoto = useCallback(() => {
+    if (allPhotos.length <= 1) return;
+    const nextIdx =
+      activePhotoIndex <= 0 ? allPhotos.length - 1 : activePhotoIndex - 1;
+    const target = allPhotos[nextIdx];
+    setSelectedPhoto(target);
+    if (target.reviewId) {
+      scrollToReview(target.reviewId);
+    }
+  }, [allPhotos, activePhotoIndex]);
+
+  const handleNextPhoto = useCallback(() => {
+    if (allPhotos.length <= 1) return;
+    const nextIdx =
+      activePhotoIndex >= allPhotos.length - 1 ? 0 : activePhotoIndex + 1;
+    const target = allPhotos[nextIdx];
+    setSelectedPhoto(target);
+    if (target.reviewId) {
+      scrollToReview(target.reviewId);
+    }
+  }, [allPhotos, activePhotoIndex]);
+
+  useEffect(() => {
+    if (!allReviewsOpen || !selectedPhoto) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        handlePrevPhoto();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        handleNextPhoto();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [allReviewsOpen, selectedPhoto, handlePrevPhoto, handleNextPhoto]);
+
+  const ReviewItem = ({
+    review,
+    compact = false,
+    isModal = false,
+  }: {
+    review: PublicReview;
+    compact?: boolean;
+    isModal?: boolean;
+  }) => (
+    <article
+      id={isModal ? `modal-review-${review.id}` : undefined}
+      className={`border-b border-slate-100 last:border-b-0 ${compact ? "py-5" : "py-6"}`}
+    >
       <div className="flex items-start gap-3.5">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--hk-surface-soft)] text-xs font-bold text-[var(--hk-navy)] shadow-xs">
           {initials(review.reviewerName)}
@@ -128,24 +254,40 @@ export function Reviews({
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-700">{review.text}</p>
 
           {review.photos.length > 0 && (
-            <div className="mt-3.5 flex flex-wrap gap-2">
-              {review.photos.map((photo) => (
-                <a
-                  key={photo.id}
-                  href={photo.imageUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 shadow-xs hover:opacity-90 transition"
-                >
-                  <PublicMediaImage
-                    src={photo.imageUrl}
-                    srcSet={photo.imageSrcSet}
-                    alt={photo.altText}
-                    sizes="64px"
-                    className="h-full w-full object-cover"
-                  />
-                </a>
-              ))}
+            <div className="mt-3.5 flex flex-wrap gap-2.5">
+              {review.photos.map((photo) => {
+                const isSelected = isModal && selectedPhoto?.id === photo.id;
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => {
+                      if (isModal) {
+                        handleSelectPhotoInModal(photo, review);
+                      } else {
+                        handleOpenPhotoFromPage(photo, review);
+                      }
+                    }}
+                    aria-label={`View photo from ${review.reviewerName}`}
+                    className={`group relative h-16 w-16 overflow-hidden rounded-xl border text-left transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hk-navy)] ${
+                      isSelected
+                        ? "border-[var(--hk-navy)] ring-2 ring-[var(--hk-navy)] ring-offset-2 ring-offset-white shadow-md scale-95"
+                        : "border-slate-200 shadow-xs hover:border-slate-400 hover:shadow-sm hover:scale-[1.02] active:scale-95"
+                    }`}
+                  >
+                    <PublicMediaImage
+                      src={photo.imageUrl}
+                      srcSet={photo.imageSrcSet}
+                      alt={photo.altText || `Review photo by ${review.reviewerName}`}
+                      sizes="64px"
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                    {isSelected && (
+                      <span className="pointer-events-none absolute inset-0 bg-[var(--hk-navy)]/10 ring-1 ring-inset ring-[var(--hk-navy)]" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -188,7 +330,10 @@ export function Reviews({
         </div>
         <button
           type="button"
-          onClick={() => setAllReviewsOpen(true)}
+          onClick={() => {
+            setSelectedPhoto(null);
+            setAllReviewsOpen(true);
+          }}
           className="group inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[var(--hk-navy)] hover:text-slate-600 transition"
         >
           Read {totalCount ? `all ${totalCount} ${totalCount === 1 ? "review" : "reviews"}` : "guest reviews"}
@@ -276,30 +421,131 @@ export function Reviews({
         </div>
       )}
 
-      {/* All Reviews Modal Dialog */}
+      {/* All Reviews Modal Dialog with Photo Viewer */}
       {allReviewsOpen && (
         <div
           ref={dialogRef}
           tabIndex={-1}
-          className="fixed inset-0 z-[80] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          className={`fixed inset-0 z-[80] animate-in fade-in duration-200 ${
+            selectedPhoto && activePhoto
+              ? "flex flex-col lg:flex-row bg-[#020814] text-white"
+              : "flex justify-end bg-black/60 backdrop-blur-xs"
+          }`}
           role="dialog"
           aria-modal="true"
           aria-label="All guest reviews"
         >
-          <button
-            type="button"
-            aria-label="Close reviews"
-            className="absolute inset-0 cursor-default"
-            onClick={() => setAllReviewsOpen(false)}
-          />
-          <aside className="relative h-full w-full max-w-[560px] overflow-y-auto bg-white p-6 shadow-2xl sm:p-7">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          {/* Backdrop button for drawer-only mode */}
+          {!selectedPhoto && (
+            <button
+              type="button"
+              aria-label="Close reviews"
+              className="absolute inset-0 cursor-default"
+              onClick={handleCloseAll}
+            />
+          )}
+
+          {/* Left Photo Viewer (Desktop) / Top (Mobile) */}
+          {selectedPhoto && activePhoto && (
+            <div className="relative flex-1 min-w-0 h-[44vh] sm:h-[50vh] lg:h-full bg-black/95 flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8 select-none overflow-hidden">
+              {/* Top Controls: Reviewer & Photo index on left, Action buttons on right */}
+              <div className="absolute top-3 sm:top-5 inset-x-3 sm:inset-x-6 z-30 flex items-center justify-between pointer-events-none">
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-black/60 px-3.5 py-1.5 text-xs font-semibold text-white/95 backdrop-blur-md border border-white/10 shadow-lg">
+                  {activePhoto.rating && (
+                    <span className="inline-flex items-center gap-1 text-amber-300 font-bold">
+                      {activePhoto.rating} <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
+                    </span>
+                  )}
+                  <span className="truncate max-w-[120px] sm:max-w-[200px]">
+                    {activePhoto.reviewerName || "Verified Guest"}
+                  </span>
+                  {allPhotos.length > 1 && (
+                    <>
+                      <span className="text-white/40">•</span>
+                      <span className="text-white/80">
+                        {activePhotoIndex + 1} of {allPhotos.length}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <div className="pointer-events-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPhoto(null)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-black/50 hover:bg-black/80 text-white/90 px-3 py-1.5 text-xs font-medium backdrop-blur-md transition border border-white/10 shadow-lg"
+                    aria-label="Close photo preview"
+                  >
+                    Close photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseAll}
+                    className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-black/50 text-white/90 hover:text-white backdrop-blur-md transition hover:bg-black/80 hover:scale-105 active:scale-95 border border-white/10 shadow-lg"
+                    aria-label="Close"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Photo Center Container */}
+              <div
+                className="relative flex-1 min-h-0 w-full flex items-center justify-center p-2 sm:p-4"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) handleCloseAll();
+                }}
+              >
+                <PublicMediaImage
+                  src={activePhoto.imageUrl}
+                  srcSet={activePhoto.imageSrcSet}
+                  alt={activePhoto.altText || `Review photo by ${activePhoto.reviewerName || "guest"}`}
+                  sizes="(min-width: 1024px) 70vw, 100vw"
+                  loading="eager"
+                  className="max-h-full max-w-full object-contain rounded-xl shadow-2xl transition-all duration-200"
+                />
+
+                {/* Prev & Next navigation buttons */}
+                {allPhotos.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePrevPhoto}
+                      aria-label="Previous photo"
+                      className="absolute left-2 sm:left-5 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition hover:bg-black/85 hover:scale-105 active:scale-95 shadow-xl border border-white/15"
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextPhoto}
+                      aria-label="Next photo"
+                      className="absolute right-2 sm:right-5 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition hover:bg-black/85 hover:scale-105 active:scale-95 shadow-xl border border-white/15"
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Right Review Sidebar */}
+          <aside
+            className={`relative h-full bg-white text-[var(--hk-navy)] shadow-2xl flex flex-col ${
+              selectedPhoto && activePhoto
+                ? "w-full lg:w-[480px] xl:w-[540px] shrink-0 min-h-0 border-t lg:border-t-0 lg:border-l border-slate-200 overflow-hidden"
+                : "w-full max-w-[560px] ml-auto overflow-hidden hk-drawer-panel"
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 p-5 sm:p-6 pb-4 shrink-0">
               <h3 className="text-xl font-bold text-[var(--hk-navy)]">
                 {totalCount} Guest {totalCount === 1 ? "Review" : "Reviews"}
               </h3>
               <button
                 type="button"
-                onClick={() => setAllReviewsOpen(false)}
+                onClick={handleCloseAll}
                 className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-[var(--hk-navy)] transition"
                 aria-label="Close"
               >
@@ -307,63 +553,67 @@ export function Reviews({
               </button>
             </div>
 
-            <div className="mt-5 flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              {totalCount ? (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-[var(--hk-navy)] px-3 py-1.5 text-lg font-black text-white">
-                  {avg.toFixed(1)}{" "}
-                  <Star className="h-3.5 w-3.5 fill-[var(--hk-gold-light)] text-[var(--hk-gold-light)]" />
-                </span>
-              ) : (
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--hk-surface-soft)] text-amber-500 shadow-xs">
-                  <Star className="h-4.5 w-4.5 fill-amber-400 text-amber-400" />
-                </span>
-              )}
-              <div>
-                <p className="text-sm font-bold text-[var(--hk-navy)]">
-                  {totalCount ? scoreLabel(avg) : "No reviews yet"}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">Based on verified guest stays</p>
+            {/* Scrollable Content: Summary Card + Reviews List */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 pt-3 custom-scrollbar">
+              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                {totalCount ? (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-[var(--hk-navy)] px-3 py-1.5 text-lg font-black text-white">
+                    {avg.toFixed(1)}{" "}
+                    <Star className="h-3.5 w-3.5 fill-[var(--hk-gold-light)] text-[var(--hk-gold-light)]" />
+                  </span>
+                ) : (
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--hk-surface-soft)] text-amber-500 shadow-xs">
+                    <Star className="h-4.5 w-4.5 fill-amber-400 text-amber-400" />
+                  </span>
+                )}
+                <div>
+                  <p className="text-sm font-bold text-[var(--hk-navy)]">
+                    {totalCount ? scoreLabel(avg) : "No reviews yet"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">Based on verified guest stays</p>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-4 divide-y divide-slate-100">
-              {reviews.length ? (
-                reviews.map((review) => <ReviewItem key={review.id} review={review} />)
-              ) : (
-                <p className="py-8 text-center text-sm text-slate-500">
-                  {query.isError
-                    ? "Reviews are temporarily unavailable."
-                    : query.isPending
-                      ? "Loading reviews…"
-                      : "No reviews yet."}
+              <div className="mt-4 divide-y divide-slate-100">
+                {reviews.length ? (
+                  reviews.map((review) => (
+                    <ReviewItem key={review.id} review={review} isModal />
+                  ))
+                ) : (
+                  <p className="py-8 text-center text-sm text-slate-500">
+                    {query.isError
+                      ? "Reviews are temporarily unavailable."
+                      : query.isPending
+                        ? "Loading reviews…"
+                        : "No reviews yet."}
+                  </p>
+                )}
+              </div>
+
+              {query.isError && (
+                <p role="alert" className="py-4 text-sm text-red-700">
+                  {publicError}{" "}
+                  <button className="underline font-semibold" onClick={() => void query.refetch()}>
+                    Try again
+                  </button>
                 </p>
               )}
-            </div>
 
-            {query.isError && (
-              <p role="alert" className="py-4 text-sm text-red-700">
-                {publicError}{" "}
-                <button className="underline font-semibold" onClick={() => void query.refetch()}>
-                  Try again
+              {query.isLoading && <p role="status">Loading reviews…</p>}
+
+              {query.hasNextPage && (
+                <button
+                  disabled={query.isFetchingNextPage}
+                  onClick={() => void query.fetchNextPage()}
+                  className="mt-6 w-full rounded-xl bg-[var(--hk-navy)] py-3.5 text-sm font-bold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 transition"
+                >
+                  {query.isFetchingNextPage ? "Loading…" : "Load more reviews"}
                 </button>
-              </p>
-            )}
-
-            {query.isLoading && <p role="status">Loading reviews…</p>}
-
-            {query.hasNextPage && (
-              <button
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-                className="mt-6 w-full rounded-xl bg-[var(--hk-navy)] py-3.5 text-sm font-bold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 transition"
-              >
-                {query.isFetchingNextPage ? "Loading…" : "Load more reviews"}
-              </button>
-            )}
+              )}
+            </div>
           </aside>
         </div>
       )}
     </section>
   );
 }
-

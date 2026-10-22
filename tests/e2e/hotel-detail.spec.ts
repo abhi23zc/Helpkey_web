@@ -102,7 +102,7 @@ test("guest changes apply once without comparing the previous stay, and checkout
   await page.locator("#reserve").getByRole("button", { name: /^Guests/ }).click();
   await page.getByRole("button", { name: "Increase Infants" }).click();
   expect(reads).toBe(0);
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
   await expect(page).toHaveURL(/infants=2/);
   await expect(page.getByRole("status").filter({ hasText: "Updating availability" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Family room", exact: true })).toBeVisible();
@@ -112,9 +112,8 @@ test("guest changes apply once without comparing the previous stay, and checkout
   await expect(page.locator("#rooms")).toContainText("₹288.88");
   await expect(page.getByText("The room or price from your search has changed.", { exact: false })).toHaveCount(0);
   expect(new URL(page.url()).searchParams.has("searchTotalPaise")).toBe(false);
-  await page.locator("#rooms").getByRole("button", { name: "Select", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Reserve this room" })).toBeVisible();
   await expect(page).toHaveURL(/ratePlanId=flex/);
-  await expect(page).toHaveURL(/searchTotalPaise=28888/);
   const reserve = page.getByRole("link", { name: "Reserve this room" });
   await expect(reserve).toBeVisible();
   const params = new URL((await reserve.getAttribute("href"))!, "http://localhost").searchParams;
@@ -192,7 +191,6 @@ test("no reviews, failed maps and availability errors stay distinct, with no unr
   await page.route("**/api/properties/garden/bookable?**", route => route.fulfill({ status: 503, json: { error: "TEMPORARILY_UNAVAILABLE" } }));
   await page.locator("#reserve").getByRole("button", { name: /^Guests/ }).click();
   await page.getByRole("button", { name: "Increase Adults" }).click();
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Unable to update rooms" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Family room", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Reserve this room" })).toHaveCount(0);

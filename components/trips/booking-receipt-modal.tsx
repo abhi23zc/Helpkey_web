@@ -27,6 +27,11 @@ export type BookingReceiptData = {
     email: string;
     phone: string;
   } | null;
+  bookingContact?: {
+    name: string;
+    email: string;
+    phone: string;
+  } | null;
   subtotalPaise?: number;
   taxPaise?: number;
   customerFeePaise?: number;
@@ -182,20 +187,27 @@ export function BookingReceiptModal({ booking, onClose }: Props) {
           {booking.leadGuest && (
             <div className="border-t border-slate-100 pt-4">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Guest Information</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-slate-50 p-3 rounded-lg">
+              <div className={`grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 text-xs ${booking.bookingContact ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
                 <div>
-                  <span className="text-slate-400">Lead Guest:</span>{" "}
+                  <span className="text-slate-400">{booking.bookingContact ? "Primary staying guest:" : "Lead guest:"}</span>{" "}
                   <span className="font-semibold text-slate-800">{booking.leadGuest.name}</span>
                 </div>
-                <div>
+                {!booking.bookingContact && <div>
                   <span className="text-slate-400">Email:</span>{" "}
                   <span className="font-semibold text-slate-800">{booking.leadGuest.email}</span>
-                </div>
-                <div>
+                </div>}
+                {!booking.bookingContact && <div>
                   <span className="text-slate-400">Phone:</span>{" "}
                   <span className="font-semibold text-slate-800">{booking.leadGuest.phone}</span>
-                </div>
+                </div>}
               </div>
+              {booking.bookingContact && (
+                <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-3">
+                  <div><span className="text-slate-400">Booking contact:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.name}</span></div>
+                  <div><span className="text-slate-400">Email:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.email}</span></div>
+                  <div><span className="text-slate-400">Phone:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.phone}</span></div>
+                </div>
+              )}
             </div>
           )}
 

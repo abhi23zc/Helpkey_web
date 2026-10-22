@@ -18,10 +18,19 @@ export const bookingInput = z.object({
 
 export const createBookingInput = bookingInput.extend({
   expectedTotalPaise: z.number().int().nonnegative().optional(),
+  quoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   paymentMethod: z.enum(["online", "pay_at_property"]),
   leadEmail: z.string().trim().email(),
   leadPhone: z.string().regex(/^\+91[6-9]\d{9}$/),
   adultGuestNames: z.array(z.string().trim().min(2).max(120)).min(1).max(12),
+  // Do not accept or persist full Aadhaar numbers in a booking record. The
+  // checkout validates locally and submits only the final four digits.
+  adultAadhaarLastFour: z.array(z.string().regex(/^\d{4}$/)).min(1).max(12).optional(),
+  bookingContact: z.object({
+    name: z.string().trim().min(2).max(120),
+    email: z.string().trim().email(),
+    phone: z.string().regex(/^\+91[6-9]\d{9}$/),
+  }).optional(),
   specialRequest: z.string().trim().max(1000).optional().default(""),
   billing: z.object({ legalName: z.string().trim().min(2).max(160), gstin: z.string().trim().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/), address: z.object({ line1: z.string().trim().min(3).max(180), city: z.string().trim().min(2).max(100), state: z.string().trim().min(2).max(100), postalCode: z.string().regex(/^\d{6}$/) }) }).nullable().default(null),
   // Older checkout tabs can remain open through a deployment. Treat their

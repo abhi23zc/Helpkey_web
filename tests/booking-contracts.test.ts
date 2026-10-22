@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { bookingInput } from "@/lib/booking/contracts";
+import { bookingInput, createBookingInput } from "@/lib/booking/contracts";
 import { staySearchFromParams, withStaySearch } from "@/lib/customer/stay-search";
+import { checkoutInputFromSearchParams } from "@/lib/booking/checkout";
 const base = { propertySlug: "hotel", roomTypeId: "room", ratePlanId: "rate", checkIn: "2026-10-21", adults: 2 };
 describe("booking compatibility and hourly links", () => {
   it("defaults old request shapes to overnight", () => {
@@ -11,6 +12,10 @@ describe("booking compatibility and hourly links", () => {
     expect(input.checkOut).toBeUndefined();
     expect(input.durationMinutes).toBe(120);
   });
+  it("parses checkout URLs on the server with the same hourly requirements", () => {
+    expect(checkoutInputFromSearchParams({ property: "hotel", room: "room", rate: "rate", checkIn: "2026-10-21", bookingMode: "hourly", arrivalTime: "10:00", durationMinutes: "120", adults: "2" })?.bookingMode).toBe("hourly");
+    expect(checkoutInputFromSearchParams({ property: "hotel", room: "room", rate: "rate", checkIn: "2026-10-21", bookingMode: "hourly", adults: "2" })).toBeNull();
+  });
   it("rejects impossible calendar dates and unsupported modes", () => {
     expect(bookingInput.safeParse({ ...base, checkIn: "2026-02-30" }).success).toBe(false);
     expect(bookingInput.safeParse({ ...base, bookingMode: "daily" }).success).toBe(false);
@@ -18,6 +23,30 @@ describe("booking compatibility and hourly links", () => {
   it("rejects fractional-hour durations at search and checkout boundaries", () => {
     expect(bookingInput.safeParse({ ...base, bookingMode: "hourly", durationMinutes: 135 }).success).toBe(false);
     expect(staySearchFromParams(new URLSearchParams("bookingMode=hourly&checkIn=2026-10-21&arrivalTime=10:15&durationMinutes=135"))).toBeNull();
+  });
+  it("accepts a separate authenticated booking contact for an on-behalf booking", () => {
+    const result = createBookingInput.parse({
+      ...base,
+      checkOut: "2026-10-22",
+      paymentMethod: "pay_at_property",
+      leadEmail: "guest@example.com",
+      leadPhone: "+919876543210",
+      adultGuestNames: ["Staying Guest", "Second Guest"],
+      bookingContact: { name: "Booking Contact", email: "booker@example.com", phone: "+919812345678" },
+      termsAccepted: true,
+    });
+    expect(result.bookingContact?.name).toBe("Booking Contact");
+  });
+  it("rejects an invalid on-behalf booking contact", () => {
+    expect(createBookingInput.safeParse({
+      ...base,
+      checkOut: "2026-10-22",
+      paymentMethod: "pay_at_property",
+      leadEmail: "guest@example.com",
+      leadPhone: "+919876543210",
+      adultGuestNames: ["Staying Guest", "Second Guest"],
+      bookingContact: { name: "A", email: "not-an-email", phone: "123" },
+    }).success).toBe(false);
   });
   it("round-trips shareable hourly arrival, duration and occupancy", () => {
     const stay = staySearchFromParams(new URLSearchParams("bookingMode=hourly&checkIn=2026-10-21&arrivalTime=10:15&durationMinutes=120&adults=2"));

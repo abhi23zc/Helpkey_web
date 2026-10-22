@@ -48,6 +48,11 @@ type Booking = {
     email: string;
     phone: string;
   } | null;
+  bookingContact?: {
+    name: string;
+    email: string;
+    phone: string;
+  } | null;
   subtotalPaise?: number;
   taxPaise?: number;
   customerFeePaise?: number;

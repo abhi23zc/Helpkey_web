@@ -1,11 +1,24 @@
 "use client";
 import { useRef, useState } from "react";
-import { MapPin, Navigation, Copy, Check, Map as MapIcon, Landmark } from "lucide-react";
+import {
+  MapPin,
+  Navigation,
+  Copy,
+  Check,
+  Map as MapIcon,
+  Landmark,
+} from "lucide-react";
 import type { CatalogDetailProperty } from "@/lib/customer/catalog";
 
-export function HotelLocation({ property }: { property: CatalogDetailProperty }) {
+export function HotelLocation({
+  property,
+}: {
+  property: CatalogDetailProperty;
+}) {
   const map = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
   const [copied, setCopied] = useState(false);
 
   const address = [
@@ -38,8 +51,12 @@ export function HotelLocation({ property }: { property: CatalogDetailProperty })
     try {
       const { mapsLibrary } = await import("@/lib/google/maps-loader");
       const { Map, InfoWindow } = await mapsLibrary();
-      if (!map.current || !property.coordinates) throw new Error("MAP_UNAVAILABLE");
-      const center = { lat: property.coordinates.latitude, lng: property.coordinates.longitude };
+      if (!map.current || !property.coordinates)
+        throw new Error("MAP_UNAVAILABLE");
+      const center = {
+        lat: property.coordinates.latitude,
+        lng: property.coordinates.longitude,
+      };
       const instance = new Map(map.current, {
         center,
         zoom: 16,
@@ -72,63 +89,6 @@ export function HotelLocation({ property }: { property: CatalogDetailProperty })
         </div>
       </div>
 
-      {/* Address & Quick Actions Card */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]">
-              <MapPin className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="font-semibold text-slate-800 text-sm sm:text-base">
-                {address || "Address information is unavailable."}
-              </p>
-              {property.address.landmark && (
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                  <Landmark className="h-3.5 w-3.5 text-slate-400" />
-                  Landmark: {property.address.landmark}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            {address && (
-              <button
-                type="button"
-                onClick={() => void copyAddress()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Copy address</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            {destination && (
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--hk-navy)] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition"
-              >
-                <Navigation className="h-3.5 w-3.5 text-[var(--hk-gold-light)]" />
-                <span>Get directions</span>
-              </a>
-            )}
-          </div>
-        </div>
-
-      </div>
-
       {/* Map Display & Interactive Trigger */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 shadow-xs">
         {property.coordinates && status !== "ready" && (
@@ -140,14 +100,19 @@ export function HotelLocation({ property }: { property: CatalogDetailProperty })
               Interactive Google Map
             </h3>
             <p className="mt-1 max-w-sm text-xs text-slate-500">
-              View exact street location, surrounding landmarks, and driving directions
+              View exact street location, surrounding landmarks, and driving
+              directions
             </p>
             <button
               disabled={status === "loading"}
               onClick={() => void showMap()}
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--hk-navy)] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 transition"
             >
-              {status === "loading" ? "Loading map…" : status === "error" ? "Retry map" : "Show map"}
+              {status === "loading"
+                ? "Loading map…"
+                : status === "error"
+                  ? "Retry map"
+                  : "Show map"}
             </button>
           </div>
         )}
@@ -161,7 +126,8 @@ export function HotelLocation({ property }: { property: CatalogDetailProperty })
         {status === "error" && (
           <div className="p-4 bg-amber-50 border-t border-amber-200">
             <p role="status" className="text-xs text-amber-800">
-              The map could not load. You can still use the address and directions above.
+              The map could not load. You can still use the address and
+              directions above.
             </p>
           </div>
         )}
@@ -169,4 +135,3 @@ export function HotelLocation({ property }: { property: CatalogDetailProperty })
     </section>
   );
 }
-
