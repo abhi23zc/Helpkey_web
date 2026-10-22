@@ -1,16 +1,16 @@
 "use client";
 
+import Link from "next/link";
+
 import { AlertTriangle, Building2, CheckCircle, ChevronRight, CircleAlert, Clock3, FileCheck, Image as ImageIcon, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAdminShell } from "./admin-shell";
-import { AdminPropertyReviewDrawer } from "./admin-property-review-drawer";
 import { useAdminProperties } from "./use-admin-data";
 import { label, type Property } from "./types";
 
 export function AdminPropertiesPage() {
   const { searchQuery, setSearchQuery } = useAdminShell();
   const { properties, error, reload } = useAdminProperties();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
     <>
@@ -18,17 +18,9 @@ export function AdminPropertiesPage() {
       <PropertiesPanel
         properties={properties}
         reload={reload}
-        onOpen={setSelectedId}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
       />
-      {selectedId && (
-        <AdminPropertyReviewDrawer
-          propertyId={selectedId}
-          onClose={() => setSelectedId(null)}
-          onChanged={reload}
-        />
-      )}
     </>
   );
 }
@@ -45,13 +37,11 @@ function AdminPageError({ message }: { message: string }) {
 function PropertiesPanel({
   properties,
   reload,
-  onOpen,
   searchQuery,
   setSearchQuery,
 }: {
   properties: Property[];
   reload: () => void;
-  onOpen: (id: string) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 }) {
@@ -223,7 +213,6 @@ function PropertiesPanel({
                 property={property}
                 active={selected?.id === property.id}
                 onSelect={() => setSelectedId(property.id)}
-                onOpen={() => onOpen(property.id)}
               />
             ))}
             {!visible.length && (
@@ -241,7 +230,7 @@ function PropertiesPanel({
         </section>
 
         {selected ? (
-          <PropertyReviewWorkspace property={selected} onOpen={onOpen} />
+          <PropertyReviewWorkspace property={selected} />
         ) : (
           <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <Building2 className="mx-auto h-8 w-8 text-slate-400" />
@@ -286,14 +275,11 @@ function PropertyQueueCard({
   property,
   active,
   onSelect,
-  onOpen,
 }: {
   property: Property;
   active: boolean;
   onSelect: () => void;
-  onOpen: () => void;
 }) {
-  const completeness = propertyCompleteness(property);
   return (
     <article
       className={`relative rounded-2xl border bg-white p-4 shadow-2xs transition-all ${
@@ -338,56 +324,24 @@ function PropertyQueueCard({
               )}
             </div>
 
-            <div className="mt-3">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
-                <span>Readiness</span>
-                <span
-                  className={
-                    completeness >= 80
-                      ? "text-emerald-700"
-                      : completeness >= 50
-                      ? "text-amber-800"
-                      : "text-slate-600"
-                  }
-                >
-                  {completeness}%
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    completeness >= 80
-                      ? "bg-emerald-600"
-                      : completeness >= 50
-                      ? "bg-[#755a1a]"
-                      : "bg-amber-500"
-                  }`}
-                  style={{ width: `${completeness}%` }}
-                />
-              </div>
-            </div>
           </div>
         </div>
       </button>
-      <button
-        type="button"
-        onClick={onOpen}
+      <Link
+        href={`/admin/properties/${encodeURIComponent(property.id)}`}
         className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-800 transition-colors hover:bg-slate-200"
       >
         Full review <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      </Link>
     </article>
   );
 }
 
 function PropertyReviewWorkspace({
   property,
-  onOpen,
 }: {
   property: Property;
-  onOpen: (id: string) => void;
 }) {
-  const completeness = propertyCompleteness(property);
   const city = property.address?.city ?? "Location pending";
   const state =
     property.approvalStatus === "approved"
@@ -414,18 +368,16 @@ function PropertyReviewWorkspace({
               {property.address?.state ? `, ${property.address.state}` : ""}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpen(property.id)}
+          <Link
+            href={`/admin/properties/${encodeURIComponent(property.id)}`}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0b1f3a] px-4 text-sm font-bold text-white transition-colors hover:bg-[#07172b]"
           >
             Open full review <ChevronRight className="h-4 w-4 text-[#fed88b]" />
-          </button>
+          </Link>
         </div>
 
         <div className="mt-5 grid gap-3 rounded-2xl bg-slate-100 p-4 sm:grid-cols-4">
           <ReviewFact label="Category" value={label(property.propertyType)} />
-          <ReviewFact label="Readiness" value={`${completeness}%`} />
           <ReviewFact label="Lifecycle" value={label(property.status)} />
           <ReviewFact label="Review state" value={label(state)} />
         </div>
@@ -438,13 +390,10 @@ function PropertyReviewWorkspace({
               Quality audit checklist
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Use the full review drawer for media, KYC, room, rate, and policy
+              Use the property review page for media, KYC, room, rate, and policy
               decisions.
             </p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-            {completeness}% ready
-          </span>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <ReviewCheck
@@ -453,7 +402,7 @@ function PropertyReviewWorkspace({
             detail="Name, type, lifecycle, and owner record"
           />
           <ReviewCheck
-            label="Location confirmation"
+            label="Location recorded"
             complete={Boolean(property.address?.city)}
             detail="Structured address and market city"
           />
@@ -481,7 +430,7 @@ function PropertyReviewWorkspace({
           <GuidanceTile
             icon={FileCheck}
             title="Documents"
-            detail="PAN, government ID, and ownership documents remain private."
+            detail="PAN, government ID, and optional GST documents remain private."
           />
           <GuidanceTile
             icon={ShieldCheck}
@@ -515,17 +464,6 @@ function PropertyStatusBadge({ property }: { property: Property }) {
       {label(value)}
     </span>
   );
-}
-
-function propertyCompleteness(property: Property) {
-  let score = 35;
-  if (property.name && property.name !== "Untitled property") score += 15;
-  if (property.address?.city) score += 15;
-  if (property.submittedAt) score += 15;
-  if (property.approvalStatus === "pending") score += 10;
-  if (property.approvalStatus === "approved") score += 20;
-  if (property.approvalStatus === "changes_requested") score -= 5;
-  return Math.max(20, Math.min(score, 100));
 }
 
 function ReviewFact({

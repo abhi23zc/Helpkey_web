@@ -1,3 +1,5 @@
+import { invalidatePublic } from "@/lib/api/cache";
+import { enqueueProjection } from "@/lib/projections";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -29,13 +31,14 @@ const rawDELETE = async function DELETE(
     if (!linkedRates.empty) throw new Error("This policy is used by a rate. Remove or repoint that rate first.");
 
     const batch = adminDb.batch();
-    batch.delete(ref);
+    batch.update(ref, { status: "archived", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
     batch.update(propertyRef, {
       cancellationPolicyIds: FieldValue.arrayRemove(policyId),
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
     });
-    await batch.commit();
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["identity"] });
+    await batch.commit(); await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({ ok: true, policyId });
   } catch (error) {

@@ -11,4 +11,4 @@ async function get(request: Request) {
   try { return Response.json({ suggestions: await cachedPublic(["suggestions", q.trim().toLocaleLowerCase()], () => searchSuggestions(q)) }); }
   catch { return Response.json({ suggestions: [] }, { status: 200 }); }
 }
-export const GET = withApiHandler(get, { route: "/api/search/suggestions", cache: "public" });
+export const GET = withApiHandler(get, { route: "/api/search/suggestions", cache: "none" });

@@ -408,6 +408,21 @@ interface MediaAssetDocument extends CommonMutableFields {
 
 KYC, identity, bank, and support evidence always use `isPublic: false`.
 
+Property onboarding photos use `kind: "property_image"`, `propertyId`, and
+`category: "exterior" | "room" | "bathroom" | "reception" | "facilities" | "accessibility" | "additional"`.
+Bedroom (`room`) and bathroom photos require a `roomTypeId` belonging to the same
+property; other categories store `roomTypeId: null`. Room gallery references are
+updated atomically when a photo is assigned or reassigned. The property cover is
+selected independently through `properties.coverMediaId`.
+
+Submission requires at least six pending or approved property photos, an exterior
+photo, and a bedroom and bathroom photo for every active room type, plus a valid
+cover. The minimum therefore becomes `max(6, 1 + 2 * activeRoomTypes)`.
+Rejected images and verification documents do not count. Admin approval applies
+the same checklist using approved photos only. Existing room gallery links remain
+compatible until an explicit photo assignment is saved.
+
+
 ### `amenities/{amenityId}`
 
 ```ts
@@ -465,7 +480,8 @@ interface RatePlanDocument extends CommonMutableFields {
   name: string;
   code: string;
   bookingMode: BookingMode;
-  durationMinutes: number | null; // required for hourly plans
+  pricingModel: "nightly" | "duration";
+  durationPrices?: { hours: number; pricePaise: number }[]; // hourly: unique durations, 1–24 whole hours; exact total for each
   basePricePaise: number;
   currency: Currency;
   mealPlan: "none" | "breakfast" | "half_board" | "full_board";
@@ -517,70 +533,51 @@ Copy the effective cancellation policy into the booking snapshot. Editing a poli
 
 ### Core invariant
 
-`inventoryCalendars` contains one document per room type per property-local calendar date with 24 hourly capacity buckets. Hourly bookings consume their overlapping buckets. Overnight bookings consume every bucket between check-in and checkout. This prevents selling the same room-type capacity to both booking modes at the same time.
+`inventoryCalendars` uses property-local dates and stable UTC quarter-hour interval IDs. A local day can contain 92, 96, or 100 intervals across DST; never index by local clock hour.
 
-### `inventoryCalendars/{roomTypeId_YYYYMMDD}`
+### `inventoryCalendars/{propertyId_roomTypeId_YYYY-MM-DD}`
 
 ```ts
-interface InventoryCalendarDocument extends CommonMutableFields {
+interface InventoryCalendarDocument {
   propertyId: string;
   roomTypeId: string;
-  localDate: string; // YYYY-MM-DD in property timezone
-  timezone: string;
-  capacity: number;
-  availableByHour: [number, number, number, number, number, number,
-                    number, number, number, number, number, number,
-                    number, number, number, number, number, number,
-                    number, number, number, number, number, number];
-  blockedByHour: [number, number, number, number, number, number,
-                  number, number, number, number, number, number,
-                  number, number, number, number, number, number,
-                  number, number, number, number, number, number];
-  priceOverrides: Record<string, number>; // ratePlanId -> paise override
-  stopSellRatePlanIds: string[];
-  version: number;
+  date: string;
+  reserved: Record<string, number>; // floor(UTC milliseconds / 900000) -> quantity
+  blocked: Record<string, number>;
+  stopSell?: boolean;
+  updatedAt: Timestamp;
 }
 ```
 
-### `inventoryHolds/{holdId}`
+Capacity comes from the room type read inside each reservation/block/capacity transaction. Availability is capacity minus reserved minus blocked. Missing calendars are empty; search never creates calendars.
+
+### `inventoryHolds/{bookingId}`
 
 ```ts
-interface InventoryHoldDocument extends CommonMutableFields {
+interface InventoryHoldDocument {
   bookingId: string;
-  userId: string;
   propertyId: string;
   roomTypeId: string;
-  ratePlanId: string;
-  startAt: Timestamp;
-  endAt: Timestamp;
-  quantity: number;
-  status: "active" | "converted" | "released" | "expired";
-  expiresAt: Timestamp;
-  calendarDates: string[];
-  idempotencyKey: string;
+  allocations: { date: string; intervals: string[] }[];
+  quantity: 1;
+  status: "held" | "committed" | "released";
+  expiresAt: Timestamp | null;
 }
 ```
 
-Default hold duration: 10 minutes. TTL cleanup is secondary; every mutation must treat a hold as expired when `expiresAt <= now`, even if Firestore TTL has not deleted it.
+Both modes reserve `[startAt, endAt + cleaningBufferMinutes)`. A 13:00 departure with 30 minutes cleaning permits the next arrival at 13:30. Release the persisted allocation exactly once; do not recompute it from current property settings. Online holds expire at the earlier of arrival and ten minutes after creation. Confirmation commits an unexpired hold without consuming capacity again.
 
-Inventory transaction algorithm:
+Booking identity is derived from the user and idempotency key and created in the allocation transaction with the parsed request fingerprint. Reuse with different input is a conflict. Ambiguous order creation is reconciled by receipt; it never creates a second booking or replacement order.
 
-1. Convert requested `startAt/endAt` into the property timezone.
-2. Determine every overlapping local date and hour bucket.
-3. Read all required calendar documents in one Firestore transaction.
-4. Verify active rate plan, booking window, capacity, stop-sell rules, and `availableByHour >= quantity` for every bucket.
-5. Decrement exactly the overlapping buckets.
-6. Create an active hold with a unique idempotency key and the affected dates.
-7. On confirmation, mark the hold `converted`; do not decrement inventory again.
-8. On failure, expiry, rejection, or eligible cancellation, increment exactly the buckets consumed by that hold and mark it released/expired.
+Runtime booking fields include `bookingMode: overnight | hourly`, `pricingModel: nightly | duration`, UTC ISO strings `startAt`, `endAt`, `inventoryEndAt`, property `timezone`, local dates/times, duration, billed hours, price/policy snapshots and integer paise totals. Hourly pricing looks up the exact total in `durationPrices` for the requested whole-hour duration. For example, 1 hour at 20000 paise and 2 hours at 30000 paise are independent totals; unpriced and fractional-hour durations are rejected. Each rate has 1–24 unique rows, with positive safe-integer paise prices. `basePricePaise` is derived as the minimum row total for catalog summaries, never used as an hourly booking fallback. Legacy `package` and `per_hour` rates are excluded from new offers and archived, while historical booking snapshots and existing payment holds retain their agreed terms. Overnight prices count local calendar nights. Default cleaning is 30 minutes. Arrivals use 15-minute steps. Maximum stays are 24 hourly hours or 30 nights; arrival horizon is at most 365 days.
 
-Examples:
+Canonical checkout status is `checked_out`; serialize historical `completed` records with that status and accept them for reviews. Lifecycle events live in `bookings/{id}/events`. Early checkout retains the original allocation until the scheduled end; it does not resell or refund automatically.
 
-- Hourly booking 10:00–13:00 consumes hours 10, 11, and 12.
-- Overnight booking day 1 14:00 to day 2 11:00 consumes day 1 hours 14–23 and day 2 hours 00–10.
-- Maintenance 09:00–17:00 blocks hours 09–16.
+`paymentAttempts/{paymentId}` records verified captures. `refunds/{id}` records immutable entitlement amount, provider refund ID, status, lease, attempts, errors and timestamps. Processing uses Razorpay's `X-Refund-Idempotency` header with a stable key. Booking cancellation and provider refund completion are separate. Captures after expiry/cancellation enter the refund queue and never revive the booking.
 
-Create calendars 365 days ahead with a scheduled job and lazily create missing dates during server-side search/booking. Cap maximum MVP stay length so the transaction remains within Firestore limits.
+A property selects one writer using `inventoryEngine: interval_v1`. Until cutover, only overnight bookings use legacy `roomNightInventory`; hourly booking fails closed. Close new booking (`isBookable: false`), run `npm run bookings:cutover -- --property ID` for a dry run, supply a booking-ID to room-type-ID JSON mapping for legacy manual bookings when needed, then use `--apply`. Conversion is atomic, preserves historical documents and refuses unresolved rooms, excess capacity, existing interval data or more than 450 writes. Reopen the property only after reconciliation and release checks. Never toggle the engine field manually.
+
+The authenticated maintenance endpoint drains bounded expiry, payment reconciliation and refund batches. Run the booking worker continuously and monitor reported failures/backlogs. Firestore TTL must never delete an unreleased allocation.
 
 ## 8. Booking aggregate and guests
 
@@ -605,6 +602,9 @@ type PaymentStatus =
   | "partially_paid"
   | "paid"
   | "failed"
+  | "refund_pending"
+  | "pay_at_property"
+  | "paid_at_property"
   | "partially_refunded"
   | "refunded";
 
@@ -623,8 +623,12 @@ interface BookingDocument extends CommonMutableFields {
   ratePlanId: string;
   bookingMode: BookingMode;
   quantity: number; // MVP UI uses 1
-  startAt: Timestamp;
-  endAt: Timestamp;
+  startAt: string; // UTC ISO instant
+  endAt: string; // UTC ISO instant
+  inventoryEndAt: string; // endAt + snapshotted cleaning buffer
+  pricingModel: "nightly" | "duration" | "package" | "per_hour"; // last two: historical snapshots only
+  billedHours: number;
+  cleaningBufferMinutes: number;
   timezone: string;
   localCheckInDate: string;
   localCheckOutDate: string;

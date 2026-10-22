@@ -4,6 +4,10 @@ import React from "react";
 import { X, Printer, CheckCircle, Hotel, MapPin, Calendar, User, FileText } from "lucide-react";
 
 export type BookingReceiptData = {
+  bookingMode?: "overnight" | "hourly";
+  durationMinutes?: number;
+  refundedPaise?: number;
+  balanceDuePaise?: number;
   id: string;
   confirmationCode: string;
   propertyName: string;
@@ -162,7 +166,7 @@ export function BookingReceiptModal({ booking, onClose }: Props) {
             <div className="border-l-2 border-[#0b1f3a] pl-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Duration</p>
               <p className="text-sm font-semibold text-slate-800 mt-0.5">
-                {booking.nights} Night{booking.nights > 1 ? "s" : ""}
+                {booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} nights`}
               </p>
             </div>
             <div className="border-l-2 border-[#0b1f3a] pl-3">
@@ -200,7 +204,7 @@ export function BookingReceiptModal({ booking, onClose }: Props) {
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Payment Summary</h4>
             {booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
               <div className="flex justify-between text-xs text-slate-600">
-                <span>Room Charges ({booking.nights} night{booking.nights > 1 ? "s" : ""})</span>
+                <span>Room charges ({booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} nights`})</span>
                 <span>{formatMoney(booking.subtotalPaise, booking.currency)}</span>
               </div>
             )}
@@ -226,6 +230,8 @@ export function BookingReceiptModal({ booking, onClose }: Props) {
               <span>Amount Paid</span>
               <span className="font-semibold text-emerald-700">{formatMoney(booking.paidPaise, booking.currency)}</span>
             </div>
+            <div className="flex justify-between text-xs"><span>Balance due at property</span><span>{formatMoney(booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise), booking.currency)}</span></div>
+            {Boolean(booking.refundedPaise) && <div className="flex justify-between text-xs"><span>Refunded</span><span>{formatMoney(booking.refundedPaise, booking.currency)}</span></div>}
 
             {booking.paymentMethod && (
               <p className="text-[11px] text-slate-400 pt-2 italic">

@@ -1,7 +1,10 @@
 "use client";
+import type { GuestPolicies } from "@/lib/partner/guest-policies";
 
+import { eligiblePricing } from "@/lib/booking/duration-pricing";
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { photoRequirements } from "@/lib/partner/photo-requirements";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
@@ -10,6 +13,7 @@ export type ListingMedia = {
   id: string;
   kind: string;
   category: string | null;
+  roomTypeId?: string | null;
   fileName: string | null;
   altText: string;
   moderationStatus: string;
@@ -18,6 +22,13 @@ export type ListingMedia = {
 };
 
 export type ListingRatePlan = {
+  breakfastIncluded?: boolean;
+  bookingMode?: "overnight" | "hourly";
+  pricingModel?: "nightly" | "duration";
+  durationPrices?: { hours: number; pricePaise: number }[];
+  allowMidnightCrossing?: boolean;
+  arrivalWindow?: { start: string; end: string };
+  operatingWindow?: { start: string; end: string };
   id: string;
   name: string;
   code: string;
@@ -34,6 +45,8 @@ export type ListingRatePlan = {
 };
 
 export type ListingRoomType = {
+  bookingModes?: ("overnight" | "hourly")[];
+  cleaningBufferMinutes?: number;
   id: string;
   name: string;
   description: string;
@@ -50,7 +63,10 @@ export type ListingRoomType = {
   status: "active" | "paused";
 };
 
-export type ListingProperty = {
+export type ListingProperty = GuestPolicies & {
+  bookingModes?: ("overnight" | "hourly")[];
+  cleaningBufferMinutes?: number;
+  inventoryEngine?: string;
   id: string;
   name: string;
   propertyType: string;
@@ -67,9 +83,7 @@ export type ListingProperty = {
   checkOutTime?: string;
   publicPhone?: string;
   publicEmail?: string;
-  childrenPolicy?: Record<string, unknown>;
-  petPolicy?: Record<string, unknown>;
-  smokingPolicy?: Record<string, unknown>;
+
   status: string;
   approvalStatus: string;
   rejectionReason: string | null;
@@ -115,7 +129,6 @@ export const EDIT_STEP = {
   safetyDocs: 7,
 } as const;
 
-const REQUIRED_PHOTOS = 6;
 const REQUIRED_DOCUMENTS = ["pan", "government_id_front", "government_id_back"];
 
 /** Property-image assets that count toward the listing (pending or approved). */
@@ -133,12 +146,12 @@ function sellablePhotos(media: ListingMedia[]): ListingMedia[] {
  */
 function buildChecklist(data: ListingResponse): ChecklistItem[] {
   const { property, roomTypes, ratePlans, media, documents } = data;
-  const photos = sellablePhotos(media);
+  const photoCheck = photoRequirements(media, roomTypes, property.coverMediaId);
 
   const sellableRooms = new Set(roomTypes.map((room) => room.id));
   const roomsWithRate = new Set(
     ratePlans
-      .filter((rate) => sellableRooms.has(rate.roomTypeId) && rate.cancellationPolicyId)
+      .filter((rate) => sellableRooms.has(rate.roomTypeId) && rate.status === "active" && eligiblePricing(rate) && rate.cancellationPolicyId)
       .map((rate) => rate.roomTypeId),
   );
   const documentKinds = new Set(
@@ -164,11 +177,8 @@ function buildChecklist(data: ListingResponse): ChecklistItem[] {
     {
       id: "photos",
       label: "Photos",
-      complete: photos.length >= REQUIRED_PHOTOS && Boolean(property.coverMediaId),
-      hint:
-        photos.length >= REQUIRED_PHOTOS
-          ? "Cover photo and gallery ready."
-          : `Add ${REQUIRED_PHOTOS - photos.length} more photo${REQUIRED_PHOTOS - photos.length === 1 ? "" : "s"}.`,
+      complete: photoCheck.complete,
+      hint: photoCheck.complete ? "Cover, exterior and room photos ready." : photoCheck.missing.join("; "),
     },
     {
       id: "amenities",
@@ -348,7 +358,7 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
   const startingPricePaise = useMemo(() => {
     if (!data?.ratePlans.length) return null;
     const prices = data.ratePlans
-      .filter((rate) => rate.status === "active")
+      .filter((rate) => rate.status === "active" && eligiblePricing(rate))
       .map((rate) => rate.basePricePaise)
       .filter((value): value is number => typeof value === "number" && value > 0);
     return prices.length ? Math.min(...prices) : null;
@@ -358,7 +368,7 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
   const roomsWithPricing = useMemo<RoomWithPrice[]>(() => {
     if (!data) return [];
     return data.roomTypes.map((room) => {
-      const rates = data.ratePlans.filter((rate) => rate.roomTypeId === room.id && rate.status === "active" && rate.basePricePaise > 0);
+      const rates = data.ratePlans.filter((rate) => rate.roomTypeId === room.id && rate.status === "active" && eligiblePricing(rate) && rate.basePricePaise > 0);
       const cheapest = rates.reduce<ListingRatePlan | null>(
         (min, rate) => (!min || rate.basePricePaise < min.basePricePaise ? rate : min),
         null,

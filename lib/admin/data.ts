@@ -3,6 +3,8 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
+import { amenityLabel } from "@/lib/customer/amenities";
+import { approvalReadiness } from "./approval-readiness";
 import { serializeUser } from "@/lib/auth/users";
 import { requireRole } from "@/lib/partner/service";
 
@@ -46,22 +48,28 @@ export function propertySummary(id: string, raw: FirebaseFirestore.DocumentData)
 export async function listingDetail(propertyId: string) {
   const property = await adminDb.collection("properties").doc(propertyId).get();
   if (!property.exists) throw new Error("PROPERTY_NOT_FOUND");
-  const [rooms, rates, policies, media, documents, partner] = await Promise.all([
+  const ownerId = property.data()?.partnerId ?? property.data()?.ownerId;
+  const [rooms, rates, policies, media, documents, partner, owner, amenities] = await Promise.all([
     adminDb.collection("roomTypes").where("propertyId", "==", propertyId).get(),
     adminDb.collection("ratePlans").where("propertyId", "==", propertyId).get(),
     adminDb.collection("cancellationPolicies").where("propertyId", "==", propertyId).get(),
     adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).get(),
     adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).get(),
-    adminDb.collection("partnerProfiles").doc(property.data()?.partnerId ?? property.data()?.ownerId ?? "").get(),
+    ownerId ? adminDb.collection("partnerProfiles").doc(ownerId).get() : Promise.resolve(null),
+    ownerId ? adminDb.collection("users").doc(ownerId).get() : Promise.resolve(null),
+    adminDb.collection("amenities").limit(500).get(),
   ]);
   return {
-    property: clean({ id: property.id, ...property.data() }),
-    partner: partner.exists ? clean({ id: partner.id, ...partner.data() }) : null,
+    property: clean({ id: property.id, ...property.data(), geoPoint: undefined, latitude: property.get("geoPoint")?.latitude ?? property.get("latitude") ?? null, longitude: property.get("geoPoint")?.longitude ?? property.get("longitude") ?? null }),
+    owner: owner?.exists ? serializeUser(owner.id, owner.data() ?? {}) : null,
+    approvalReadiness: approvalReadiness(property.data()!, media.docs.map(d => ({ id: d.id, ...d.data() })), rooms.docs.map(d => ({ ...d.data(), id: d.id, name: d.get("name") ?? "Room" })), documents.docs.map(d => d.data()), rates.docs.map(d => d.data())),
+    partner: partner?.exists ? clean({ id: partner.id, ...partner.data() }) : null,
+    amenities: amenities.docs.map(doc => ({ id: doc.id, name: doc.get("name") ?? amenityLabel(doc.get("code") ?? doc.id) })),
     roomTypes: rooms.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
     ratePlans: rates.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
     policies: policies.docs.map((doc) => clean({ id: doc.id, ...doc.data() })),
-    media: media.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, kind: data.kind, category: data.category ?? null, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, altText: data.altText ?? "", moderationStatus: data.moderationStatus ?? data.status ?? "pending", publicationStatus: data.publication?.status ?? "private", publicationErrorCode: data.publication?.lastErrorCode ?? null, publicationAttempts: data.publication?.attempts ?? 0, reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
-    documents: documents.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, documentType: data.documentType, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
+    media: media.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, kind: data.kind, roomTypeId: data.roomTypeId ?? null, roomGalleryIds: rooms.docs.filter(room => room.get("mediaIds")?.includes(doc.id)).map(room => room.id), reviewedBy: data.reviewedBy ?? null, reviewedAt: data.reviewedAt ?? null, category: data.category ?? null, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, altText: data.altText ?? "", moderationStatus: data.moderationStatus ?? data.status ?? "pending", publicationStatus: data.publication?.status ?? "private", publicationErrorCode: data.publication?.lastErrorCode ?? null, publicationAttempts: data.publication?.attempts ?? 0, reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
+    documents: documents.docs.map((doc) => { const data = doc.data(); return clean({ id: doc.id, documentType: data.documentType, reviewedBy: data.reviewedBy ?? null, reviewedAt: data.reviewedAt ?? null, fileName: data.fileName ?? null, mimeType: data.mimeType ?? null, sizeBytes: data.sizeBytes ?? null, status: data.status ?? "pending", reviewReason: data.reviewReason ?? null, createdAt: data.createdAt, updatedAt: data.updatedAt }); }),
   };
 }
 

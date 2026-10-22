@@ -1,3 +1,4 @@
+import { invalidatePublic } from "@/lib/api/cache";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
 import { ZodError } from "zod";
@@ -69,6 +70,9 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
         longitude: p.geoPoint?.longitude,
         googlePlaceId: p.googlePlaceId,
         timezone: p.timezone,
+        bookingModes: p.bookingModes ?? ["overnight"],
+        cleaningBufferMinutes: p.cleaningBufferMinutes ?? 30,
+        inventoryEngine: p.inventoryEngine ?? "legacy",
         checkInTime: p.checkInTime,
         checkOutTime: p.checkOutTime,
         publicPhone: p.publicPhone,
@@ -82,6 +86,8 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
         petPolicy: p.petPolicy ?? {},
         smokingPolicy: p.smokingPolicy ?? {},
         identityRequirements: p.identityRequirements ?? {},
+        minimumCheckInAge: p.minimumCheckInAge ?? null,
+        additionalHouseRules: p.additionalHouseRules ?? null,
         coverMediaId: p.coverMediaId ?? null,
         cancellationPolicyIds: p.cancellationPolicyIds ?? [],
         onboarding: p.onboarding ?? { currentStep: 1, completedSteps: [] },
@@ -94,13 +100,15 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
         submittedAt: serializeDate(p.submittedAt),
         updatedAt: serializeDate(p.updatedAt),
       },
-      roomTypes: rooms.docs.map((doc) => {
+      roomTypes: rooms.docs.filter((doc) => doc.data().status !== "archived").map((doc) => {
         const room = doc.data();
         return {
           id: doc.id,
           name: room.name,
           description: room.description,
           inventory: room.totalInventory,
+          bookingModes: room.bookingModes ?? p.bookingModes ?? ["overnight"],
+          cleaningBufferMinutes: room.cleaningBufferMinutes ?? p.cleaningBufferMinutes ?? 30,
           maxAdults: room.maxAdults,
           maxChildren: room.maxChildren ?? 0,
           maxInfants: room.maxInfants ?? 0,
@@ -113,14 +121,23 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
           status: room.status === "paused" ? "paused" : "active",
         };
       }),
-      ratePlans: rates.docs.map((doc) => {
+      ratePlans: rates.docs.filter((doc) => doc.data().status !== "archived").map((doc) => {
         const rate = doc.data();
         return {
           id: doc.id,
           name: rate.name,
           code: rate.code,
+          bookingMode: rate.bookingMode ?? "overnight",
+          pricingModel: rate.pricingModel ?? "nightly",
+          durationPrices: rate.durationPrices ?? [],
+          arrivalWindow: rate.arrivalWindow ?? null,
+          operatingWindow: rate.operatingWindow ?? null,
+          allowMidnightCrossing: rate.allowMidnightCrossing ?? false,
+          minimumDurationMinutes: rate.stayRules?.minimumDurationMinutes ?? null,
+          maximumDurationMinutes: rate.stayRules?.maximumDurationMinutes ?? null,
           basePricePaise: rate.basePricePaise,
           roomTypeId: rate.roomTypeId,
+          breakfastIncluded: rate.breakfastIncluded === true,
           cancellationPolicyId: rate.cancellationPolicyId,
           paymentMode: rate.paymentMode ?? null,
           taxBasisPoints: rate.taxBasisPoints ?? 0,
@@ -131,7 +148,7 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
           status: rate.status === "paused" ? "paused" : "active",
         };
       }),
-      policies: policies.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      policies: policies.docs.filter((doc) => doc.data().status !== "archived").map((doc) => ({ id: doc.id, ...doc.data() })),
       media: await Promise.all(media.docs.map(async (doc) => {
         const data = doc.data();
         const published = data.kind === "property_image"
@@ -141,6 +158,7 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
           id: doc.id,
           kind: data.kind,
           category: data.category ?? null,
+          roomTypeId: data.roomTypeId ?? null,
           fileName: data.fileName ?? null,
           altText: typeof data.altText === "string" ? data.altText : "",
           moderationStatus: data.moderationStatus ?? data.status ?? "pending",
@@ -187,9 +205,16 @@ const rawPATCH = async function PATCH(request: Request, { params }: RouteContext
       delete update.longitude;
     }
     const batch = adminDb.batch();
-    batch.update(ref, update);
+    await adminDb.runTransaction(async (tx) => {
+      const current = (await tx.get(ref)).data();
+      if (patch.timezone && current?.inventoryEngine === "interval_v1" && patch.timezone !== current.timezone) {
+        const calendars = await tx.get(adminDb.collection("inventoryCalendars").where("propertyId", "==", propertyId).limit(1));
+        if (current.inventoryCutoverAt || !calendars.empty) throw new Error("TIMEZONE_LOCKED_AFTER_INVENTORY_CUTOVER");
+      }
+      tx.update(ref, update);
+    });
     enqueueProjection(batch, "property_search", propertyId);
-    await batch.commit();
+    await batch.commit(); await invalidatePublic("home", "search:*", "property:*", "bookable:*");
     return Response.json({ ok: true, property: { ...patch, updatedAt: new Date().toISOString() } });
   } catch (error) {
     return Response.json({ error: validationMessage(error) }, { status: 422 });

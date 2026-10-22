@@ -1,10 +1,17 @@
 "use client";
 
+import { GuestPolicyFields } from "@/components/partner/guest-policy-fields";
+import { publicGuestPolicies } from "@/lib/partner/guest-policies";
+
+import { DurationPriceEditor } from "@/components/partner/duration-price-editor";
+import { validDurationPrices, type DurationPrice } from "@/lib/booking/duration-pricing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertTriangle, CheckCircle2, ImageIcon, Loader2, MapPin, Navigation, Plus, Search, Star, Upload, X } from "lucide-react";
 import { formatPaise, toPaise } from "@/lib/currency";
 import { requestJson, uploadErrorMessage, uploadKycDocument, uploadPropertyPhoto } from "@/lib/partner/upload-client";
+import { propertyPhotoCategories as PHOTO_CATEGORIES, photoRequirements, isRoomPhoto } from "@/lib/partner/photo-requirements";
+import { PhotoChecklist, PhotoDetailsEditor } from "@/components/partner/photo-requirements";
 import { mapsLibrary, markerLibrary, placesLibrary } from "@/lib/google/maps-loader";
 import type { ListingMutations, ListingProperty, ListingResponse } from "./use-property-listing";
 
@@ -51,6 +58,7 @@ function Field({
   return (
     <label className="block text-xs font-semibold text-slate-700">
       {label}
+      {!required && <span className="ml-1 text-slate-400">(optional)</span>}
       <input
         name={name}
         type={type}
@@ -608,17 +616,8 @@ export function AmenitiesEditor({ propertyId, listing, onSaved, mutations, onBus
 
   const submit = () =>
     run(async () => {
-      const childrenPolicy = listing.property.childrenPolicy ?? { allowed: true };
-      const petPolicy = listing.property.petPolicy ?? { allowed: false };
-      const smokingPolicy = listing.property.smokingPolicy ?? { allowed: false };
-      await requestJson(`/api/partner/properties/${propertyId}`, {
-        amenityIds: selected,
-        childrenPolicy,
-        petPolicy,
-        smokingPolicy,
-        identityRequirements: { governmentIdRequired: true },
-      }, "PATCH");
-      mutations.patchProperty({ amenityIds: selected, childrenPolicy, petPolicy, smokingPolicy });
+      await requestJson(`/api/partner/properties/${propertyId}`, { amenityIds: selected }, "PATCH");
+      mutations.patchProperty({ amenityIds: selected });
       onSaved();
     });
 
@@ -652,6 +651,13 @@ export function AmenitiesEditor({ propertyId, listing, onSaved, mutations, onBus
 export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
   const { saving, error, saved, run } = useSave({ onBusyChange });
 
+  const [guestPolicies, setGuestPolicies] = useState(() => publicGuestPolicies(listing.property));
+  const saveGuestPolicies = () => run(async () => {
+    await requestJson(`/api/partner/properties/${propertyId}`, guestPolicies, "PATCH");
+    mutations.patchProperty(guestPolicies);
+    onSaved();
+  });
+
   const submit = (form: FormData) =>
     run(async () => {
       const res = await requestJson<{ policy: { id: string; name: string } }>(
@@ -669,6 +675,10 @@ export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusy
 
   return (
     <div className="space-y-5">
+      <form action={saveGuestPolicies} className="space-y-3">
+        <GuestPolicyFields value={guestPolicies} onChange={setGuestPolicies} disabled={saving} />
+        <SaveBar saving={saving} error={error} saved={saved} label="Save guest policies" />
+      </form>
       {listing.policies.length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Existing policies</p>
@@ -694,6 +704,7 @@ export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusy
 /* ---------- Rooms & rates ---------- */
 
 export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
+  const [pricingModel, setPricingModel] = useState<"nightly" | "duration">("nightly");
   const room = useSave({ onBusyChange });
   const rate = useSave({ onBusyChange });
 
@@ -718,13 +729,23 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
   const submitRate = (form: FormData) =>
     rate.run(async () => {
       if (!listing.policies[0]) throw new Error("Add a cancellation policy first.");
+      const durationPrices: DurationPrice[] = pricingModel === "duration" ? JSON.parse(String(form.get("durationPrices"))) : [];
+      if (pricingModel === "duration" && !validDurationPrices(durationPrices)) throw new Error("Add a unique, positive total price for each duration.");
+      if (pricingModel === "duration") {
+        const room = listing.roomTypes.find(room => room.id === form.get("roomTypeId"));
+        await requestJson(`/api/partner/properties/${propertyId}`, { bookingModes: [...new Set([...(listing.property.bookingModes ?? ["overnight"]), "hourly"])] }, "PATCH");
+        await requestJson(`/api/partner/properties/${propertyId}/room-types/${room?.id}`, { bookingModes: [...new Set([...(room?.bookingModes ?? listing.property.bookingModes ?? ["overnight"]), "hourly"])] }, "PATCH");
+      }
       const res = await requestJson<{ ratePlan: ListingResponse["ratePlans"][number] }>(
         `/api/partner/properties/${propertyId}/rate-plans`,
         {
           roomTypeId: form.get("roomTypeId"),
-          name: form.get("rateName"),
+          name: String(form.get("rateName") ?? "").trim() || "Standard rate",
           code: String(form.get("code")).toUpperCase(),
-          basePricePaise: toPaise(Number(form.get("price"))),
+          bookingMode: pricingModel === "duration" ? "hourly" : "overnight",
+          pricingModel,
+          ...(pricingModel === "duration" ? { durationPrices } : {}),
+          basePricePaise: pricingModel === "duration" ? Math.min(...durationPrices.map(row => row.pricePaise)) : toPaise(Number(form.get("price"))),
           cancellationPolicyId: listing.policies[0].id,
           paymentMode: "full",
         },
@@ -759,10 +780,11 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <Field name="rateName" label="Rate name" placeholder="Standard" minLength={2} />
+            <Field name="rateName" label="Rate name" placeholder="Standard rate" required={false} />
             <Field name="code" label="Rate code" placeholder="STD" />
           </div>
-          <Field name="price" label="Price per night (₹)" type="number" />
+          <label className="block text-xs font-semibold text-slate-700">Pricing<select value={pricingModel} onChange={e => setPricingModel(e.target.value as typeof pricingModel)} className={inputClass}><option value="nightly">Overnight per night</option><option value="duration">Hourly stays</option></select></label>
+          {pricingModel === "nightly" ? <Field name="price" label="Price per night (₹)" type="number" /> : <><DurationPriceEditor /><p className="text-xs text-slate-600">Arrival and operating times can be configured under Rooms → Manage rates.</p></>}
           <SaveBar saving={rate.saving} error={rate.error} saved={rate.saved} label="Add rate" />
         </form>
       )}
@@ -772,19 +794,12 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
 
 /* ---------- Photos ---------- */
 
-const PHOTO_CATEGORIES = [
-  { value: "exterior", label: "Exterior / facade" },
-  { value: "reception", label: "Reception / common area" },
-  { value: "room", label: "Room" },
-  { value: "bathroom", label: "Bathroom" },
-  { value: "additional", label: "Additional spaces" },
-] as const;
-
 type LocalPhotoStatus = "queued" | "uploading" | "processing" | "uploaded" | "failed";
 type LocalPhoto = {
   id: string;
   file: File;
   category: (typeof PHOTO_CATEGORIES)[number]["value"];
+  roomTypeId?: string | null;
   previewUrl: string;
   status: LocalPhotoStatus;
   progress: number;
@@ -797,6 +812,7 @@ const PHOTO_CATEGORY_LABELS = Object.fromEntries(PHOTO_CATEGORIES.map((item) => 
 
 export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
   const [category, setCategory] = useState<(typeof PHOTO_CATEGORIES)[number]["value"]>("exterior");
+  const [roomTypeId, setRoomTypeId] = useState("");
   const [queue, setQueue] = useState<LocalPhoto[]>([]);
   const [notice, setNotice] = useState("");
   const [activeUploads, setActiveUploads] = useState(0);
@@ -808,6 +824,7 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
   }, [activeUploads, coverPendingId, onBusyChange]);
 
   const photos = listing.media.filter((m) => m.kind === "property_image");
+  const photoCheck = photoRequirements(listing.media, listing.roomTypes, listing.property.coverMediaId);
   const groupedPhotos = useMemo(() => {
     return PHOTO_CATEGORIES.map((photoCategory) => ({
       ...photoCategory,
@@ -822,7 +839,7 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
     updateQueueItem(item.id, { status: "uploading", progress: 1, error: undefined });
     setActiveUploads((count) => count + 1);
     try {
-      const finalized = await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }));
+      const finalized = await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }), item.roomTypeId);
       updateQueueItem(item.id, { status: "processing", progress: 100 });
       if (finalized.media) mutations.addMedia(finalized.media as ListingResponse["media"][number], finalized.coverMediaId ?? undefined);
       updateQueueItem(item.id, { status: "uploaded", progress: 100 });
@@ -857,12 +874,14 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
 
   const handleFiles = (files: File[]) => {
     if (!files.length) return;
+    if (isRoomPhoto(category) && !roomTypeId) { setNotice("Choose a room type before uploading bedroom or bathroom photos."); return; }
     const nextItems: LocalPhoto[] = files.map((file, index) => {
       const valid = ACCEPTED_PHOTO_TYPES.has(file.type) && file.size <= MAX_PHOTO_BYTES;
       return {
         id: `${Date.now()}-${index}-${file.name}`,
         file,
         category,
+        roomTypeId: isRoomPhoto(category) ? roomTypeId : null,
         previewUrl: URL.createObjectURL(file),
         status: valid ? "queued" : "failed",
         progress: 0,
@@ -924,6 +943,8 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
         </select>
       </label>
 
+      {isRoomPhoto(category) && <label className="block text-xs font-semibold text-slate-700">Room type<select aria-label="Photo room type" value={roomTypeId} onChange={(event) => setRoomTypeId(event.target.value)} className={inputClass}><option value="">Choose room type</option>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>}
+      <PhotoChecklist photos={listing.media} rooms={listing.roomTypes} coverMediaId={listing.property.coverMediaId} />
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-8 text-center hover:border-[#c89b3c] transition-colors">
         <Upload className="mb-2 h-6 w-6 text-slate-400" />
         <span className="text-xs font-bold text-slate-700">Choose JPG, PNG or WebP</span>
@@ -971,8 +992,8 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
       )}
 
       <div className="flex items-center justify-between text-xs font-semibold">
-        <span className="text-slate-500">{photos.length} / 6 photos</span>
-        {photos.length >= 6 ? <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Enough photos</span> : <span className="text-amber-600">Add {6 - photos.length} more</span>}
+        <span className="text-slate-500">{photoCheck.photos.length} / {photoCheck.minimum} photos</span>
+        {photoCheck.complete ? <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Enough photos</span> : <span className="text-amber-600">Complete the photo checklist</span>}
       </div>
 
       {groupedPhotos.map((group) => (
@@ -981,9 +1002,9 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{group.label}</p>
             <span className="text-[11px] font-semibold text-slate-400">{group.photos.length} photo{group.photos.length === 1 ? "" : "s"}</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {group.photos.map((photo) => (
-              <div key={photo.id} className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              <div key={photo.id} className="rounded-xl border border-slate-200 bg-white p-2"><div className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100">
                 {photo.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={photo.imageUrl} alt={photo.altText || `${group.label} property photo`} className="h-full w-full object-cover" />
@@ -1007,7 +1028,7 @@ export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyCh
                 <button type="button" onClick={() => void removeSaved(photo.id)} disabled={removingId !== null} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-md bg-rose-600/90 text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-100" aria-label={`Remove ${photo.fileName ?? "photo"}`}>
                   {removingId === photo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
                 </button>
-              </div>
+              </div><PhotoDetailsEditor key={`${photo.id}_${photo.category}_${photo.roomTypeId}`} propertyId={propertyId} photo={photo} rooms={listing.roomTypes} onSaved={async () => { mutations.reload(); }} /></div>
             ))}
           </div>
         </section>

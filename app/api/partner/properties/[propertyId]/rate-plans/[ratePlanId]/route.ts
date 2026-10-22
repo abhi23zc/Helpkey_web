@@ -1,3 +1,4 @@
+import { eligiblePricing, startingPrice } from "@/lib/booking/duration-pricing";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -22,6 +23,10 @@ const rawPATCH = async function PATCH(
     const data = snap.data();
     if (!snap.exists || data?.propertyId !== propertyId) throw new Error("RATE_PLAN_NOT_FOUND");
 
+    if (data?.status === "archived") throw new Error("RATE_PLAN_ARCHIVED");
+    if (!eligiblePricing(data)) throw new Error("Archive this old hourly rate and create a new rate with duration prices.");
+    const merged = { ...data, ...input };
+    if (!eligiblePricing(merged)) throw new Error("Enter hourly duration prices before saving this rate.");
     if (input.cancellationPolicyId) {
       const policy = await adminDb.collection("cancellationPolicies").doc(input.cancellationPolicyId).get();
       if (!policy.exists || policy.data()?.propertyId !== propertyId) throw new Error("INVALID_POLICY");
@@ -29,23 +34,30 @@ const rawPATCH = async function PATCH(
 
     const stayRules = {
       ...(data?.stayRules ?? {}),
+      ...Object.fromEntries(["minimumDurationMinutes", "maximumDurationMinutes", "minimumAdvanceMinutes", "maximumAdvanceDays"].flatMap((key) => { const value = input[key as keyof typeof input]; return value === undefined ? [] : [[key, value]]; })),
       ...(input.minimumNights === undefined ? {} : { minimumNights: input.minimumNights }),
       ...(input.maximumNights === undefined ? {} : { maximumNights: input.maximumNights }),
     };
+    if (stayRules.maximumNights && stayRules.minimumNights > stayRules.maximumNights) throw new Error("MAXIMUM_NIGHTS_TOO_LOW");
+    const minimumDuration = Number(stayRules.minimumDurationMinutes ?? 15), maximumDuration = Number(stayRules.maximumDurationMinutes ?? 1440);
+    if (minimumDuration > maximumDuration) throw new Error("MAXIMUM_DURATION_TOO_LOW");
+    if (merged.arrivalWindow && merged.arrivalWindow.start > merged.arrivalWindow.end) throw new Error("INVALID_ARRIVAL_WINDOW");
     const patch = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "minimumNights" && key !== "maximumNights"));
     const batch = adminDb.batch();
-    batch.update(ref, { ...patch, stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
-    enqueueProjection(batch, "property_search", propertyId);
+    batch.update(ref, { ...patch, basePricePaise: startingPrice(merged), stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing"] });
     await batch.commit();
-    await invalidatePublic("home", "search:*", "bookable:*");
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({
       ok: true,
       ratePlan: {
         id: ratePlanId,
+        ...data,
+        ...patch,
         name: input.name ?? data?.name,
         code: input.code ?? data?.code,
-        basePricePaise: input.basePricePaise ?? data?.basePricePaise,
+        basePricePaise: startingPrice(merged),
         roomTypeId: data?.roomTypeId,
         cancellationPolicyId: input.cancellationPolicyId ?? data?.cancellationPolicyId,
         paymentMode: input.paymentMode ?? data?.paymentMode ?? "full",
@@ -79,10 +91,10 @@ const rawDELETE = async function DELETE(
     if (!snap.exists || snap.data()?.propertyId !== propertyId) throw new Error("RATE_PLAN_NOT_FOUND");
 
     const batch = adminDb.batch();
-    batch.delete(ref);
-    enqueueProjection(batch, "property_search", propertyId);
+    batch.update(ref, { status: "archived", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing"] });
     await batch.commit();
-    await invalidatePublic("home", "search:*", "bookable:*");
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({ ok: true, ratePlanId });
   } catch (error) {

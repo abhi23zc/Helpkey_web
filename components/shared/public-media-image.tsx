@@ -10,7 +10,7 @@ type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "srcSet" | "alt">
   fallbackSrc?: string;
 };
 
-export function PublicMediaImage({ src, srcSet, alt, fallbackSrc = "/balmoral_hotel.png", loading = "lazy", onError, ...props }: Props) {
+export function PublicMediaImage({ src, srcSet, alt, fallbackSrc = "/photo-unavailable.svg", loading = "lazy", onError, ...props }: Props) {
   const fallback = (event: SyntheticEvent<HTMLImageElement>) => {
     onError?.(event);
     const image = event.currentTarget;
@@ -19,5 +19,5 @@ export function PublicMediaImage({ src, srcSet, alt, fallbackSrc = "/balmoral_ho
     image.srcset = "";
     image.src = fallbackSrc;
   };
-  return <img {...props} src={src} srcSet={srcSet || undefined} alt={alt} loading={loading} onError={fallback} />;
+  return <img key={src} {...props} src={src} srcSet={srcSet || undefined} alt={alt} loading={loading} onError={fallback} />;
 }

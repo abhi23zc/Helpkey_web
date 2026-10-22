@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createHash } from "crypto";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { safeJobId } from "@/lib/background/jobs";
+import { writePublication } from "@/lib/background/publication";
 import { adminDb } from "@/lib/firebase/admin";
 import { publicMediaUrl } from "@/lib/r2";
 
@@ -15,16 +16,11 @@ const variantNames: ImageVariantName[] = ["thumb", "card", "large"];
 export function publicationJobId(operation: MediaPublicationInput["operation"], assetId: string, checksum: string) {
   return createHash("sha256").update(`${operation}:${assetId}:${checksum}`).digest("hex");
 }
-export function publicationBullJobId(operation: MediaPublicationInput["operation"], assetId: string, checksum: string) { return `${operation}:${assetId}:${checksum}`; }
+export function publicationBullJobId(operation: MediaPublicationInput["operation"], assetId: string, checksum: string) { return safeJobId(operation, assetId, checksum); }
 
 /** The approval transaction writes only Firestore state; dispatcher owns Redis. */
 export function enqueuePublicationInTransaction(tx: FirebaseFirestore.Transaction, input: MediaPublicationInput) {
-  const now = FieldValue.serverTimestamp();
-  const id = publicationJobId(input.operation, input.assetId, input.sourceChecksum);
-  tx.set(adminDb.collection("mediaPublicationJobs").doc(id), { ...input, status: "queued", attempts: 0, notBefore: Timestamp.now(), leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, createdAt: now, updatedAt: now }, { merge: true });
-  tx.set(adminDb.collection("mediaPublicationOutbox").doc(id), { ...input, jobId: id, bullJobId: publicationBullJobId(input.operation, input.assetId, input.sourceChecksum), status: "pending", dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: now, updatedAt: now }, { merge: true });
-  tx.set(adminDb.collection(input.sourceCollection).doc(input.assetId), { publication: { status: input.operation === "publish" ? "queued" : "unpublishing", sourceChecksum: input.sourceChecksum, ...(input.operation === "publish" ? { variants: {} } : {}), attempts: 0, lastErrorCode: null, queuedAt: now, publishedAt: null, updatedAt: now } }, { merge: true });
-  return id;
+  return writePublication(adminDb, tx, input);
 }
 
 function checksum(value: unknown) { return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value) ? value.toLowerCase() : null; }

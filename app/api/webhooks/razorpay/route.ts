@@ -1,7 +1,8 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
-import { bookingError, confirmPaidBooking, releaseBookingHold } from "@/lib/bookings";
+import { bookingError, confirmPaidBooking } from "@/lib/bookings";
 import { runIdempotent } from "@/lib/api/idempotency";
 import { withApiHandler } from "@/lib/api/handler";
 import { ApiException } from "@/lib/api/errors";
@@ -46,9 +47,12 @@ const rawPOST = async function POST(request: Request) {
     const bookingId = await bookingIdForPayment(payment.order_id, payment.notes);
     if (!bookingId) return Response.json({ ok: true, ignored: true });
 
+    const eventRef = adminDb.collection("paymentWebhookEvents").doc(createHash("sha256").update(`${input.event}:${payment.id}`).digest("hex"));
+    await eventRef.set({ bookingId, eventType: input.event, paymentId: payment.id, orderId: payment.order_id, receivedAt: FieldValue.serverTimestamp(), deliveries: FieldValue.increment(1) }, { merge: true });
     await runIdempotent("razorpay.webhook", `${input.event}:${payment.id}`, "razorpay", async () => {
       if (input.event === "payment.captured") await confirmPaidBooking(bookingId, { actorId: "razorpay:webhook", orderId: payment.order_id, paymentId: payment.id, source: "razorpay_webhook" });
-      else if (input.event === "payment.failed") await releaseBookingHold(bookingId, "razorpay:webhook", "payment_failed", "RAZORPAY_PAYMENT_FAILED");
+      else if (input.event === "payment.failed") await adminDb.collection("paymentFailures").doc(payment.id).set({ bookingId, orderId: payment.order_id, paymentId: payment.id, status: "failed" }, { merge: true });
+      await eventRef.set({ status: "processed", processedAt: FieldValue.serverTimestamp() }, { merge: true });
       return { applied: true };
     });
     return Response.json({ ok: true });

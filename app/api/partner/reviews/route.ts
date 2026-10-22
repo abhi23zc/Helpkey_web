@@ -1,3 +1,5 @@
+import { withRedis, cacheKey } from "@/lib/redis";
+import { rollingPeriods } from "@/lib/background/review-store";
 import { withApiHandler } from "@/lib/api/handler";
 import { Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -50,6 +52,17 @@ const rawGET = async function GET(request: Request) {
     const photoDocs = photoIds.length ? await adminDb.getAll(...photoIds.map((id) => adminDb.collection(REVIEW_PHOTOS_COLLECTION).doc(id))) : [];
     const photos = new Map(photoDocs.map((doc) => [doc.id, doc]));
     const rawMetrics = metricsDoc.data() ?? {};
+    if (rawMetrics.generation && input.range !== "all") {
+      const now = Date.now(), key = cacheKey("review-periods", input.propertyId, rawMetrics.generation, metricsDoc.updateTime?.toMillis() ?? 0, input.range, Math.floor(now / 30_000));
+      const cached = await withRedis(redis => redis.get(key));
+      let windows: Awaited<ReturnType<typeof rollingPeriods>> | null = null;
+      try { windows = cached ? JSON.parse(cached) : null; } catch { windows = null; }
+      if (!windows) {
+        windows = await rollingPeriods(adminDb, input.propertyId, rawMetrics.generation, now, [Number(input.range)]);
+        await withRedis(redis => redis.set(key, JSON.stringify(windows), "EX", 30));
+      }
+      rawMetrics.periods = { ...rawMetrics.periods, ...windows };
+    }
     const propertySummary = propertyDoc.data()?.reviewSummary ?? {};
     const allTime: Period = { average: Number(rawMetrics.average ?? propertySummary.average ?? 0), count: Number(rawMetrics.count ?? propertySummary.count ?? 0), awaiting: Number(rawMetrics.awaiting ?? 0), withPhotos: Number(rawMetrics.withPhotos ?? 0) };
     const selected = (rawMetrics.periods?.[input.range]?.current ?? (input.range === "all" ? allTime : emptyPeriod())) as Period;

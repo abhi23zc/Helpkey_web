@@ -11,4 +11,4 @@ const rawGET = async function GET(_request: Request, { params }: { params: Promi
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to load property." }, { status: 500 }); }
 }
 
-export const GET = withApiHandler(rawGET, { route: "/api/properties/[slug]", auth: "public", requireAuth: false, cache: "public" });
+export const GET = withApiHandler(rawGET, { route: "/api/properties/[slug]", auth: "public", requireAuth: false, cache: "none" });

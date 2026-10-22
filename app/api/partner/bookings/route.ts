@@ -1,33 +1,11 @@
 import { withApiHandler } from "@/lib/api/handler";
-import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireRole } from "@/lib/partner/service";
-import { serializeBooking } from "@/lib/bookings";
+import { createManualReservation, serializeBooking } from "@/lib/bookings";
+import { reservationSummary } from "@/lib/booking/reporting";
 import { decodeCursor, encodeCursor } from "@/lib/api/pagination";
-
-const isoDate = /^\d{4}-\d{2}-\d{2}$/;
-
-const manualBookingSchema = z.object({
-  propertyId: z.string().min(1),
-  guestName: z.string().trim().min(2).max(120),
-  guestEmail: z.string().trim().email().optional().or(z.literal("")),
-  guestPhone: z.string().trim().min(7).max(25).optional().or(z.literal("")),
-  roomDescription: z.string().trim().min(1).max(200),
-  checkIn: z.string().regex(isoDate),
-  checkOut: z.string().regex(isoDate),
-  adults: z.number().int().min(1).max(12).default(1),
-  children: z.number().int().min(0).max(10).default(0),
-  nightlyRateRupees: z.number().min(0).default(0),
-  paymentMethod: z.enum(["pay_at_property", "paid"]).default("pay_at_property"),
-  specialRequest: z.string().trim().max(1000).optional().default(""),
-});
-
-function genCode() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  return "HK-" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
 
 const rawGET = async function GET(request: Request) {
   const user = await getAuthenticatedUser();
@@ -37,6 +15,9 @@ const rawGET = async function GET(request: Request) {
     const url = new URL(request.url);
     const propertyId = url.searchParams.get("propertyId");
     const status = url.searchParams.get("status");
+    const mode = url.searchParams.get("bookingMode");
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
     const search = (url.searchParams.get("q") ?? "").trim().toLowerCase();
 
     const memberships = await adminDb.collection("propertyMemberships").where("userId", "==", user.uid).where("status", "==", "active").get();
@@ -45,17 +26,26 @@ const rawGET = async function GET(request: Request) {
     if (!propertyId && allowed.size === 0) return Response.json({ bookings: [], hasMore: false, nextCursor: null });
     const selectedPropertyId = propertyId ?? [...allowed][0];
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 25, 1), 50);
-    let query: FirebaseFirestore.Query = adminDb.collection("bookings").where("propertyId", "==", selectedPropertyId);
-    if (status && status !== "all") query = query.where("bookingStatus", "==", status);
-    if (search) query = query.where("searchTokens", "array-contains", search);
-    query = query.orderBy("checkIn", "desc").orderBy("__name__", "desc");
+    const snapshot = await adminDb.collection("bookings").where("propertyId", "==", selectedPropertyId).get();
+    const property = (await adminDb.collection("properties").doc(selectedPropertyId).get()).data() ?? {};
+    const summary = reservationSummary(snapshot.docs.map((doc) => doc.data() as Parameters<typeof reservationSummary>[0][number]), property.timezone ?? "Asia/Kolkata");
+    const roomName = url.searchParams.get("roomName"), paymentStatus = url.searchParams.get("paymentStatus");
+    const selected = snapshot.docs.filter((doc) => {
+      const data = doc.data();
+      return summary.matchesView(data as Parameters<typeof summary.matchesView>[0], status ?? "all")
+        && (!mode || data.bookingMode === mode || (mode === "overnight" && !data.bookingMode))
+        && (!from || data.checkIn >= from) && (!to || data.checkIn <= to)
+        && (!search || data.searchTokens?.includes(search))
+        && (!roomName || data.roomType?.name === roomName) && (!paymentStatus || data.paymentStatus === paymentStatus);
+    }).sort((a, b) => String(b.data().startAt ?? b.data().checkIn).localeCompare(String(a.data().startAt ?? a.data().checkIn)) || b.id.localeCompare(a.id));
     const rawCursor = url.searchParams.get("cursor");
-    if (rawCursor) { const cursor = decodeCursor(rawCursor); query = query.startAfter(cursor.values[0], cursor.id); }
-    const snapshot = await query.limit(limit + 1).get();
-    const page = snapshot.docs.slice(0, limit);
-    const hasMore = snapshot.size > limit;
+    const cursor = rawCursor ? decodeCursor(rawCursor) : null;
+    const offset = cursor ? selected.findIndex((doc) => doc.id === cursor.id) + 1 : 0;
+    if (cursor && offset === 0) throw new Error("CURSOR_EXPIRED");
+    const page = selected.slice(offset, offset + limit);
+    const hasMore = selected.length > offset + limit;
     const last = page.at(-1);
-    return Response.json({ bookings: page.map((doc) => serializeBooking(doc.id, doc.data())), propertyId: selectedPropertyId, hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [String(last.data().checkIn ?? "")], id: last.id }) : null });
+    return Response.json({ bookings: page.map((doc) => serializeBooking(doc.id, doc.data())), propertyId: selectedPropertyId, totalCount: selected.length, metrics: summary.metrics, tabCounts: summary.tabCounts, roomNames: summary.roomNames, hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [], id: last.id }) : null });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load reservations." }, { status: 403 });
   }
@@ -68,73 +58,8 @@ const rawPOST = async function POST(request: Request) {
     await requireRole(user.uid, "partner");
 
     const raw = await request.json();
-    const input = manualBookingSchema.parse(raw);
-
-    // Verify property membership
-    const memberships = await adminDb.collection("propertyMemberships")
-      .where("userId", "==", user.uid)
-      .where("status", "==", "active")
-      .get();
-    const allowed = new Set(memberships.docs.map((doc) => doc.data().propertyId).filter(Boolean));
-    if (!allowed.has(input.propertyId)) throw new Error("FORBIDDEN");
-
-    // Fetch property name
-    const propDoc = await adminDb.collection("properties").doc(input.propertyId).get();
-    const propertyName = propDoc.data()?.name ?? "Property";
-
-    // Calculate nights & totals
-    const checkInMs = new Date(`${input.checkIn}T00:00:00Z`).getTime();
-    const checkOutMs = new Date(`${input.checkOut}T00:00:00Z`).getTime();
-    const nights = Math.round((checkOutMs - checkInMs) / 86400000);
-    if (nights <= 0) throw new Error("CHECK_OUT_MUST_FOLLOW_CHECK_IN");
-
-    const totalPaise = Math.round(input.nightlyRateRupees * nights * 100);
-    const isPaid = input.paymentMethod === "paid";
-    const confirmationCode = genCode();
-
-    const ref = adminDb.collection("bookings").doc();
-    await ref.set({
-      confirmationCode,
-      propertyId: input.propertyId,
-      propertySlug: null,
-      propertyName,
-      source: "manual_partner",
-      roomType: { id: "manual", name: input.roomDescription },
-      ratePlan: { id: "manual", name: "Manual Booking" },
-      checkIn: input.checkIn,
-      checkOut: input.checkOut,
-      nights,
-      adults: input.adults,
-      children: input.children,
-      infants: 0,
-      leadGuest: {
-        name: input.guestName,
-        email: input.guestEmail || null,
-        phone: input.guestPhone || null,
-        adultGuestNames: [input.guestName],
-      },
-      specialRequest: input.specialRequest || "",
-      subtotalPaise: totalPaise,
-      taxPaise: 0,
-      customerFeePaise: 0,
-      totalPaise,
-      payableNowPaise: totalPaise,
-      paidPaise: isPaid ? totalPaise : 0,
-      currency: "INR",
-      bookingStatus: "confirmed",
-      paymentStatus: isPaid ? "paid" : "pay_at_property",
-      paymentMethod: input.paymentMethod,
-      razorpayOrderId: null,
-      razorpayPaymentId: null,
-      expiresAt: null,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: user.uid,
-      updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: user.uid,
-      searchTokens: [...new Set([confirmationCode, propertyName, input.roomDescription, input.guestName, input.guestEmail, input.guestPhone].flatMap((value) => String(value ?? "").toLowerCase().trim().split(/\s+/)).filter(Boolean))].slice(0, 40),
-    });
-
-    return Response.json({ bookingId: ref.id, confirmationCode }, { status: 201 });
+    const result = await createManualReservation(user.uid, raw, request.headers.get("idempotency-key") ?? JSON.stringify(raw));
+    return Response.json({ bookingId: result.id, confirmationCode: result.confirmationCode }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json({ error: "Invalid booking data: " + error.issues.map((i) => i.message).join(", ") }, { status: 422 });

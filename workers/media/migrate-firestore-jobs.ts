@@ -1,3 +1,4 @@
+import { safeJobId } from "../../lib/background/jobs";
 import { FieldPath, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "./firebase";
 
@@ -7,7 +8,7 @@ async function migrate() {
   do {
     let query = db.collection("mediaPublicationJobs").orderBy(FieldPath.documentId()).limit(200); if (cursor) query = query.startAfter(cursor);
     const page = await query.get(); cursor = page.docs.at(-1);
-    for (const job of page.docs) { const data = job.data(); const expiredProcessing = data.status === "processing" && data.leaseExpiresAt?.toMillis?.() <= Date.now(); if (!valid(data) || !(["queued", "retryable"].includes(data.status) || expiredProcessing)) continue; await db.runTransaction(async (tx) => { tx.set(db.collection("mediaPublicationOutbox").doc(job.id), { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum, jobId: job.id, bullJobId: `${data.operation}:${data.assetId}:${data.sourceChecksum}`, status: "pending", dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), migratedFromFirestoreJob: true }, { merge: true }); tx.update(job.ref, { status: "queued", attempts: 0, notBefore: Timestamp.now(), leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }); }); migrated++; }
+    for (const job of page.docs) { const data = job.data(); const expiredProcessing = data.status === "processing" && data.leaseExpiresAt?.toMillis?.() <= Date.now(); if (!valid(data) || !(["queued", "retryable"].includes(data.status) || expiredProcessing)) continue; await db.runTransaction(async (tx) => { tx.set(db.collection("mediaPublicationOutbox").doc(job.id), { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum, jobId: job.id, bullJobId: safeJobId(data.operation, data.assetId, data.sourceChecksum), status: "pending", recoverable: true, nextRecoveryAt: Timestamp.now(), dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), migratedFromFirestoreJob: true }, { merge: true }); tx.update(job.ref, { status: "queued", attempts: 0, notBefore: Timestamp.now(), leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }); }); migrated++; }
   } while (cursor);
   console.log(JSON.stringify({ migrated }));
 }

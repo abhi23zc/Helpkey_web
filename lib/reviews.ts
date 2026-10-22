@@ -46,7 +46,7 @@ export async function refreshPropertyReviewSummary(propertyId: string) {
 
 /** A guest can review a property once a stay booked through Helpkey is completed. */
 export async function hasCompletedStay(userId: string, propertyId: string) {
-  const bookings = await adminDb.collection("bookings").where("guestId", "==", userId).where("propertyId", "==", propertyId).where("bookingStatus", "==", "completed").limit(1).get();
+  const bookings = await adminDb.collection("bookings").where("guestId", "==", userId).where("propertyId", "==", propertyId).where("bookingStatus", "in", ["completed", "checked_out"]).limit(1).get();
   return !bookings.empty;
 }
 

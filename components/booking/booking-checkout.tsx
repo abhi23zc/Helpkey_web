@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { GuestRules } from "@/components/hotel/guest-rules";
+import type { GuestPolicies } from "@/lib/partner/guest-policies";
+import { formatMoney } from "@/lib/customer/offer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -26,6 +29,14 @@ import { BookingConfirmationCard } from "@/components/booking/booking-confirmati
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type Quote = {
+  propertyRules?: GuestPolicies;
+  bookingMode: "overnight" | "hourly";
+  pricingModel: "nightly" | "duration" | "package" | "per_hour";
+  durationMinutes: number;
+  billedHours: number;
+  arrivalTime: string;
+  departureTime: string;
+  balanceDuePaise: number;
   propertyName: string;
   propertyCity: string | null;
   propertyState: string | null;
@@ -51,11 +62,14 @@ type Quote = {
 };
 
 type CheckoutParams = {
+  bookingMode: "overnight" | "hourly";
+  arrivalTime?: string;
+  durationMinutes?: number;
   propertySlug: string;
   roomTypeId: string;
   ratePlanId: string;
   checkIn: string;
-  checkOut: string;
+  checkOut?: string;
   adults: number;
   children: number;
   infants: number;
@@ -79,12 +93,7 @@ declare global {
   }
 }
 
-const money = (value: number, currency = "INR") =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value / 100);
+const money = formatMoney;
 
 const shortDate = (value: string) => {
   if (!value) return "-";
@@ -110,12 +119,15 @@ async function loadRazorpay() {
 }
 
 function parseParams(params: URLSearchParams): CheckoutParams | null {
-  const input = {
+  const input: CheckoutParams = {
+    bookingMode: params.get("bookingMode") === "hourly" ? "hourly" : "overnight",
+    arrivalTime: params.get("arrivalTime") || undefined,
+    durationMinutes: params.get("durationMinutes") ? Number(params.get("durationMinutes")) : undefined,
     propertySlug: params.get("property") ?? "",
     roomTypeId: params.get("room") ?? "",
     ratePlanId: params.get("rate") ?? "",
     checkIn: params.get("checkIn") ?? "",
-    checkOut: params.get("checkOut") ?? "",
+    checkOut: params.get("checkOut") || undefined,
     adults: Number(params.get("adults") ?? 2),
     children: Number(params.get("children") ?? 0),
     infants: Number(params.get("infants") ?? 0),
@@ -125,7 +137,7 @@ function parseParams(params: URLSearchParams): CheckoutParams | null {
     !input.roomTypeId ||
     !input.ratePlanId ||
     !input.checkIn ||
-    !input.checkOut ||
+    (input.bookingMode === "overnight" ? !input.checkOut : !input.arrivalTime || !input.durationMinutes) ||
     !Number.isInteger(input.adults) ||
     input.adults < 1
   )
@@ -136,8 +148,13 @@ function parseParams(params: URLSearchParams): CheckoutParams | null {
 export function BookingCheckout() {
   const { appUser, loading } = useAuth();
   const [input, setInput] = useState<CheckoutParams | null>(null);
+  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
+  const [holdSeconds, setHoldSeconds] = useState<number | null>(null);
+  useEffect(() => { if (!holdExpiresAt) return; const update = () => setHoldSeconds(Math.max(0, Math.ceil((Date.parse(holdExpiresAt) - Date.now()) / 1000))); queueMicrotask(update); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, [holdExpiresAt]);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
+  const [quoteVersion, setQuoteVersion] = useState(0);
+  const [quoteChanged, setQuoteChanged] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [login, setLogin] = useState(false);
@@ -202,7 +219,7 @@ export function BookingCheckout() {
         )
       )
       .finally(() => setQuoteLoading(false));
-  }, [input, appUser?.email, appUser?.fullName, appUser?.phoneNumber]);
+  }, [input, appUser?.email, appUser?.fullName, appUser?.phoneNumber, quoteVersion]);
 
   const formError = useMemo(() => {
     if (!appUser) return "";
@@ -218,7 +235,7 @@ export function BookingCheckout() {
     if (!termsAccepted) return "Accept the booking terms and cancellation policy to continue.";
     return "";
   }, [appUser, billingAddress, companyName, email, input?.adults, names, phone, taxId, termsAccepted]);
-  const hotelHref = input ? `/hotels/${input.propertySlug}?${new URLSearchParams({ property: input.propertySlug, room: input.roomTypeId, rate: input.ratePlanId, checkIn: input.checkIn, checkOut: input.checkOut, adults: String(input.adults), children: String(input.children), infants: String(input.infants) })}` : "/search";
+  const hotelHref = input ? `/hotels/${input.propertySlug}?${new URLSearchParams({ property: input.propertySlug, roomTypeId: input.roomTypeId, ratePlanId: input.ratePlanId, ...(quote ? { searchTotalPaise: String(quote.totalPaise) } : {}), bookingMode: input.bookingMode, ...(input.bookingMode === "hourly" ? { arrivalTime: input.arrivalTime ?? "", durationMinutes: String(input.durationMinutes ?? "") } : { checkOut: input.checkOut ?? "" }), checkIn: input.checkIn, adults: String(input.adults), children: String(input.children), infants: String(input.infants) })}` : "/search";
 
   const submit = async () => {
     if (!appUser) {
@@ -231,10 +248,12 @@ export function BookingCheckout() {
     }
     setBusy(true);
     setError("");
+    setQuoteChanged(false);
     try {
       if (!bookingIdempotencyKey.current) bookingIdempotencyKey.current = crypto.randomUUID();
       const body = {
         ...input,
+        expectedTotalPaise: quote.totalPaise,
         paymentMethod:
           quote.ratePlan.paymentMode === "pay_at_property"
             ? "pay_at_property"
@@ -257,8 +276,10 @@ export function BookingCheckout() {
       });
       const result = (await response.json()) as {
         error?: string;
+        code?: string;
         bookingId?: string;
         confirmationCode?: string;
+        expiresAt?: string;
         requiresPayment?: boolean;
         razorpay?: {
           keyId: string;
@@ -268,9 +289,18 @@ export function BookingCheckout() {
           orderId: string;
         };
       };
+      if (result.code === "QUOTE_CHANGED") {
+        bookingIdempotencyKey.current = "";
+        setTermsAccepted(false);
+        setQuoteChanged(true);
+        setQuoteVersion((current) => current + 1);
+        setBusy(false);
+        return;
+      }
       if (!response.ok || !result.bookingId || !result.confirmationCode)
         throw new Error(result.error ?? "Unable to create booking.");
       if (result.requiresPayment) {
+        setHoldExpiresAt(result.expiresAt ?? null);
         await loadRazorpay();
         if (!window.Razorpay || !result.razorpay)
           throw new Error("Secure payment is unavailable.");
@@ -342,6 +372,8 @@ export function BookingCheckout() {
     <main className="min-h-screen bg-[#f8f7f3] text-[#141b2b]">
       <SiteHeader onLoginClick={() => setLogin(true)} />
 
+      {quoteChanged && <p role="status" className="mx-auto max-w-[1280px] rounded-lg bg-amber-50 p-3 text-sm font-semibold">The price or stay rules changed. Review the refreshed stay details and accept the terms again before booking.</p>}
+      {holdSeconds !== null && <p role="status" className="mx-auto max-w-[1280px] rounded-lg bg-amber-50 p-3 text-sm font-semibold">{holdSeconds > 0 ? `Room held for ${Math.floor(holdSeconds / 60)}:${String(holdSeconds % 60).padStart(2, "0")}` : "Your payment hold has expired. Check Trips for the payment result."}</p>}
       <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         {/* Header & Stepper */}
         <div className="mb-8 border-b border-[#c4c6ce]/30 pb-6">
@@ -730,6 +762,7 @@ function BookingSummary({
           >
             <Heart className="h-4.5 w-4.5" />
           </button>
+          {quote && quote.balanceDuePaise > 0 && <p className="mt-3 text-xs font-semibold">Balance payable at property: {money(quote.balanceDuePaise, quote.currency)}</p>}
           {quote && (
             <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white">
               <span className="rounded-lg bg-white/20 px-2.5 py-1 text-[11px] font-bold backdrop-blur-md">
@@ -755,6 +788,7 @@ function BookingSummary({
               {location}
             </p>
           )}
+          {quote?.propertyRules && <div className="mt-4 rounded-xl border border-[var(--hk-border)] bg-[var(--hk-ivory)] p-4"><h3 className="mb-2 text-sm font-bold">Property rules</h3><GuestRules property={quote.propertyRules} /></div>}
           {quote?.cancellationPolicy && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-[#000615]" title={quote.cancellationPolicy.description}>
             <ShieldCheck className="h-3.5 w-3.5 text-[#000615]" />
             {quote.cancellationPolicy.cancellationFeePercent === 0 ? `Free cancellation up to ${quote.cancellationPolicy.refundableUntilHours}h before check-in` : quote.cancellationPolicy.name}
@@ -767,12 +801,12 @@ function BookingSummary({
             <SummaryDateBlock
               label="Check-in"
               value={quote ? shortDate(quote.checkIn) : "-"}
-              time={quote ? displayTime(quote.checkInTime, "From") : ""}
+              time={quote ? displayTime(quote.arrivalTime ?? quote.checkInTime, "From") : ""}
             />
             <SummaryDateBlock
               label="Check-out"
               value={quote ? shortDate(quote.checkOut) : "-"}
-              time={quote ? displayTime(quote.checkOutTime, "Until") : ""}
+              time={quote ? displayTime(quote.departureTime ?? quote.checkOutTime, "Until") : ""}
             />
             {quote && quote.nights > 0 && (
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#000615] shadow-xs">
@@ -808,11 +842,7 @@ function BookingSummary({
             <div className="mt-3 space-y-2.5 text-xs text-[#44474d]">
               <div className="flex justify-between">
                 <span>
-                  {money(
-                    quote.subtotalPaise / Math.max(quote.nights, 1),
-                    quote.currency
-                  )}{" "}
-                  × {quote.nights} {quote.nights === 1 ? "night" : "nights"}
+                  {quote.bookingMode === "hourly" ? `${quote.durationMinutes / 60} ${quote.durationMinutes === 60 ? "hour" : "hours"}` : `${quote.nights} nights`}
                 </span>
                 <span className="font-semibold text-[#000615]">
                   {money(quote.subtotalPaise, quote.currency)}

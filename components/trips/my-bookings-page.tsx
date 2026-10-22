@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Clock,
@@ -21,6 +21,10 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 
 type Booking = {
+  bookingMode?: "overnight" | "hourly";
+  startAt?: string | null;
+  endAt?: string | null;
+  durationMinutes?: number;
   id: string;
   confirmationCode: string;
   propertyId: string;
@@ -58,6 +62,8 @@ type Booking = {
   createdAt?: string | null;
   review: BookingReview | null;
 };
+
+type BookingsPage = { bookings: Booking[]; hasMore: boolean; nextCursor: string | null };
 
 declare global {
   interface Window {
@@ -123,14 +129,18 @@ async function loadRazorpay() {
 }
 
 export function MyBookingsPage() {
+  const [clockNow, setClockNow] = useState(0);
+  useEffect(() => { const update = () => setClockNow(Date.now()); queueMicrotask(update); const timer = setInterval(update, 15000); return () => clearInterval(timer); }, []);
   const queryClient = useQueryClient();
-  const bookingsQuery = useQuery({
+  const bookingsQuery = useInfiniteQuery({
     queryKey: queryKeys.bookings,
-    queryFn: ({ signal }) => apiFetch<{ bookings: Booking[]; hasMore: boolean; nextCursor: string | null }>("/api/bookings/mine", { signal, cache: "no-store" }),
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) => apiFetch<BookingsPage>(`/api/bookings/mine${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ""}`, { signal, cache: "no-store" }),
+    getNextPageParam: (page) => page.hasMore ? page.nextCursor : undefined,
     staleTime: 0,
   });
-  const bookings = useMemo(() => bookingsQuery.data?.bookings ?? [], [bookingsQuery.data?.bookings]);
-  const loading = bookingsQuery.isPending || bookingsQuery.isFetching;
+  const bookings = useMemo(() => [...new Map((bookingsQuery.data?.pages.flatMap((page) => page.bookings) ?? []).map((booking) => [booking.id, booking])).values()], [bookingsQuery.data?.pages]);
+  const loading = bookingsQuery.isPending || bookingsQuery.isRefetching;
   const [error, setError] = useState("");
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("upcoming");
   const [busy, setBusy] = useState<string | null>(null);
@@ -162,7 +172,7 @@ export function MyBookingsPage() {
             "expired",
             "payment_failed",
             "pending_payment",
-          ].includes(booking.bookingStatus) && booking.checkOut < today
+          ].includes(booking.bookingStatus) && (booking.endAt ? Date.parse(booking.endAt) < clockNow : booking.checkOut < today)
         );
       return (
         ![
@@ -171,10 +181,10 @@ export function MyBookingsPage() {
           "expired",
           "payment_failed",
           "pending_payment",
-        ].includes(booking.bookingStatus) && booking.checkOut >= today
+        ].includes(booking.bookingStatus) && (booking.endAt ? Date.parse(booking.endAt) >= clockNow : booking.checkOut >= today)
       );
     });
-  }, [bookings, tab]);
+  }, [bookings, tab, clockNow]);
 
   const cancel = async (bookingId: string) => {
     if (!window.confirm("Are you sure you want to cancel this booking?")) {
@@ -259,7 +269,7 @@ export function MyBookingsPage() {
   };
 
   const updateReview = (propertyId: string, review: BookingReview) => {
-    queryClient.setQueryData<{ bookings: Booking[]; hasMore: boolean; nextCursor: string | null }>(queryKeys.bookings, (current) => current ? { ...current, bookings: current.bookings.map((booking) => booking.propertyId === propertyId ? { ...booking, review } : booking) } : current);
+    queryClient.setQueryData<InfiniteData<BookingsPage>>(queryKeys.bookings, (current) => current ? { ...current, pages: current.pages.map((page) => ({ ...page, bookings: page.bookings.map((booking) => booking.propertyId === propertyId ? { ...booking, review } : booking) })) } : current);
     setReviewBooking((current) => current?.propertyId === propertyId ? { ...current, review } : current);
     setReviewNotice("Your review is now published and visible to other guests.");
   };
@@ -308,9 +318,9 @@ export function MyBookingsPage() {
         </div>
 
         {/* Error Alert */}
-        {error && (
+        {(error || bookingsQuery.error) && (
           <div className="mb-8 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900 flex items-center justify-between">
-            <span>{error}</span>
+            <span>{error || bookingsQuery.error?.message}</span>
             <button
               type="button"
               onClick={() => setError("")}
@@ -355,7 +365,9 @@ export function MyBookingsPage() {
             </div>
             <h3 className="text-lg font-bold text-[#0b1f3a]">No bookings found</h3>
             <p className="text-sm text-[#44474d] mt-1 max-w-sm mx-auto">
-              {tab === "upcoming"
+              {bookingsQuery.hasNextPage
+                ? "No matching bookings on the loaded pages. Load more bookings below to see earlier reservations."
+                : tab === "upcoming"
                 ? "You have no upcoming stays booked at the moment."
                 : tab === "pending_payment"
                 ? "No pending payment bookings."
@@ -382,7 +394,7 @@ export function MyBookingsPage() {
 
               const isConfirmed = booking.bookingStatus === "confirmed";
               const isPending = booking.bookingStatus === "pending_payment";
-              const canRateStay = tab === "past" && booking.bookingStatus === "completed";
+              const canRateStay = tab === "past" && booking.bookingStatus === "checked_out";
 
               const locationStr = [
                 booking.propertyCity,
@@ -452,8 +464,7 @@ export function MyBookingsPage() {
                             {money(booking.totalPaise, booking.currency)}
                           </div>
                           <div className="text-xs text-[#44474d] mt-0.5">
-                            Total for {booking.nights} night
-                            {booking.nights > 1 ? "s" : ""}
+                            Total for {booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} ${booking.nights === 1 ? "night" : "nights"}`}
                           </div>
                         </div>
                       </div>
@@ -575,6 +586,13 @@ export function MyBookingsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {bookingsQuery.hasNextPage && (
+          <div className="mt-8 text-center">
+            <button type="button" disabled={bookingsQuery.isFetching} onClick={() => void bookingsQuery.fetchNextPage()} className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-[#0b1f3a] disabled:opacity-50">
+              {bookingsQuery.isFetchingNextPage ? "Loading bookings…" : "Load more bookings"}
+            </button>
           </div>
         )}
       </main>

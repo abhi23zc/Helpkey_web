@@ -1,3 +1,4 @@
+import { assertCanEditKyc } from "@/lib/partner/kyc-policy";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -22,7 +23,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     const { propertyId } = await params;
     const propertyRef = await propertyOwner(user.uid, propertyId);
     const [property, input] = await Promise.all([propertyRef.get(), schema.parseAsync(await request.json())]);
-    if (property.data()?.status !== "draft" || property.data()?.approvalStatus !== "not_submitted") throw new Error("Verification documents can only be changed while this listing is a draft.");
+    assertCanEditKyc(property.data());
     const upload = await adminDb.collection("pendingUploads").doc(input.uploadId).get();
     const data = upload.data();
     if (!data || data.ownerId !== user.uid || data.propertyId !== propertyId || data.kind !== "kyc" || data.expiresAt < Date.now()) throw new Error("UPLOAD_EXPIRED");
@@ -35,12 +36,15 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     await verifyR2Object(originalKey, data.sizeBytes, data.checksum);
     const replacedKeys: string[] = [];
     await adminDb.runTransaction(async (transaction) => {
+      const currentProperty = await transaction.get(propertyRef);
+      assertCanEditKyc(currentProperty.data());
       const existing = await transaction.get(adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).where("documentType", "==", data.documentType));
       existing.docs.forEach((previous) => {
         const previousKey = previous.data().r2ObjectKey;
         if (typeof previousKey === "string") replacedKeys.push(previousKey);
         transaction.delete(previous.ref);
       });
+      transaction.update(propertyRef, { updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
       transaction.set(doc, { propertyId, ownerId: user.uid, documentType: data.documentType, fileName: data.fileName, mimeType: data.mimeType, sizeBytes: data.sizeBytes, checksum: data.checksum, r2ObjectKey: originalKey, isPrivate: true, status: "pending", createdAt: FieldValue.serverTimestamp(), createdBy: user.uid, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
     });
     await upload.ref.delete();

@@ -1,6 +1,7 @@
-import { createHash } from "crypto";
+import { withBackgroundDelivery } from "../lib/background/commit";
+import { writePublication } from "../lib/background/publication";
 import { cert, initializeApp } from "firebase-admin/app";
-import { FieldPath, FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
+import { FieldPath, getFirestore } from "firebase-admin/firestore";
 
 type Kind = "property" | "review" | "all";
 const argv = process.argv.slice(2);
@@ -17,7 +18,7 @@ const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID ?? process.env.NEXT_PUBL
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
 if (!projectId || !clientEmail || !privateKey) throw new Error("Firebase admin configuration is missing");
-const db = getFirestore(initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) }));
+const db = withBackgroundDelivery(getFirestore(initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) })));
 
 const targets = [
   ...(kind !== "review" ? [{ collection: "mediaAssets", assetType: "property_image" as const, statusField: "moderationStatus" }] : []),
@@ -35,13 +36,13 @@ for (const target of targets) {
     const checksum = data.checksum;
     if (typeof checksum !== "string" || !/^[a-f0-9]{64}$/i.test(checksum) || typeof data.r2ObjectKey !== "string" || (target.assetType === "property_image" && data.kind !== "property_image")) { report.invalid++; continue; }
     if (data.publication?.status === "published" && data.publication?.sourceChecksum === checksum && ["thumb", "card", "large"].every((name) => typeof data.publication?.variants?.[name]?.objectKey === "string")) { report.alreadyPublished++; continue; }
-    const id = createHash("sha256").update(`publish:${doc.id}:${checksum}`).digest("hex");
     if (apply) {
-      const batch = db.batch();
-      const now = FieldValue.serverTimestamp();
-      batch.set(db.collection("mediaPublicationJobs").doc(id), { operation: "publish", assetType: target.assetType, assetId: doc.id, sourceCollection: target.collection, sourceObjectKey: data.r2ObjectKey, sourceChecksum: checksum, status: "queued", attempts: 0, notBefore: Timestamp.now(), leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, createdAt: now, updatedAt: now }, { merge: true });
-      batch.set(doc.ref, { publication: { status: "queued", sourceChecksum: checksum, variants: {}, attempts: 0, lastErrorCode: null, queuedAt: now, publishedAt: null, updatedAt: now } }, { merge: true });
-      await batch.commit();
+      await db.runTransaction(async tx => {
+        const current = (await tx.get(doc.ref)).data();
+        if (!current || current[target.statusField] !== "approved" || current.checksum !== checksum || current.r2ObjectKey !== data.r2ObjectKey) return;
+        if (current.publication?.requestId && ["queued", "processing", "published"].includes(current.publication.status) && current.publication.sourceChecksum === checksum) return;
+        writePublication(db, tx, { operation: "publish", assetType: target.assetType, assetId: doc.id, sourceCollection: target.assetType === "property_image" ? "mediaAssets" : "reviewPhotos", sourceObjectKey: data.r2ObjectKey, sourceChecksum: checksum });
+      });
     }
     report.queued++;
   }

@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const user = await requireAuthenticatedUser();
   if (!user.roles.includes("admin")) redirect("/");
-  return <AdminShell>{children}</AdminShell>;
+  return <AdminShell adminName={user.fullName || "Admin"}>{children}</AdminShell>;
 }

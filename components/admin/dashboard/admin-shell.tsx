@@ -9,13 +9,13 @@ import {
   LayoutDashboard,
   Menu,
   MessageSquare,
-  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
   Settings,
   ShieldCheck,
   Fingerprint,
+  LockKeyhole,
   Users,
   WalletCards,
   X,
@@ -37,13 +37,15 @@ type AdminShellContextValue = {
 
 const AdminShellContext = createContext<AdminShellContextValue | null>(null);
 
+const searchablePaths: string[] = ["/admin", "/admin/partners", "/admin/properties", "/admin/users"];
+
 const adminNav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true, disabled: false },
   { href: "/admin/partners", label: "Partners", icon: ShieldCheck, exact: false, disabled: false },
   { href: "/admin/properties", label: "Properties", icon: Building2, exact: false, disabled: false },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarDays, exact: false, disabled: false },
   { href: "/admin/users", label: "Users", icon: Users, exact: false, disabled: false },
-  { href: "/admin/privacy-requests", label: "Privacy Requests", icon: ShieldCheck, exact: false, disabled: false },
+  { href: "/admin/privacy-requests", label: "Privacy Requests", icon: LockKeyhole, exact: false, disabled: false },
   { href: "/admin/aadhaar-lab", label: "Aadhaar Lab", icon: Fingerprint, exact: false, disabled: false },
   { href: "/admin/reviews", label: "Reviews", icon: MessageSquare, exact: false, disabled: false },
   { href: "/admin/payments", label: "Payments", icon: WalletCards, exact: false, disabled: true },
@@ -59,7 +61,11 @@ export function useAdminShell() {
   return context;
 }
 
-export function AdminShell({ children }: { children: ReactNode }) {
+export function AdminShell({ children, adminName = "Admin" }: { children: ReactNode; adminName?: string }) {
+  const pathname = usePathname();
+  const initial = (adminName.trim()[0] ?? "A").toUpperCase();
+  // Only these pages read the header search box; hide it elsewhere so it never looks broken.
+  const searchable = searchablePaths.includes(pathname);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
@@ -85,14 +91,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <AdminShellContext.Provider value={context}>
       <main
-        className={`min-h-screen bg-[#f7f4ee] font-sans text-[#111827] transition-[padding] duration-300 ${
+        className={`min-h-screen bg-ivory-50 font-sans text-ink transition-[padding] duration-300 ${
           sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
         }`}
       >
         <aside
           onMouseEnter={() => setSidebarHovered(true)}
           onMouseLeave={() => setSidebarHovered(false)}
-          className={`fixed inset-y-0 left-0 z-40 hidden flex-col bg-[#0a1f3c] text-[#d6e3ff] shadow-xl transition-[width] duration-300 lg:flex ${
+          className={`fixed inset-y-0 left-0 z-40 hidden flex-col bg-navy-900 text-navy-200 shadow-xl transition-[width] duration-300 lg:flex ${
             isSidebarExpanded ? "w-64" : "w-20"
           }`}
         >
@@ -101,7 +107,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setSidebarCollapsed((current) => !current)}
-            className={`mx-3 mt-3 flex h-10 items-center rounded-lg bg-[#06142b]/80 px-3 text-xs font-semibold text-white transition-all hover:bg-[#06142b] active:scale-95 ${
+            className={`mx-3 mt-3 flex h-10 items-center rounded-lg bg-navy-950/80 px-3 text-xs font-semibold text-white transition-all hover:bg-navy-950 active:scale-95 ${
               !isSidebarExpanded ? "justify-center" : "justify-between"
             }`}
             aria-label={sidebarCollapsed ? "Pin sidebar open" : "Collapse sidebar"}
@@ -118,10 +124,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
             ) : (
               <>
                 <span className="flex items-center gap-2">
-                  <PanelLeftClose className="h-4 w-4 text-[#d8b46a]" />
+                  <PanelLeftClose className="h-4 w-4 text-gold-500" />
                   Collapse
                 </span>
-                <span className="rounded bg-[#0a1f3c] px-1.5 py-0.5 font-mono text-[9px] text-[#b5c7ea]">
+                <span className="rounded bg-navy-900 px-1.5 py-0.5 font-mono text-[11px] text-navy-300">
                   Ctrl+B
                 </span>
               </>
@@ -131,27 +137,24 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <AdminSidebar collapsed={!isSidebarExpanded} />
 
           <div
-            className={`m-3 mb-6 flex items-center gap-3 rounded-xl border border-white/5 bg-[#06142b] p-3 ${
+            className={`m-3 mb-6 flex items-center gap-3 rounded-xl border border-white/5 bg-navy-950 p-3 ${
               !isSidebarExpanded ? "justify-center" : ""
             }`}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d8b46a] text-sm font-bold text-[#261a00] shadow-sm">
-              A
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold-500 text-sm font-bold text-navy-950 shadow-sm">
+              {initial}
             </div>
             <div className={`min-w-0 flex-1 ${!isSidebarExpanded ? "hidden" : ""}`}>
-              <p className="truncate text-xs font-semibold text-white">Admin User</p>
-              <p className="truncate text-[10px] text-[#7587a7]">Platform Director</p>
+              <p className="truncate text-xs font-semibold text-white">{adminName}</p>
+              <p className="truncate text-xs text-navy-400">Administrator</p>
             </div>
-            <MoreHorizontal
-              className={`h-4 w-4 text-[#7587a7] ${!isSidebarExpanded ? "hidden" : ""}`}
-            />
           </div>
         </aside>
 
-        {mobileMenuOpen && <MobileSidebar onClose={() => setMobileMenuOpen(false)} />}
+        {mobileMenuOpen && <MobileSidebar adminName={adminName} initial={initial} onClose={() => setMobileMenuOpen(false)} />}
 
         <header
-          className={`sticky top-0 z-30 h-16 border-b border-[#e6e2da] bg-white/90 backdrop-blur-xl transition-[left] duration-300 lg:fixed lg:right-0 lg:h-20 ${
+          className={`sticky top-0 z-30 h-16 border-b border-line bg-white/90 backdrop-blur-xl transition-[left] duration-300 lg:fixed lg:right-0 lg:h-20 ${
             sidebarCollapsed ? "lg:left-20" : "lg:left-64"
           }`}
         >
@@ -159,34 +162,35 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="rounded-xl border border-slate-200 p-2 text-[#44474d] hover:bg-slate-100 lg:hidden"
+                className="rounded-xl border border-slate-200 p-2 text-muted hover:bg-slate-100 lg:hidden"
                 onClick={() => setMobileMenuOpen(true)}
                 aria-label="Open mobile menu"
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <div className="hidden items-center gap-2 text-xs text-[#44474d] sm:flex">
-                <Building2 className="h-4 w-4 text-[#c6973e]" />
+              <div className="hidden items-center gap-2 text-xs text-muted sm:flex">
+                <Building2 className="h-4 w-4 text-gold-600" />
                 <span className="text-slate-300">/</span>
-                <span className="font-semibold text-[#111827]">Platform Console</span>
+                <span className="font-semibold text-ink">Platform Console</span>
                 <span className="mx-1 h-3.5 w-px bg-slate-200" />
-                <span className="rounded-full border border-[#e6e2da] bg-[#fbf3df] px-2.5 py-1 text-[10px] font-semibold text-[#5b4302]">
-                  14:32 UTC
-                </span>
+                <AdminClock />
               </div>
             </div>
 
+            {searchable ? (
             <div className="relative max-w-md flex-1 px-2 sm:px-4">
               <Search className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search partners, properties, or records..."
-                className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-8 text-xs outline-none transition-colors placeholder:text-slate-400 focus:border-[#c6973e] focus:bg-white focus:ring-2 focus:ring-[#d8b46a]/20 sm:h-10"
+                placeholder="Search this list…"
+                aria-label="Search this list"
+                className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-8 text-xs outline-none transition-colors placeholder:text-slate-400 focus:border-gold-600 focus:bg-white focus:ring-2 focus:ring-gold-500/20 sm:h-10"
               />
               {searchQuery && (
                 <button
                   type="button"
+                  aria-label="Clear search"
                   onClick={() => setSearchQuery("")}
                   className="absolute right-5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:text-slate-600"
                 >
@@ -194,18 +198,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 </button>
               )}
             </div>
+            ) : <div className="flex-1" />}
 
             <div className="flex items-center gap-2.5">
-              <span className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs sm:flex">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
-                </span>
-                Live Production
-              </span>
+              <EnvironmentBadge />
               <NotificationBell />
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0a1f3c] text-xs font-bold text-white shadow-sm ring-2 ring-[#d8b46a]">
-                A
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-900 text-xs font-bold text-white shadow-sm ring-2 ring-gold-500" title={adminName}>
+                {initial}
               </div>
             </div>
           </div>
@@ -219,24 +218,52 @@ export function AdminShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Shows the admin's local time. Rendered after mount so server and client markup match. */
+function AdminClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 30_000);
+    return () => { clearTimeout(first); clearInterval(timer); };
+  }, []);
+  const text = now ? now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZoneName: "short" }) : "";
+  return (
+    <span className="min-w-[5.5rem] rounded-full border border-line bg-gold-100 px-2.5 py-1 text-center text-xs font-semibold text-gold-700" aria-label="Current time">
+      {text || "\u00a0"}
+    </span>
+  );
+}
+
+/** Tells the admin which environment they are acting in, based on the build mode. */
+function EnvironmentBadge() {
+  const production = process.env.NODE_ENV === "production";
+  return (
+    <span className="hidden items-center gap-2 rounded-xl border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink sm:flex">
+      <span className={`h-2 w-2 rounded-full ${production ? "bg-success" : "bg-warning"}`} aria-hidden />
+      {production ? "Production" : "Development"}
+    </span>
+  );
+}
+
 function SidebarHeader({ expanded }: { expanded: boolean }) {
   return (
     <div
-      className={`flex h-20 items-center gap-3 bg-[#06142b] px-5 ${
+      className={`flex h-20 items-center gap-3 bg-navy-950 px-5 ${
         !expanded ? "justify-center px-3" : ""
       }`}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#d8b46a] text-[#261a00] shadow-sm">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold-500 text-navy-950 shadow-sm">
         <Building2 className="h-5 w-5" />
       </div>
       <div className={!expanded ? "hidden" : "min-w-0 flex-1"}>
         <div className="flex items-center gap-1.5 text-lg font-bold tracking-tight text-white">
           Helpkey
-          <span className="rounded bg-[#755a1a] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+          <span className="rounded bg-gold-700 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-white">
             Admin
           </span>
         </div>
-        <p className="truncate text-[10px] text-[#7587a7]">Hotel admin console</p>
+        <p className="truncate text-xs text-navy-400">Hotel admin console</p>
       </div>
     </div>
   );
@@ -252,29 +279,29 @@ function AdminSidebar({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function MobileSidebar({ onClose }: { onClose: () => void }) {
+function MobileSidebar({ onClose, adminName, initial }: { onClose: () => void; adminName: string; initial: string }) {
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
       <div
         className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
         onClick={onClose}
       />
-      <nav className="fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col justify-between bg-[#0a1f3c] p-4 text-[#d6e3ff] shadow-2xl animate-in slide-in-from-left duration-300">
+      <nav className="fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col justify-between bg-navy-900 p-4 text-navy-200 shadow-2xl animate-in slide-in-from-left duration-300">
         <div>
-          <div className="flex items-center justify-between border-b border-[#06142b] pb-4">
+          <div className="flex items-center justify-between border-b border-navy-950 pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d8b46a] font-bold text-[#261a00]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gold-500 font-bold text-navy-950">
                 <Building2 className="h-5 w-5" />
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Helpkey Admin</h3>
-                <p className="text-[10px] text-[#7587a7]">Platform Console</p>
+                <p className="text-xs text-navy-400">Platform Console</p>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-2 text-[#7587a7] hover:bg-[#06142b] hover:text-white"
+              className="rounded-lg p-2 text-navy-400 hover:bg-navy-950 hover:text-white"
               aria-label="Close mobile menu"
             >
               <X className="h-5 w-5" />
@@ -295,14 +322,14 @@ function MobileSidebar({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="border-t border-[#06142b] pt-4">
-          <div className="flex items-center gap-3 rounded-xl bg-[#06142b] p-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d8b46a] text-sm font-bold text-[#261a00]">
-              A
+        <div className="border-t border-navy-950 pt-4">
+          <div className="flex items-center gap-3 rounded-xl bg-navy-950 p-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold-500 text-sm font-bold text-navy-950">
+              {initial}
             </div>
             <div>
-              <p className="text-xs font-semibold text-white">Admin User</p>
-              <p className="text-[10px] text-[#7587a7]">Platform Director</p>
+              <p className="text-xs font-semibold text-white">{adminName}</p>
+              <p className="text-xs text-navy-400">Administrator</p>
             </div>
           </div>
         </div>
@@ -329,17 +356,18 @@ function SidebarItem({
     collapsed ? "justify-center px-2" : ""
   } ${
     active
-      ? "border-l-2 border-[#d8b46a] bg-white/10 text-white shadow-md"
+      ? "border-l-2 border-gold-500 bg-white/10 text-white shadow-md"
       : item.disabled
-        ? "cursor-not-allowed text-[#7587a7] opacity-60"
-        : "text-[#b5c7ea] hover:bg-[#06142b] hover:text-white"
+        ? "cursor-not-allowed text-navy-400 opacity-60"
+        : "text-navy-300 hover:bg-navy-950 hover:text-white"
   }`;
 
   if (item.disabled) {
     return (
-      <button type="button" disabled title={collapsed ? item.label : undefined} className={className}>
-        <Icon className="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" />
-        <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
+      <button type="button" disabled title={`${item.label} — coming soon`} className={className}>
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className={collapsed ? "sr-only" : "flex-1 truncate"}>{item.label}</span>
+        {!collapsed && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-navy-300">Soon</span>}
       </button>
     );
   }
@@ -351,7 +379,7 @@ function SidebarItem({
       title={collapsed ? item.label : undefined}
       className={className}
     >
-      <Icon className={`h-4 w-4 shrink-0 transition-transform group-hover:scale-110 ${active ? "text-[#d8b46a]" : ""}`} />
+      <Icon className={`h-4 w-4 shrink-0 transition-transform group-hover:scale-110 ${active ? "text-gold-500" : ""}`} />
       <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
     </Link>
   );

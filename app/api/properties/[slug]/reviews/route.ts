@@ -9,4 +9,4 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to load reviews." }, { status: 422 }); }
 }
 
-export const GET = withApiHandler(rawGET, { route: "/api/properties/[slug]/reviews", auth: "public", requireAuth: false, cache: "public" });
+export const GET = withApiHandler(rawGET, { route: "/api/properties/[slug]/reviews", auth: "public", requireAuth: false, cache: "none" });

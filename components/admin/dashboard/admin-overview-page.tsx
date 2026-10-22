@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 import { Activity, AlertTriangle, Ban, Building2, CalendarDays, CheckCircle, CircleAlert, Clock3, Download, FileCheck, History, ShieldCheck, UserCheck, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
-import { adminApi } from "./api";
 import { useAdminShell } from "./admin-shell";
-import { AdminPropertyReviewDrawer } from "./admin-property-review-drawer";
 import { useAdminOverview } from "./use-admin-data";
 import { label, type Overview, type Property } from "./types";
 
@@ -14,8 +14,7 @@ type AdminOverviewSection = "Overview" | "Properties" | "Partners" | "Customers"
 export function AdminOverviewPage() {
   const router = useRouter();
   const { searchQuery } = useAdminShell();
-  const { overview, properties, error, reload } = useAdminOverview();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { overview, properties, error } = useAdminOverview();
 
   return (
     <>
@@ -23,22 +22,13 @@ export function AdminOverviewPage() {
       <OverviewPanel
         data={overview}
         properties={properties}
-        onOpen={setSelectedId}
         onNavigate={(section) => {
           if (section === "Properties") router.push("/admin/properties");
           if (section === "Partners") router.push("/admin/partners");
           if (section === "Customers") router.push("/admin/users");
         }}
-        onRefresh={reload}
         searchQuery={searchQuery}
       />
-      {selectedId && (
-        <AdminPropertyReviewDrawer
-          propertyId={selectedId}
-          onClose={() => setSelectedId(null)}
-          onChanged={reload}
-        />
-      )}
     </>
   );
 }
@@ -55,21 +45,15 @@ function AdminPageError({ message }: { message: string }) {
 function OverviewPanel({
   data,
   properties,
-  onOpen,
   onNavigate,
-  onRefresh,
   searchQuery,
 }: {
   data: Overview | null;
   properties: Property[];
-  onOpen: (id: string) => void;
   onNavigate: (section: AdminOverviewSection) => void;
-  onRefresh: () => void;
   searchQuery: string;
 }) {
   const [velocityTimeframe, setVelocityTimeframe] = useState<"weekly" | "monthly">("weekly");
-  const [busyProperty, setBusyProperty] = useState<string | null>(null);
-  const [actionError, setActionError] = useState("");
   const metric = data?.metrics ?? {};
   const pending =
     data?.urgentProperties ??
@@ -83,24 +67,6 @@ function OverviewPanel({
         .includes(searchQuery.toLowerCase())
     );
   }, [properties, searchQuery]);
-
-  const approveProperty = async (propertyId: string) => {
-    setBusyProperty(propertyId);
-    setActionError("");
-    try {
-      await adminApi<unknown>(`/api/admin/properties/${propertyId}/review`, {
-        method: "POST",
-        body: JSON.stringify({ decision: "approve" }),
-      });
-      onRefresh();
-    } catch (cause) {
-      setActionError(
-        cause instanceof Error ? cause.message : "Unable to approve listing."
-      );
-    } finally {
-      setBusyProperty(null);
-    }
-  };
 
   const cards = [
     {
@@ -173,13 +139,6 @@ function OverviewPanel({
           </button>
         </div>
       </header>
-
-      {actionError && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
-          <p>{actionError}</p>
-        </div>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
@@ -328,10 +287,9 @@ function OverviewPanel({
                 <span className="text-right">Action</span>
               </div>
               {filteredProperties.slice(0, 5).map((property) => (
-                <button
-                  type="button"
+                <Link
                   key={property.id}
-                  onClick={() => onOpen(property.id)}
+                  href={`/admin/properties/${encodeURIComponent(property.id)}`}
                   className="grid w-full min-w-[700px] grid-cols-[.8fr_1.7fr_1fr_1fr_1fr] items-center gap-4 border-t border-slate-100 px-5 py-3 text-left text-xs transition-colors hover:bg-slate-50"
                 >
                   <b className="font-mono text-slate-900">
@@ -352,7 +310,7 @@ function OverviewPanel({
                   <span className="justify-self-end font-bold text-[#0b1f3a]">
                     Review
                   </span>
-                </button>
+                </Link>
               ))}
               {!filteredProperties.length && (
                 <p className="py-8 text-center text-sm text-slate-500">
@@ -403,21 +361,12 @@ function OverviewPanel({
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      disabled={busyProperty === property.id}
-                      onClick={() => void approveProperty(property.id)}
-                      className="rounded-lg bg-[#0b1f3a] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpen(property.id)}
+                    <Link
+                      href={`/admin/properties/${encodeURIComponent(property.id)}`}
                       className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                     >
                       Review
-                    </button>
+                    </Link>
                   </div>
                 </div>
               ))}

@@ -1,19 +1,20 @@
 import { LiveSearchResults } from "@/components/search/live-search-results";
 import { Suspense } from "react";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
-import { catalogSearchSchema, searchCatalogPage } from "@/lib/customer/catalog";
+import { catalogSearchFromParams, searchCatalogPage } from "@/lib/customer/catalog";
 import { queryKeys } from "@/lib/query/keys";
 
 export default async function Page({ searchParams }: PageProps<"/search">) {
   const raw = await searchParams;
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(raw)) { if (Array.isArray(value)) value.forEach((item) => params.append(key, item)); else if (value !== undefined) params.set(key, value); }
-  const input = catalogSearchSchema.safeParse({ ...Object.fromEntries(params), amenities: params.getAll("amenity"), limit: params.get("limit") ?? 24, cursor: params.get("cursor") || undefined });
+  let input: ReturnType<typeof catalogSearchFromParams> | null = null;
+  try { input = catalogSearchFromParams(params); } catch { /* The client displays validation errors. */ }
   const client = new QueryClient();
-  if (input.success) {
+  if (input) {
     await client.prefetchInfiniteQuery({
       queryKey: queryKeys.search({ query: params.toString() }),
-      queryFn: ({ pageParam }) => searchCatalogPage({ ...input.data, cursor: pageParam || undefined }),
+      queryFn: ({ pageParam }) => searchCatalogPage({ ...input!, cursor: pageParam || undefined }),
       initialPageParam: "" as string,
       staleTime: 60_000,
     });

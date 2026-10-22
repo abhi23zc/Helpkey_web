@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner } from "@/lib/partner/service";
+import { localParts } from "@/lib/booking/domain";
+import { intervalReport } from "@/lib/booking/reporting";
 import { reviewSummary } from "@/lib/reviews";
 
 const querySchema = z.object({
@@ -11,7 +13,7 @@ const querySchema = z.object({
   range: z.enum(["daily", "weekly", "monthly"]).default("daily"),
 });
 
-const activeBookingStatuses = new Set(["pending_payment", "confirmed", "checked_in", "completed"]);
+const activeBookingStatuses = new Set(["pending_payment", "confirmed", "checked_in", "checked_out", "completed"]);
 const occupiedStatuses = new Set(["confirmed", "checked_in"]);
 const terminalBookingStatuses = new Set(["cancelled", "expired", "payment_failed", "no_show"]);
 
@@ -64,7 +66,7 @@ function reportBuckets(selectedDate: string, range: "daily" | "weekly" | "monthl
   return Array.from({ length: 12 }, (_, index) => {
     const date = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + index - 11, 1));
     const key = dateKey(date).slice(0, 7);
-    return { key, label: new Intl.DateTimeFormat("en-IN", { month: "short", timeZone: "UTC" }).format(date), start: `${key}-01`, end: `${key}-31` };
+    return { key, label: new Intl.DateTimeFormat("en-IN", { month: "short", timeZone: "UTC" }).format(date), start: `${key}-01`, end: dateKey(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0))) };
   });
 }
 
@@ -74,8 +76,9 @@ function dateInBucket(date: string | null, bucket: { start: string; end: string 
   return date >= bucket.start && date <= bucket.end;
 }
 
-function bookingDate(data: FirebaseFirestore.DocumentData, field: "createdAt" | "paidAt") {
-  return iso(data[field])?.slice(0, 10) ?? null;
+function bookingDate(data: FirebaseFirestore.DocumentData, field: "createdAt" | "paidAt", timezone: string) {
+  const value = iso(data[field]);
+  return value ? localParts(Date.parse(value), timezone).date : null;
 }
 
 const rawGET = async function GET(request: Request) {
@@ -86,47 +89,49 @@ const rawGET = async function GET(request: Request) {
     const raw = Object.fromEntries(new URL(request.url).searchParams);
     const input = querySchema.parse(raw);
     const propertyRef = await propertyOwner(user.uid, input.propertyId);
-    const [propertySnap, bookingsSnap, roomsSnap] = await Promise.all([
+    const [propertySnap, bookingsSnap, roomsSnap, refundsSnap] = await Promise.all([
       propertyRef.get(),
-      adminDb.collection("bookings").where("propertyId", "==", input.propertyId).where("checkOut", ">=", addDays(input.date, -31)).orderBy("checkOut").limit(50).get(),
-      adminDb.collection("roomTypes").where("propertyId", "==", input.propertyId).limit(50).get(),
+      adminDb.collection("bookings").where("propertyId", "==", input.propertyId).get(),
+      adminDb.collection("roomTypes").where("propertyId", "==", input.propertyId).get(),
+      adminDb.collection("refunds").where("propertyId", "==", input.propertyId).get(),
     ]);
     const property = propertySnap.data() ?? {};
-    const bookings: Array<FirebaseFirestore.DocumentData & { id: string }> = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const bookings: Array<FirebaseFirestore.DocumentData & { id: string; bookingStatus: string; checkIn: string; checkOut: string }> = bookingsSnap.docs.map((doc) => ({ ...doc.data(), id: doc.id, bookingStatus: String(doc.data().bookingStatus), checkIn: String(doc.data().checkIn), checkOut: String(doc.data().checkOut) }));
     const rooms: Array<FirebaseFirestore.DocumentData & { id: string }> = roomsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     const buckets = reportBuckets(input.date, input.range);
     const activeRooms = rooms.filter((room) => room.status === "active");
     const sellableInventory = activeRooms.reduce((total, room) => total + Math.max(0, number(room.totalInventory)), 0);
 
     const inventoryDays = Array.from({ length: 7 }, (_, index) => addDays(input.date, index));
-    const inventoryRefs = activeRooms.flatMap((room) => inventoryDays.map((day) => adminDb.collection("roomNightInventory").doc(`${input.propertyId}_${room.id}_${day}`)));
+    const inventoryRefs = activeRooms.flatMap((room) => inventoryDays.map((day) => adminDb.collection(property.inventoryEngine === "interval_v1" ? "inventoryCalendars" : "roomNightInventory").doc(`${input.propertyId}_${room.id}_${day}`)));
     const inventorySnaps = inventoryRefs.length ? await adminDb.getAll(...inventoryRefs) : [];
     const reservedByDay = new Map(inventoryDays.map((day) => [day, 0]));
     for (const snap of inventorySnaps) {
       const data = snap.data();
-      const day = typeof data?.date === "string" ? data.date : "";
-      reservedByDay.set(day, (reservedByDay.get(day) ?? 0) + Math.max(0, number(data?.reserved)));
+      const day = typeof data?.date === "string" ? data.date : snap.id.slice(-10);
+      const reserved = property.inventoryEngine === "interval_v1" ? Math.max(0, ...Object.keys(data?.reserved ?? {}).map((key) => number(data?.reserved?.[key]) + number(data?.blocked?.[key])), ...Object.keys(data?.blocked ?? {}).map((key) => number(data?.reserved?.[key]) + number(data?.blocked?.[key]))) : Math.max(0, number(data?.reserved));
+      reservedByDay.set(day, (reservedByDay.get(day) ?? 0) + reserved);
     }
 
     const dayBookings = bookings.filter((booking) => booking.checkIn === input.date && occupiedStatuses.has(String(booking.bookingStatus)));
-    const departures = bookings.filter((booking) => booking.checkOut === input.date && ["checked_in", "completed"].includes(String(booking.bookingStatus)));
+    const departures = bookings.filter((booking) => booking.checkOut === input.date && ["checked_in", "checked_out", "completed"].includes(String(booking.bookingStatus)));
     const staying = bookings.filter((booking) => booking.checkIn <= input.date && booking.checkOut > input.date && occupiedStatuses.has(String(booking.bookingStatus)));
     const pendingRequests = bookings.filter((booking) => Boolean(booking.specialRequest) && activeBookingStatuses.has(String(booking.bookingStatus)));
-    const noShowRisk = bookings.filter((booking) => booking.checkIn < input.date && booking.bookingStatus === "confirmed");
-    const occupiedRoomNights = staying.length;
-    const occupancy = sellableInventory ? Math.round((occupiedRoomNights / sellableInventory) * 100) : 0;
+    const noShowRisk = bookings.filter((booking) => booking.bookingStatus === "confirmed" && (booking.startAt ? Date.parse(booking.startAt) < Date.now() : booking.checkIn < input.date));
 
     const series = buckets.map((bucket) => {
       let bookedPaise = 0;
       let paidPaise = 0;
       for (const booking of bookings) {
-        if (!terminalBookingStatuses.has(String(booking.bookingStatus)) && dateInBucket(bookingDate(booking, "createdAt"), bucket, input.range)) bookedPaise += Math.max(0, number(booking.totalPaise));
-        if (booking.paymentStatus === "paid" && dateInBucket(bookingDate(booking, "paidAt"), bucket, input.range)) paidPaise += Math.max(0, number(booking.paidPaise));
+        if (!terminalBookingStatuses.has(String(booking.bookingStatus)) && dateInBucket(bookingDate(booking, "createdAt", property.timezone ?? "Asia/Kolkata"), bucket, input.range)) bookedPaise += Math.max(0, number(booking.totalPaise));
+        if (number(booking.paidPaise) > 0 && dateInBucket(bookingDate(booking, "paidAt", property.timezone ?? "Asia/Kolkata"), bucket, input.range)) paidPaise += Math.max(0, number(booking.paidPaise));
       }
-      const occupied = bookings.filter((booking) => booking.checkIn <= bucket.end && booking.checkOut > bucket.start && occupiedStatuses.has(String(booking.bookingStatus))).length;
-      return { label: bucket.label, bookedPaise, paidPaise, occupancy: sellableInventory ? Math.min(100, Math.round((occupied / sellableInventory) * 100)) : 0 };
+      const report = intervalReport(bookings as Parameters<typeof intervalReport>[0], bucket.start, addDays(bucket.end, 1), property.timezone ?? "Asia/Kolkata", sellableInventory);
+      const refundedPaise = refundsSnap.docs.filter((doc) => { const data = doc.data(), processedAt = iso(data.processedAt); return data.status === "processed" && processedAt && dateInBucket(localParts(Date.parse(processedAt), property.timezone ?? "Asia/Kolkata").date, bucket, input.range); }).reduce((sum, doc) => sum + number(doc.data().amountPaise), 0);
+      return { label: bucket.label, bookedPaise, paidPaise, refundedPaise, ...report };
     });
 
+    const dayReport = intervalReport(bookings as Parameters<typeof intervalReport>[0], input.date, addDays(input.date, 1), property.timezone ?? "Asia/Kolkata", sellableInventory);
     const review = reviewSummary(property.reviewSummary);
     let latestReview: { reviewerName: string; rating: number; text: string; submittedAt: string | null } | null = null;
     try {
@@ -163,7 +168,7 @@ const rawGET = async function GET(request: Request) {
     return Response.json({
       property: { name: typeof property.name === "string" ? property.name : "Property", status: property.status ?? "draft", onboarding: property.onboarding ?? { completedSteps: [] } },
       currency: typeof property.currency === "string" ? property.currency : "INR",
-      metrics: { arrivals: dayBookings.length, departures: departures.length, occupancy, stayingTonight: staying.length, pendingRequests: pendingRequests.length, noShowRisk: noShowRisk.length, bookedPaise: series.reduce((total, item) => total + item.bookedPaise, 0), paidPaise: series.reduce((total, item) => total + item.paidPaise, 0) },
+      metrics: { platformCollectedPaise: bookings.filter((booking) => booking.paymentMethod === "online").reduce((sum, booking) => sum + number(booking.paidPaise), 0), propertyCollectedPaise: bookings.filter((booking) => booking.paymentStatus === "paid_at_property").reduce((sum, booking) => sum + number(booking.paidPaise), 0), roomHours: dayReport.roomHours, roomNights: dayReport.roomNights, refundedPaise: bookings.reduce((sum, booking) => sum + number(booking.refundedPaise), 0), arrivals: dayBookings.length, departures: departures.length, occupancy: dayReport.occupancy, stayingTonight: staying.length, pendingRequests: pendingRequests.length, noShowRisk: noShowRisk.length, bookedPaise: series.reduce((total, item) => total + item.bookedPaise, 0), paidPaise: series.reduce((total, item) => total + item.paidPaise, 0) },
       series, availability: available, upcomingReservations, review: { summary: review ?? { count: 0, average: 0 }, latest: latestReview }, alerts,
     });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { lifecycleActions } from "@/lib/admin/lifecycle";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -27,6 +28,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
       const current = await tx.get(ref);
       if (!current.exists) throw new Error("PROPERTY_NOT_FOUND");
       const data = current.data()!;
+      if (!lifecycleActions(data).includes(action)) throw new Error("INVALID_LIFECYCLE_TRANSITION");
       const fromStatus = String(data.status ?? "draft");
       const changes = action === "pause"
         ? { status: "paused", isBookable: false, pausedAt: FieldValue.serverTimestamp() }
@@ -34,7 +36,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
           ? { status: "active", isBookable: true, pausedAt: null }
           : action === "archive"
             ? { status: "archived", isBookable: false, archivedAt: FieldValue.serverTimestamp() }
-            : { status: data.approvalStatus === "approved" ? "active" : "draft", isBookable: data.approvalStatus === "approved", archivedAt: null };
+            : { status: data.approvalStatus === "approved" ? "active" : data.approvalStatus === "pending" ? "pending_review" : "draft", isBookable: data.approvalStatus === "approved", archivedAt: null };
       tx.update(ref, { ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
       recordReviewEvent(tx, {
         propertyId,
@@ -51,7 +53,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     await invalidatePublic("home", "search:*", "property:*", "bookable:*");
     return Response.json({ ok: true });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to update listing." }, { status: 422 });
+    const message = error instanceof Error ? error.message : "Unable to update listing."; return Response.json({ error: message }, { status: message === "FORBIDDEN" ? 403 : ["PROPERTY_NOT_FOUND", "ASSET_NOT_FOUND", "MEDIA_NOT_FOUND"].includes(message) ? 404 : 422 });
   }
 }
 

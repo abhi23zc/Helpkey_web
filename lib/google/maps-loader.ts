@@ -13,10 +13,10 @@ function loadedMaps(): typeof google.maps | undefined {
 /** Load Google Maps once, then import individual libraries on demand. */
 export function loadGoogleMaps(): Promise<typeof google.maps> {
   if (typeof window === "undefined") return Promise.reject(new Error("Google Maps is only available in the browser."));
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  if (!key) return Promise.reject(new Error("Google Maps is not configured. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild the app."));
   const loaded = loadedMaps();
   if (loaded?.importLibrary) return Promise.resolve(loaded);
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  if (!key) return Promise.reject(new Error("Google Maps is not configured. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and rebuild the app."));
   if (mapsPromise) return mapsPromise;
 
   mapsPromise = new Promise((resolve, reject) => {

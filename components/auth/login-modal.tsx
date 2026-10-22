@@ -6,9 +6,10 @@ import { AuthCard } from "@/components/auth/auth-card";
 type LoginModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 };
 
-export function LoginModal({ isOpen, onClose }: LoginModalProps) {
+export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -31,12 +32,12 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
       />
 
       {/* Modal Dialog Container */}
-      <div className="relative z-10 w-full max-w-[440px] animate-in fade-in zoom-in-95 duration-200">
+      <div role="dialog" aria-modal="true" aria-label="Sign in to Helpkey" className="relative z-10 w-full max-w-[440px] animate-in fade-in zoom-in-95 duration-200">
         <AuthCard
           mode="modal"
           initialTab="signin"
           onClose={onClose}
-          onSuccess={onClose}
+          onSuccess={onSuccess ?? onClose}
         />
       </div>
     </div>

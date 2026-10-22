@@ -6,4 +6,4 @@ async function get() {
   try { return Response.json(await cachedPublic(["home"], homeCatalog)); }
   catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to load homepage." }, { status: 500 }); }
 }
-export const GET = withApiHandler(get, { route: "/api/home", cache: "public" });
+export const GET = withApiHandler(get, { route: "/api/home", cache: "none" });

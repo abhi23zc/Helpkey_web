@@ -1,12 +1,11 @@
 import { withApiHandler } from "@/lib/api/handler";
-import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireRole } from "@/lib/partner/service";
-import { bookingError, releaseBookingHold } from "@/lib/bookings";
+import { bookingError, releaseBookingHold, transitionBooking } from "@/lib/bookings";
 
-const schema = z.object({ status: z.enum(["checked_in", "completed", "no_show", "cancelled"]) }).strict();
+const schema = z.object({ status: z.enum(["checked_in", "completed", "checked_out", "no_show", "cancelled"]) }).strict();
 
 const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/partner/bookings/[bookingId]/status">) {
   const user = await getAuthenticatedUser();
@@ -24,8 +23,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     if (input.status === "cancelled" || input.status === "no_show") {
       await releaseBookingHold(bookingId, user.uid, input.status, input.status === "cancelled" ? "PARTNER_CANCELLED" : "PARTNER_NO_SHOW");
     } else {
-      if (!["confirmed", "checked_in"].includes(String(data.bookingStatus))) throw new Error("BOOKING_NOT_CANCELLABLE");
-      await ref.update({ bookingStatus: input.status, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+      await transitionBooking(bookingId, user.uid, input.status === "completed" ? "checked_out" : input.status);
     }
     return Response.json({ ok: true });
   } catch (error) {

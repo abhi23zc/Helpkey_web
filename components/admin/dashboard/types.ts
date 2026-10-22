@@ -44,6 +44,9 @@ export type AdminAssetRecord = {
   publicationErrorCode?: string | null;
   publicationAttempts?: number;
   status?: string;
+  roomTypeId?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
 };
 
 export type AdminRecord = AdminAssetRecord & Record<string, unknown>;
@@ -51,9 +54,12 @@ export type AdminRecord = AdminAssetRecord & Record<string, unknown>;
 export type PropertyDetail = {
   property: AdminRecord;
   partner: AdminRecord | null;
+  owner: (User & Record<string, unknown>) | null;
+  approvalReadiness: { ready: boolean; blockers: string[]; checks: { key: string; label: string; complete: boolean }[] };
   roomTypes: AdminRecord[];
   ratePlans: AdminRecord[];
   policies: AdminRecord[];
+  amenities: AdminRecord[];
   media: AdminRecord[];
   documents: AdminRecord[];
 };
@@ -71,7 +77,6 @@ export type PartnerListItem = {
   activeCount: number;
   primaryProperty: Property | null;
   city: string;
-  progress: number;
   state: "pending" | "approved" | "changes_requested" | "suspended" | "all";
   risk: "Low" | "Medium" | "High";
 };

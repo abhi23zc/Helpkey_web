@@ -1,3 +1,4 @@
+import { safeJobId } from "../../lib/background/jobs";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "./firebase";
 import { deletePrivateObject } from "./r2";
@@ -15,7 +16,7 @@ async function cleanup() {
   let recoveredLeases = 0;
   try {
     const leases = await db.collection("mediaPublicationJobs").where("status", "==", "processing").where("leaseExpiresAt", "<=", Timestamp.now()).limit(100).get();
-    for (const lease of leases.docs) await db.runTransaction(async (tx) => { const current = await tx.get(lease.ref), data = current.data(); if (!data) return; tx.update(lease.ref, { status: "queued", leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }); tx.set(db.collection("mediaPublicationOutbox").doc(lease.id), { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum, jobId: lease.id, bullJobId: `${data.operation}:${data.assetId}:${data.sourceChecksum}`, status: "pending", dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); });
+    for (const lease of leases.docs) await db.runTransaction(async (tx) => { const current = await tx.get(lease.ref), data = current.data(); if (!data) return; tx.update(lease.ref, { status: "queued", leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }); tx.set(db.collection("mediaPublicationOutbox").doc(lease.id), { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum, jobId: lease.id, bullJobId: safeJobId(data.operation, data.assetId, data.sourceChecksum), status: "pending", recoverable: true, nextRecoveryAt: Timestamp.now(), dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); });
     recoveredLeases = leases.size;
   } catch (error) {
     // This is legacy recovery only; a missing index must not restart the entire

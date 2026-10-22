@@ -1,3 +1,4 @@
+import { enqueueProjection } from "@/lib/projections";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -5,14 +6,18 @@ import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner } from "@/lib/partner/service";
 import { deletePrivateObject } from "@/lib/r2";
+import { photoCategoryValues, isRoomPhoto } from "@/lib/partner/photo-requirements";
+import { invalidatePublic } from "@/lib/api/cache";
 
 const schema = z
   .object({
     altText: z.string().max(125).optional(),
     makeCover: z.literal(true).optional(),
+    category: z.enum(photoCategoryValues).optional(),
+    roomTypeId: z.string().min(1).max(128).nullable().optional(),
   })
   .strict()
-  .refine((value) => value.altText !== undefined || value.makeCover, {
+  .refine((value) => Object.keys(value).length > 0, {
     message: "NOTHING_TO_UPDATE",
   });
 
@@ -29,20 +34,42 @@ const rawPATCH = async function PATCH(
     const input = schema.parse(await request.json());
 
     const mediaRef = adminDb.collection("mediaAssets").doc(mediaId);
-    const media = await mediaRef.get();
-    if (!media.exists || media.data()?.propertyId !== propertyId) {
-      throw new Error("MEDIA_NOT_FOUND");
-    }
+    await adminDb.runTransaction(async tx => {
+      const [media, property, rooms, membership] = await Promise.all([
+        tx.get(mediaRef), tx.get(propertyRef),
+        tx.get(adminDb.collection("roomTypes").where("propertyId", "==", propertyId)),
+        tx.get(adminDb.collection("propertyMemberships").doc(`${propertyId}_${user.uid}`)),
+      ]);
+      if (!property.exists || (membership.get("status") !== "active" || membership.get("role") !== "owner")) throw new Error("FORBIDDEN");
+      if (!media.exists || media.get("propertyId") !== propertyId || media.get("kind") !== "property_image") throw new Error("MEDIA_NOT_FOUND");
+      if (input.makeCover && !["pending", "approved"].includes(media.get("moderationStatus") ?? media.get("status"))) throw new Error("Choose a pending or approved property photo as the cover.");
+      const now = FieldValue.serverTimestamp();
+      const update: Record<string, unknown> = { updatedAt: now, updatedBy: user.uid };
+      if (input.altText !== undefined) update.altText = input.altText;
+      if (input.category !== undefined || input.roomTypeId !== undefined) {
+        const category = input.category ?? media.get("category");
+        const selected = input.roomTypeId !== undefined ? input.roomTypeId : media.get("roomTypeId");
+        if (!isRoomPhoto(category) && input.roomTypeId) throw new Error("Only bedroom and bathroom photos can be assigned to a room type.");
+        const roomTypeId = isRoomPhoto(category) ? selected : null;
+        if (isRoomPhoto(category) && !roomTypeId) throw new Error("Choose the room type for this photo.");
+        if (roomTypeId && !rooms.docs.some(room => room.id === roomTypeId && room.get("status") !== "archived")) throw new Error("ROOM_TYPE_NOT_FOUND");
+        Object.assign(update, { category, roomTypeId: roomTypeId ?? null });
+        for (const room of rooms.docs) {
+          const previous: string[] = room.get("mediaIds") ?? [];
+          const mediaIds = previous.filter(id => id !== mediaId);
+          if (room.id === roomTypeId) mediaIds.push(mediaId);
+          if (previous.includes(mediaId) || room.id === roomTypeId || room.get("coverMediaId") === mediaId) {
+            const cover = room.get("coverMediaId");
+            tx.update(room.ref, { mediaIds, coverMediaId: cover === mediaId && room.id !== roomTypeId ? mediaIds[0] ?? null : cover || (room.id === roomTypeId && category === "room" ? mediaId : null), updatedAt: now, updatedBy: user.uid });
+          }
+        }
+      }
+      tx.update(mediaRef, update);
+      if (input.makeCover) tx.update(propertyRef, { coverMediaId: mediaId, updatedAt: now, updatedBy: user.uid });
+      enqueueProjection(tx, "property_search", propertyId, 1, { components: ["cover"] });
+    });
 
-    const now = FieldValue.serverTimestamp();
-
-    if (input.altText !== undefined) {
-      await mediaRef.update({ altText: input.altText, updatedAt: now, updatedBy: user.uid });
-    }
-
-    if (input.makeCover) {
-      await propertyRef.update({ coverMediaId: mediaId, updatedAt: now, updatedBy: user.uid });
-    }
+    await invalidatePublic("property:*", "home", "search:*");
 
     return Response.json({ ok: true, mediaId, ...(input.makeCover ? { coverMediaId: mediaId } : {}), ...(input.altText !== undefined ? { altText: input.altText } : {}) });
   } catch (error) {
@@ -100,6 +127,7 @@ const rawDELETE = async function DELETE(
         });
       }
     });
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["cover"] });
     await batch.commit();
     await deletePrivateObject(mediaData.r2ObjectKey).catch(() => {});
     return Response.json({ ok: true, mediaId, coverMediaId: fallbackCoverId });

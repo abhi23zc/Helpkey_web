@@ -1,12 +1,12 @@
 import { withApiHandler } from "@/lib/api/handler";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { requireAdmin } from "@/lib/admin/data";
 import { adminDb } from "@/lib/firebase/admin";
 import { z } from "zod";
-import { publicationBullJobId } from "@/lib/media-publication";
+import { enqueuePublicationInTransaction } from "@/lib/media-publication";
 
-const retrySchema = z.object({ jobId: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const retrySchema = z.object({ jobId: z.string().regex(/^(?:job-)?[a-f0-9]{64}$/) }).strict();
 
 const rawGET = async function GET() {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
@@ -18,7 +18,16 @@ const rawPOST = async function POST(request: Request) {
   const user = await getAuthenticatedUser(); if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
     await requireAdmin(user.uid); const { jobId } = retrySchema.parse(await request.json()); const ref = adminDb.collection("mediaPublicationJobs").doc(jobId);
-    await adminDb.runTransaction(async (tx) => { const job = await tx.get(ref); const data = job.data(); if (!data || !["dead", "retryable"].includes(data.status)) throw new Error("MEDIA_PUBLICATION_IN_PROGRESS"); const now = FieldValue.serverTimestamp(); tx.update(ref, { status: "queued", attempts: 0, notBefore: Timestamp.now(), leaseOwner: null, leaseExpiresAt: null, lastErrorCode: null, updatedAt: now, retriedBy: user.uid }); tx.set(adminDb.collection("mediaPublicationOutbox").doc(jobId), { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum, jobId, bullJobId: publicationBullJobId(data.operation, data.assetId, data.sourceChecksum), status: "pending", dispatchedAt: null, dispatchAttempts: 0, lastDispatchError: null, createdAt: now, updatedAt: now, retriedBy: user.uid }, { merge: true }); });
+    await adminDb.runTransaction(async tx => {
+      const data = (await tx.get(ref)).data();
+      if (!data || !["dead", "retryable"].includes(data.status)) throw new Error("MEDIA_PUBLICATION_IN_PROGRESS");
+      const asset = (await tx.get(adminDb.collection(data.sourceCollection).doc(data.assetId))).data();
+      if (!asset || (data.requestId && asset.publication?.requestId !== data.requestId)) throw new Error("MEDIA_REQUEST_SUPERSEDED");
+      if (((asset.moderationStatus ?? asset.status) === "approved") !== (data.operation === "publish")) throw new Error("MEDIA_REQUEST_SUPERSEDED");
+      enqueuePublicationInTransaction(tx, { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum });
+      tx.update(ref, { status: "retried", retriedBy: user.uid, updatedAt: FieldValue.serverTimestamp() });
+      tx.set(adminDb.collection("mediaPublicationOutbox").doc(jobId), { status: "retried", recoverable: false }, { merge: true });
+    });
     return Response.json({ ok: true, status: "queued" });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "MEDIA_PUBLICATION_FAILED" }, { status: 422 }); }
 }

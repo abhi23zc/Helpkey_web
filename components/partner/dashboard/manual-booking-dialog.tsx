@@ -1,5 +1,6 @@
 "use client";
 
+import { eligiblePricing, type DurationPrice } from "@/lib/booking/duration-pricing";
 import { useEffect, useState } from "react";
 import {
   BedDouble,
@@ -16,10 +17,15 @@ import {
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
 type ManualBookingForm = {
+  bookingMode: "overnight" | "hourly";
+  arrivalTime: string;
+  durationMinutes: number;
   guestName: string;
   guestEmail: string;
   guestPhone: string;
-  roomDescription: string;
+  roomTypeId: string;
+  ratePlanId: string;
+  negotiatedPriceReason: string;
   checkIn: string;
   checkOut: string;
   adults: number;
@@ -30,10 +36,15 @@ type ManualBookingForm = {
 };
 
 const EMPTY: ManualBookingForm = {
+  bookingMode: "overnight",
+  arrivalTime: "10:00",
+  durationMinutes: 180,
   guestName: "",
   guestEmail: "",
   guestPhone: "",
-  roomDescription: "",
+  roomTypeId: "",
+  ratePlanId: "",
+  negotiatedPriceReason: "",
   checkIn: "",
   checkOut: "",
   adults: 1,
@@ -109,8 +120,15 @@ export function ManualBookingDialog({
   onCreated: () => void;
 }) {
   const [form, setForm] = useState<ManualBookingForm>(EMPTY);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [choices, setChoices] = useState<{ rooms: { id: string; name: string }[]; rates: { id: string; name: string; roomTypeId: string; bookingMode?: string; basePricePaise?: number; pricingModel?: string; durationPrices?: DurationPrice[]; status?: string }[] }>({ rooms: [], rates: [] });
+  useEffect(() => {
+    if (!open || !propertyId) return;
+    const controller = new AbortController();
+    fetch(`/api/partner/properties/${encodeURIComponent(propertyId)}?view=rooms`, { signal: controller.signal }).then(async (response) => { if (!response.ok) throw new Error("Unable to load rooms"); return response.json(); }).then((body) => setChoices({ rooms: body.roomTypes ?? [], rates: body.ratePlans ?? [] })).catch((error) => { if (error.name !== "AbortError") setError("Unable to load room types and rates."); });
+    return () => controller.abort();
+  }, [open, propertyId]);
+  const [submitting, setSubmitting] = useState(false);
   const [createdCode, setCreatedCode] = useState("");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -138,14 +156,17 @@ export function ManualBookingDialog({
     setForm((p) => ({ ...p, [k]: v }));
 
   const nights = calcNights(form.checkIn, form.checkOut);
-  const total = nights * form.nightlyRateRupees;
+  const selectedRate = choices.rates.find(rate => rate.id === form.ratePlanId);
+  const publishedPrice = form.bookingMode === "hourly" ? selectedRate?.durationPrices?.find(row => row.hours * 60 === form.durationMinutes)?.pricePaise : selectedRate?.basePricePaise;
+  const negotiated = publishedPrice !== Math.round(form.nightlyRateRupees * 100);
+  const total = (form.bookingMode === "hourly" ? 1 : nights) * form.nightlyRateRupees;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId) { setError("No property selected."); return; }
-    if (nights <= 0) { setError("Check-out must be after check-in."); return; }
+    if (form.bookingMode === "overnight" && nights <= 0) { setError("Check-out must be after check-in."); return; }
     if (!form.nightlyRateRupees || form.nightlyRateRupees <= 0) {
-      setError("Please enter a nightly rate.");
+      setError("Please enter a room price.");
       return;
     }
     setSubmitting(true);
@@ -154,7 +175,7 @@ export function ManualBookingDialog({
       const res = await fetch("/api/partner/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, propertyId }),
+        body: JSON.stringify({ ...form, propertyId, negotiatedSubtotalPaise: negotiated ? Math.round(total * 100) : undefined, negotiatedPriceReason: negotiated ? form.negotiatedPriceReason : undefined, checkOut: form.bookingMode === "hourly" ? undefined : form.checkOut }),
       });
       const body = (await res.json()) as { error?: string; confirmationCode?: string };
       if (!res.ok) throw new Error(body.error ?? "Unable to create booking.");
@@ -281,6 +302,8 @@ export function ManualBookingDialog({
               <div className="border-b border-[#ede7dc] bg-white px-6 py-5">
                 <SectionHead icon={Building2} label="Stay Details" />
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={BOX}>Booking mode<select value={form.bookingMode} onChange={(e) => { set("bookingMode", e.target.value as "overnight" | "hourly"); set("ratePlanId", ""); }} className={INPUT_CLS}><option value="overnight">Overnight</option><option value="hourly">Hourly</option></select></label>
+                  {form.bookingMode === "hourly" && <><label className={BOX}>Local arrival time<input type="time" step={900} required value={form.arrivalTime} onChange={(e) => set("arrivalTime", e.target.value)} className={INPUT_CLS} /></label><label className={BOX}>Stay duration<select required value={selectedRate?.durationPrices?.some(row => row.hours * 60 === form.durationMinutes) ? form.durationMinutes : ""} onChange={e => { const minutes = Number(e.target.value); set("durationMinutes", minutes); set("nightlyRateRupees", (selectedRate?.durationPrices?.find(row => row.hours * 60 === minutes)?.pricePaise ?? 0) / 100); }} className={INPUT_CLS}><option value="">Choose a priced duration</option>{selectedRate?.durationPrices?.map(row => <option key={row.hours} value={row.hours * 60}>{row.hours} hours · {fmt.format(row.pricePaise / 100)}</option>)}</select></label></>}
                   {/* Check-in */}
                   <div className={BOX}>
                     <BoxLabel text="Check-in Date" required />
@@ -297,13 +320,14 @@ export function ManualBookingDialog({
                     </div>
                   </div>
                   {/* Check-out */}
-                  <div className={BOX}>
+                  <div className={form.bookingMode === "hourly" ? "hidden" : BOX}>
                     <BoxLabel text="Check-out Date" required />
                     <div className="mt-1 flex items-center gap-2">
                       <CalendarDays className="h-3.5 w-3.5 shrink-0 text-[#8b96aa]" />
                       <input
                         type="date"
                         required
+                        disabled={form.bookingMode === "hourly"}
                         min={form.checkIn || today}
                         value={form.checkOut}
                         onChange={(e) => set("checkOut", e.target.value)}
@@ -317,13 +341,14 @@ export function ManualBookingDialog({
                     <BoxLabel text="Room / Category" required />
                     <div className="mt-1 flex items-center gap-2">
                       <BedDouble className="h-3.5 w-3.5 shrink-0 text-[#8b96aa]" />
-                      <input
-                        required
-                        placeholder="e.g. Deluxe King Room, Standard Double"
-                        value={form.roomDescription}
-                        onChange={(e) => set("roomDescription", e.target.value)}
-                        className="block w-full bg-transparent text-sm font-semibold text-[#061224] outline-none placeholder:font-normal placeholder:text-[#adb5c8]"
-                      />
+                      <select required value={form.roomTypeId} onChange={(e) => { set("roomTypeId", e.target.value); set("ratePlanId", ""); }} className={INPUT_CLS}>
+                        <option value="">Choose room type</option>
+                        {choices.rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+                      </select>
+                      <select required value={form.ratePlanId} onChange={(e) => { set("ratePlanId", e.target.value); const rate = choices.rates.find(rate => rate.id === e.target.value); if (form.bookingMode === "hourly") { set("durationMinutes", 0); set("nightlyRateRupees", 0); } else if (rate?.basePricePaise) set("nightlyRateRupees", rate.basePricePaise / 100); }} className={INPUT_CLS}>
+                        <option value="">Choose a published rate</option>
+                        {choices.rates.filter((rate) => rate.roomTypeId === form.roomTypeId && (rate.bookingMode ?? "overnight") === form.bookingMode && rate.status === "active" && eligiblePricing(rate)).map((rate) => <option key={rate.id} value={rate.id}>{rate.name}</option>)}
+                      </select>
                     </div>
                   </div>
 
@@ -353,7 +378,7 @@ export function ManualBookingDialog({
                   </div>
 
                   {/* Night count badge – shown when both dates are set */}
-                  {nights > 0 && (
+                  {form.bookingMode === "overnight" && nights > 0 && (
                     <div className="sm:col-span-2 flex items-center gap-2 rounded-xl border border-[#e4ded2] bg-[#fbfbff] px-3 py-2.5">
                       <CalendarDays className="h-4 w-4 text-[#c89b3c]" />
                       <span className="text-xs font-semibold text-[#4d5870]">
@@ -370,7 +395,7 @@ export function ManualBookingDialog({
                 <div className="grid gap-3 sm:grid-cols-2">
                   {/* Nightly rate */}
                   <div className={BOX}>
-                    <BoxLabel text="Nightly Rate (₹)" required />
+                    <BoxLabel text={form.bookingMode === "hourly" ? "Total stay price before tax (₹)" : "Nightly price before tax (₹)"} required />
                     <div className="mt-1 flex items-center gap-1">
                       <span className="text-sm font-semibold text-[#8b96aa]">₹</span>
                       <input
@@ -386,6 +411,7 @@ export function ManualBookingDialog({
                     </div>
                   </div>
 
+                  {negotiated && <label className={BOX}>Negotiated price reason<input required minLength={3} value={form.negotiatedPriceReason} onChange={(e) => set("negotiatedPriceReason", e.target.value)} className={INPUT_CLS} /></label>}
                   {/* Payment method */}
                   <div className={BOX}>
                     <BoxLabel text="Payment Status" />
@@ -400,11 +426,11 @@ export function ManualBookingDialog({
                   </div>
 
                   {/* Total breakdown – shown when rate & nights are set */}
-                  {nights > 0 && form.nightlyRateRupees > 0 && (
+                  {form.nightlyRateRupees > 0 && (
                     <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-[#e4ded2] bg-[#fbf5e8] px-4 py-3">
                       <div>
                         <p className="text-[11px] font-semibold text-[#8a7044]">
-                          {nights} night{nights !== 1 ? "s" : ""} × {fmt.format(form.nightlyRateRupees)}
+                          {form.bookingMode === "hourly" ? `${form.durationMinutes / 60} hours · ${fmt.format(total)}` : `${nights} nights × ${fmt.format(form.nightlyRateRupees)}`}
                         </p>
                         <p className="mt-0.5 text-[10px] font-medium text-[#b09060]">
                           {form.paymentMethod === "paid" ? "Marked as paid" : "Collect at property"}

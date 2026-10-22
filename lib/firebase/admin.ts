@@ -1,3 +1,4 @@
+import { withBackgroundDelivery } from "../background/commit";
 import "server-only";
 
 import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
@@ -34,4 +35,4 @@ function getAdminApp() {
 const adminApp = getAdminApp();
 
 export const adminAuth = getAuth(adminApp);
-export const adminDb = getFirestore(adminApp);
+export const adminDb = withBackgroundDelivery(getFirestore(adminApp));

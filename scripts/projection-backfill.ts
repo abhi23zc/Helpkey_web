@@ -3,11 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 // the application module that imports Next's `server-only` marker.
 import { db as adminDb } from "../workers/media/firebase";
 
-type ProjectionKind = "property_search" | "review_summary" | "daily_metrics" | "dashboard_summary" | "cache_invalidation";
-function enqueueProjection(tx: FirebaseFirestore.Transaction, jobKind: ProjectionKind, entityId: string) {
-  const version = 1; const ref = adminDb.collection("projectionOutbox").doc();
-  tx.create(ref, { kind: jobKind, entityId, version, eventId: ref.id, status: "pending", dispatchAttempts: 0, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-}
+import { writeProjection } from "../lib/background/enqueue";
+import type { ProjectionJob } from "../lib/background/jobs";
+type ProjectionKind = ProjectionJob["kind"];
+function enqueueProjection(tx: FirebaseFirestore.Transaction, kind: ProjectionKind, entityId: string) { writeProjection(adminDb, tx, kind, entityId); }
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run"); const verify = args.has("--verify");
@@ -25,7 +24,7 @@ async function main() {
     for (const property of page.docs) {
       if (verify) {
         const data = property.data();
-        const present = kind === "property_search" ? Boolean(data.searchProjectionVersion) : kind === "review_summary" ? Boolean(data.reviewProjectionUpdatedAt) : kind === "daily_metrics" || kind === "dashboard_summary" ? !(await adminDb.collection("propertyDailyMetrics").where("propertyId", "==", property.id).limit(1).get()).empty : true;
+        const present = kind === "property_search" ? Number(data.searchProjectionVersion ?? 0) >= 3 : kind === "review_summary" ? Boolean(data.reviewProjectionUpdatedAt) : kind === "daily_metrics" || kind === "dashboard_summary" ? !(await adminDb.collection("propertyDailyMetrics").where("propertyId", "==", property.id).limit(1).get()).empty : true;
         if (!present) missing += 1;
       }
       else if (!dryRun) await adminDb.runTransaction(async (tx) => enqueueProjection(tx, kind, property.id));

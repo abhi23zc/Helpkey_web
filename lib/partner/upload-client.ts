@@ -62,7 +62,8 @@ export async function sha256Hex(file: File): Promise<string> {
     .join("");
 }
 
-export type PropertyPhotoCategory = "exterior" | "reception" | "room" | "bathroom" | "additional";
+import type { PropertyPhotoCategory } from "./photo-requirements";
+export type { PropertyPhotoCategory } from "./photo-requirements";
 export type KycDocumentType = "pan" | "government_id_front" | "government_id_back" | "gst";
 
 const kycMimeTypes = new Set(["image/jpeg", "image/png", "application/pdf"]);
@@ -102,6 +103,7 @@ export type FinalizedPropertyPhoto = {
     id: string;
     kind: string;
     category?: string | null;
+    roomTypeId?: string | null;
     fileName?: string | null;
     altText?: string;
     moderationStatus?: string;
@@ -120,11 +122,12 @@ export async function uploadPropertyPhoto(
   file: File,
   category: PropertyPhotoCategory,
   onProgress?: (percent: number) => void,
+  roomTypeId?: string | null,
 ): Promise<FinalizedPropertyPhoto> {
   const checksum = await sha256Hex(file);
   const signed = await requestJson<{ uploadId: string; uploadUrl: string; headers: Record<string, string> }>(
     `/api/partner/properties/${propertyId}/media/upload-url`,
-    { fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum, category },
+    { fileName: file.name, mimeType: file.type, sizeBytes: file.size, checksum, category, ...(roomTypeId ? { roomTypeId } : {}) },
   );
   await putFileWithProgress(signed.uploadUrl, signed.headers, file, onProgress ?? (() => {}));
   return requestJson<FinalizedPropertyPhoto>(

@@ -39,6 +39,40 @@
   --color-foreground: var(--hk-ink);
 }
 
+/*
+ * Dashboard design tokens (Midnight Navy + Champagne) - see ADMIN_DESIGN.md.
+ * Generates utilities such as bg-navy-950, text-ink, border-line, bg-warning-bg.
+ */
+@theme {
+  --color-navy-950: #06142b;
+  --color-navy-900: #0a1f3c;
+  --color-navy-800: #102b52;
+  --color-navy-400: #7587a7;
+  --color-navy-300: #b5c7ea;
+  --color-navy-200: #d6e3ff;
+  --color-gold-500: #d8b46a;
+  --color-gold-600: #c6973e;
+  --color-gold-700: #9a6b18;
+  --color-gold-100: #fbf3df;
+  --color-ivory-50: #f7f4ee;
+  --color-ink: #111827;
+  --color-muted: #5b6472;
+  --color-line: #e6e2da;
+  --color-success: #0f8a5f;
+  --color-success-ink: #0b6b4a;
+  --color-success-bg: #eaf7f1;
+  --color-warning: #f2a900;
+  --color-warning-ink: #8a5a00;
+  --color-warning-bg: #fff6db;
+  --color-danger: #d92d20;
+  --color-danger-ink: #b42318;
+  --color-danger-bg: #feecec;
+  --color-info: #2563eb;
+  --color-info-ink: #1d4ed8;
+  --color-info-bg: #eaf1ff;
+  --shadow-card: 0 12px 30px rgba(6, 20, 43, 0.06);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -77,6 +111,8 @@ body {
   background: var(--hk-ivory);
   color: var(--hk-ink);
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a,

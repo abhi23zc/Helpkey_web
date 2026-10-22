@@ -1,0 +1,3814 @@
+{
+  "generatedAt": "2026-10-21T08:05:08.787Z",
+  "localCount": 58,
+  "localIndexes": [
+    {
+      "number": 1,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "address.city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumDisplayPricePaise",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "collectionGroup": "roomTypes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "collectionGroup": "ratePlans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "readAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "collectionGroup": "propertyReviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "collectionGroup": "mediaPublicationJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "leaseExpiresAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "collectionGroup": "aadhaarVerificationLab",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "operatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "collectionGroup": "aadhaarVerificationLab",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "operatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "collectionGroup": "aadhaarVerificationLab",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "aadhaarFingerprint",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "guestId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "guestId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 15,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkOut",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 16,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 17,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 18,
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 19,
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "readAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 20,
+      "collectionGroup": "propertyMemberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 21,
+      "collectionGroup": "propertyDailyMetrics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 22,
+      "collectionGroup": "roomNightInventory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 23,
+      "collectionGroup": "propertyReviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 24,
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "roles",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "accountStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 25,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 26,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 27,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 28,
+      "collectionGroup": "propertyReviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "replyState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 29,
+      "collectionGroup": "propertyReviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sentiment",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 30,
+      "collectionGroup": "propertyReviewEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 31,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 32,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 33,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 34,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 35,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 36,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 37,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 38,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 39,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 40,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 41,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 42,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 43,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "number": 44,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expiresAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 45,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "paymentReconciliationPending",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextReconcileAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 46,
+      "collectionGroup": "refunds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 47,
+      "collectionGroup": "propertyMemberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 48,
+      "collectionGroup": "inventoryCalendars",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 49,
+      "collectionGroup": "roomNightInventory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 50,
+      "collectionGroup": "inventoryBlocks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 51,
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        }
+      ]
+    },
+    {
+      "number": 52,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 53,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 54,
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 55,
+      "collectionGroup": "projectionOutbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recoverable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextRecoveryAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 56,
+      "collectionGroup": "mediaPublicationOutbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recoverable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextRecoveryAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 57,
+      "collectionGroup": "refunds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextAttemptAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "number": 58,
+      "collectionGroup": "bookingNotificationOutbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextAttemptAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "equivalentLocalDefinitions": [
+    [
+      5,
+      23
+    ]
+  ],
+  "project": "helpkey-a8fab",
+  "cloudIndexes": [
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPi9lIEJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyReviewEvents/indexes/CICAgPj-pYIJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgOi39IkJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgJjmiJEJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyReviews/indexes/CICAgPj-05MJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "replyState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/aadhaarVerificationLab/indexes/CICAgPjChIAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "aadhaarFingerprint",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgITszIAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/ratePlans/indexes/CICAgLjy8IAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgPi9lIEK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/aadhaarVerificationLab/indexes/CICAgLiT6IEK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "operatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPj-pYIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyReviews/indexes/CICAgLjRyYIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/inventoryBlocks/indexes/CICAgITO7YIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgLiIkYMK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "address.city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumDisplayPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyDailyMetrics/indexes/CICAgPiftYMK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/aadhaarVerificationLab/indexes/CICAgPig2YMK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "operatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNirhYUK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgOi3voUK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgJjUgIcK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgNj4yIcK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgNja0ogK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPjC9ogK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/mediaPublicationJobs/indexes/CICAgJiHgokK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "leaseExpiresAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/notifications/indexes/CICAgLiTpokK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgNiryokK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/roomNightInventory/indexes/CICAgPi97okK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgOi39IkK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "guestId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPj-z4oK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amenityCodes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgPigl4sK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expiresAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/roomTypes/indexes/CICAgNi4o4sK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/notifications/indexes/CICAgJiUzYsK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "readAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/refunds/indexes/CICAgPif34sK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgLiI64sK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/inventoryCalendars/indexes/CICAgOi3040K",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/roomNightInventory/indexes/CICAgPi9ipAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNirtJAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgLiT_JAK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyReviews/indexes/CICAgJjmiJEK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sentiment",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgNjaxJEK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgPjC4pEK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "guestId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyMemberships/indexes/CICAgLiIjZIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPifq5IK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPigw5IK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ratingAverage",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNi4-ZIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hotelAdmin",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/notifications/indexes/CICAgJjFqZMK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "readAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/users/indexes/CICAgPj-05MK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "roles",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "accountStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgNjp5ZMK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/propertyMemberships/indexes/CICAgOi3pZQK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgJiHlpgK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNir3pgK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "paymentReconciliationPending",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextReconcileAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgOi36pgK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNi4t5oK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkOut",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgPjfxJoK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgJiU25oK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgLiI_5oK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    }
+  ],
+  "cloudCount": 55,
+  "localMissingInCloud": [
+    {
+      "number": 55,
+      "index": {
+        "collectionGroup": "projectionOutbox",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "recoverable",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "nextRecoveryAt",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    },
+    {
+      "number": 56,
+      "index": {
+        "collectionGroup": "mediaPublicationOutbox",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "recoverable",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "nextRecoveryAt",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    },
+    {
+      "number": 57,
+      "index": {
+        "collectionGroup": "refunds",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "status",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    },
+    {
+      "number": 58,
+      "index": {
+        "collectionGroup": "bookingNotificationOutbox",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "status",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    }
+  ],
+  "cloudNotInLocal": [
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/properties/indexes/CICAgJjmiJEJ",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isBookable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "normalizedCity",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "minimumPricePaise",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    },
+    {
+      "name": "projects/helpkey-a8fab/databases/(default)/collectionGroups/bookings/indexes/CICAgNi4-ZIK",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hotelAdmin",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "state": "READY",
+      "density": "SPARSE_ALL"
+    }
+  ],
+  "plans": [
+    {
+      "label": "catalog.dated.city=false.type=false",
+      "source": "lib/customer/catalog.ts:353",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=false.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=false.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=false.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=false.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=false.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=false.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=false.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=false.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.dated.city=false.type=true",
+      "source": "lib/customer/catalog.ts:353",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=false.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=false.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=false.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=false.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, ratingAverage DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=false.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise ASC, __name__ ASC)"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=false.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=false.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=false.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, ratingAverage DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.dated.city=true.type=false",
+      "source": "lib/customer/catalog.ts:353",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=true.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, minimumPricePaise ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=true.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(approvalStatus ASC, isBookable ASC, normalizedCity ASC, status ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=true.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=true.type=false.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, ratingAverage DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=true.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, minimumPricePaise ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=true.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(approvalStatus ASC, isBookable ASC, normalizedCity ASC, status ASC, minimumPricePaise DESC, __name__ DESC)"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=true.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=true.type=false.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, ratingAverage DESC, __name__ DESC)"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.dated.city=true.type=true",
+      "source": "lib/customer/catalog.ts:353",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, propertyType ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=true.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=true.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(approvalStatus ASC, isBookable ASC, normalizedCity ASC, status ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=true.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=true.type=true.amenity=false",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, propertyType ASC, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.asc.city=true.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise ASC, __name__ ASC)"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.minimumPricePaise.desc.city=true.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(approvalStatus ASC, isBookable ASC, normalizedCity ASC, status ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, propertyType ASC, minimumPricePaise DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "catalog.ratingAverage.asc.city=true.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "catalog.ratingAverage.desc.city=true.type=true.amenity=true",
+      "source": "lib/customer/catalog.ts:386",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, propertyType ASC, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, amenityCodes ARRAY_CONTAINS, ratingAverage DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "suggestions.normalizedName",
+      "source": "lib/customer/catalog.ts:425",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedName ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "suggestions.normalizedCity",
+      "source": "lib/customer/catalog.ts:425",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, normalizedCity ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "suggestions.tokens",
+      "source": "lib/customer/catalog.ts:427",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, approvalStatus ASC, isBookable ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, approvalStatus ASC, status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "bookings.mine",
+      "source": "app/api/bookings/mine/route.ts:15",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(guestId ASC, checkIn DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "bookings.review-eligibility",
+      "source": "lib/reviews.ts:49",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(guestId ASC, propertyId ASC, bookingStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(guestId ASC, propertyId ASC, bookingStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.bookings.status=false.search=false",
+      "source": "app/api/admin/bookings/route.ts:21",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(__name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.bookings.status=false.search=true",
+      "source": "app/api/admin/bookings/route.ts:21",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.bookings.status=true.search=false",
+      "source": "app/api/admin/bookings/route.ts:21",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(bookingStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.bookings.status=true.search=true",
+      "source": "app/api/admin/bookings/route.ts:21",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(bookingStatus ASC, searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=false.approval=false.search=false",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(__name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=false.approval=false.search=true",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=false.approval=true.search=false",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(approvalStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=false.approval=true.search=true",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(approvalStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=true.approval=false.search=false",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=true.approval=false.search=true",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=true.approval=true.search=false",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(approvalStatus ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.properties.status=true.approval=true.search=true",
+      "source": "app/api/admin/properties/route.ts:22",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(searchTokens ARRAY_CONTAINS, approvalStatus ASC, status ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=false.array=none",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(__name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=false.array=roles",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(roles ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=false.array=searchTokens",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=true.array=none",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(accountStatus ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=true.array=roles",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(roles ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(accountStatus ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "admin.users.status=true.array=searchTokens",
+      "source": "app/api/admin/users/route.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(searchTokens ARRAY_CONTAINS, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(accountStatus ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "users.active-admin-count",
+      "source": "lib/admin/data.ts:137",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(roles ARRAY_CONTAINS, accountStatus ASC, isActive ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "notifications.unread=false",
+      "source": "lib/notifications/service.ts:151",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(userId ASC, createdAt DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "notifications.unread=true",
+      "source": "lib/notifications/service.ts:151",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(userId ASC, readAt ASC, createdAt DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "notifications.unread-count",
+      "source": "lib/notifications/service.ts:162",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(userId ASC, readAt ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "reviews.all",
+      "source": "app/api/partner/reviews/route.ts:35",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, status ASC, submittedAt DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "reviews.awaiting",
+      "source": "app/api/partner/reviews/route.ts:35",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(propertyId ASC, status ASC, replyState ASC, submittedAt DESC, __name__ DESC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "reviews.positive",
+      "source": "app/api/partner/reviews/route.ts:35",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, status ASC, sentiment ASC, submittedAt DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "reviews.rebuild",
+      "source": "workers/projections/reviews.ts:19",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "roomTypes.active",
+      "source": "lib/services/public-stay.ts:31",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "ratePlans.active",
+      "source": "lib/services/public-stay.ts:31",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "cancellationPolicies.active",
+      "source": "lib/services/public-stay.ts:31",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "properties": "(propertyId ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "bookings.expiry",
+      "source": "lib/bookings.ts:457",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(bookingStatus ASC, expiresAt ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "bookings.reconciliation",
+      "source": "lib/booking/processing.ts:115",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(paymentReconciliationPending ASC, nextReconcileAt ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "refunds.due",
+      "source": "lib/booking/processing.ts:80",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "booking-notifications.due",
+      "source": "lib/booking/notifications.ts:9",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "projectionOutbox.recovery",
+      "source": "workers/shared/outbox.ts:11",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "mediaPublicationOutbox.recovery",
+      "source": "workers/shared/outbox.ts:11",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "media.legacy-recovery",
+      "source": "workers/media/cleanup.ts:18",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, leaseExpiresAt ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "inventory.blocks",
+      "source": "app/api/partner/properties/[propertyId]/inventory-blocks/route.ts:28",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, roomTypeId ASC, status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "memberships.user",
+      "source": "app/api/partner/bookings/route.ts:23",
+      "plan": {
+        "indexesUsed": [
+          {
+            "query_scope": "Collection",
+            "properties": "(status ASC, __name__ ASC)"
+          },
+          {
+            "properties": "(userId ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "memberships.property",
+      "source": "lib/booking/notifications.ts:16",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, status ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "inventory.capacity-update",
+      "source": "app/api/partner/properties/[propertyId]/room-types/[roomTypeId]/route.ts",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, roomTypeId ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "legacy-inventory.capacity-update",
+      "source": "app/api/partner/properties/[propertyId]/room-types/[roomTypeId]/route.ts",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, roomTypeId ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "dashboard.upcoming-count",
+      "source": "workers/projections/processor.ts:90",
+      "error": "9 FAILED_PRECONDITION: no matching index found."
+    },
+    {
+      "label": "admin.property-events",
+      "source": "lib/admin/data.ts:36",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(propertyId ASC, createdAt DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "kyc.existing-document",
+      "source": "app/api/partner/properties/[propertyId]/kyc/finalize/route.ts:41",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(documentType ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          },
+          {
+            "query_scope": "Collection",
+            "properties": "(propertyId ASC, __name__ ASC)"
+          }
+        ]
+      }
+    },
+    {
+      "label": "aadhaar.list",
+      "source": "lib/aadhaar-lab.ts:101",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(operatorId ASC, createdAt DESC, __name__ DESC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "aadhaar.operator-limit",
+      "source": "lib/aadhaar-lab.ts:60",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(operatorId ASC, createdAt ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    },
+    {
+      "label": "aadhaar.identity-limit",
+      "source": "lib/aadhaar-lab.ts:60",
+      "plan": {
+        "indexesUsed": [
+          {
+            "properties": "(aadhaarFingerprint ASC, createdAt ASC, __name__ ASC)",
+            "query_scope": "Collection"
+          }
+        ]
+      }
+    }
+  ],
+  "plannerRequests": 88
+}

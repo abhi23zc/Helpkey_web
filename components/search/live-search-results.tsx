@@ -1,1223 +1,137 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/keys";
-import { apiFetch } from "@/lib/api/client";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  BadgeCheck,
-  BedDouble,
-  Building2,
-  Calendar,
-  Check,
-  ChevronDown,
-  CircleHelp,
-  Heart,
-  Map,
-  MapPin,
-  SlidersHorizontal,
-  Users,
-  X,
-} from "lucide-react";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { Map, SlidersHorizontal, X, Check, BadgeCheck } from "lucide-react";
+import { queryKeys } from "@/lib/query/keys";
+import { ApiClientError, apiFetch } from "@/lib/api/client";
+import type { CatalogPage } from "@/lib/customer/catalog";
+import { amenityLabel } from "@/lib/customer/amenities";
+import { formatMoney } from "@/lib/customer/offer";
 import { SiteHeader } from "@/components/shared/site-header";
+import { TravelSearch } from "@/components/search/travel-search";
 import { LoginModal } from "@/components/auth/login-modal";
-import { PublicMediaImage } from "@/components/shared/public-media-image";
-import { formatStayDate } from "@/lib/customer/stay-search";
-import { amenityKey, amenityLabel } from "@/lib/customer/amenities";
+import { useSavedHotels } from "@/components/wishlist/use-saved-hotels";
+import { StayCard } from "./stay-card";
 
-type Property = {
-  id: string;
-  slug: string;
-  name: string;
-  city: string;
-  state: string | null;
-  propertyType: string;
-  ratingAverage: number;
-  ratingCount: number;
-  minimumPricePaise: number | null;
-  currency: string;
-  coverImageUrl: string | null;
-  coverImageSrcSet?: string;
-  amenityCodes: string[];
-  freeCancellation: boolean;
-};
-
-const money = (value: number | null, currency: string) =>
-  value === null
-    ? "Price on request"
-    : new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 0,
-      }).format(value / 100);
-
-const PROPERTY_TYPES = [
-  { code: "HOTEL", label: "Hotel" },
-  { code: "RESORT", label: "Resort" },
-  { code: "VILLA", label: "Luxury Villa" },
-  { code: "APARTMENT", label: "Serviced Apartment" },
+const SearchMap = dynamic(() => import("./search-map"), { ssr: false, loading: () => <p className="rounded-xl bg-white p-8">Loading map…</p> });
+const sorts = [
+  ["top_picks", "Our top picks"], ["homes_and_apartments", "Homes & apartments first"],
+  ["price_low_to_high", "Price (lowest first)"], ["price_high_to_low", "Price (highest first)"],
+  ["best_reviewed_lowest_price", "Best reviewed & lowest price"], ["rating_high_to_low", "Guest rating (high to low)"],
+  ["rating_low_to_high", "Guest rating (low to high)"], ["rating_and_price", "Guest rating and price"],
+  ["distance_from_downtown", "Distance from destination"], ["top_reviewed", "Most reviewed"], ["business_traveler_picks", "Business traveler picks"],
 ];
-
-const NEIGHBOURHOODS = [
-  { code: "CITY_CENTER", label: "City Centre" },
-  { code: "RIVERFRONT", label: "Riverfront / Lakeview" },
-  { code: "STATION", label: "Near Railway Station" },
-  { code: "SUBURBS", label: "Suburbs" },
-];
-
-type SortKey =
-  | "top_picks"
-  | "homes_and_apartments"
-  | "price_low_to_high"
-  | "price_high_to_low"
-  | "best_reviewed_lowest_price"
-  | "rating_high_to_low"
-  | "rating_low_to_high"
-  | "rating_and_price"
-  | "distance_from_downtown"
-  | "top_reviewed"
-  | "business_traveler_picks";
-
-const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string; needsDestinationCoordinates?: boolean }> = [
-  { value: "top_picks", label: "Our top picks" },
-  { value: "homes_and_apartments", label: "Homes & apartments first" },
-  { value: "price_low_to_high", label: "Price (lowest first)" },
-  { value: "price_high_to_low", label: "Price (highest first)" },
-  { value: "best_reviewed_lowest_price", label: "Best reviewed & lowest price" },
-  { value: "rating_high_to_low", label: "Property rating (high to low)" },
-  { value: "rating_low_to_high", label: "Property rating (low to high)" },
-  { value: "rating_and_price", label: "Property rating and price" },
-  { value: "distance_from_downtown", label: "Distance from downtown", needsDestinationCoordinates: true },
-  { value: "top_reviewed", label: "Top reviewed" },
-  { value: "business_traveler_picks", label: "Top Picks for Business Travelers" },
-];
-
-const isSortKey = (value: string | null): value is SortKey =>
-  SORT_OPTIONS.some((option) => option.value === value);
+const propertyTypes = [["hotel", "Hotel"], ["resort", "Resort"], ["villa", "Villa"], ["apartment", "Apartment"]];
 
 export function LiveSearchResults() {
+  const params = useSearchParams();
+  const [mobileFilters, setMobileFilters] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  return <SearchContent key={params.toString()} query={params.toString()} mobileFilters={mobileFilters} setMobileFilters={setMobileFilters} mapOpen={mapOpen} setMapOpen={setMapOpen} />;
+}
+function SearchContent({ query, mobileFilters, setMobileFilters, mapOpen, setMapOpen }: { query: string; mobileFilters: boolean; setMobileFilters: (value: boolean) => void; mapOpen: boolean; setMapOpen: (value: boolean | ((current: boolean) => boolean)) => void }) {
+  const params = useMemo(() => new URLSearchParams(query), [query]);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const query = useMemo(() => searchParams.toString(), [searchParams]);
-
+  const client = useQueryClient();
+  const key = useMemo(() => queryKeys.search({ query }), [query]);
   const search = useInfiniteQuery({
-    queryKey: queryKeys.search({ query }),
+    queryKey: key,
     queryFn: ({ pageParam, signal }) => {
-      // Append the cursor for pages after the first; the base query already
-      // carries all active filters/sort from the URL.
-      const url = pageParam ? `/api/search/properties?${query}&cursor=${encodeURIComponent(pageParam)}` : `/api/search/properties?${query}`;
-      return apiFetch<{ properties: Property[]; hasMore: boolean; nextCursor: string | null }>(url, { signal });
-    },
-    initialPageParam: "" as string,
-    getNextPageParam: (last) => (last.hasMore && last.nextCursor ? last.nextCursor : undefined),
-    staleTime: 60_000,
-    placeholderData: keepPreviousData,
+      const next = new URLSearchParams(query);
+      next.delete("cursor");
+      if (pageParam) next.set("cursor", pageParam);
+      return apiFetch<CatalogPage>(`/api/search/properties?${next}`, { signal });
+    }, initialPageParam: "", getNextPageParam: last => last.hasMore && last.nextCursor ? last.nextCursor : undefined,
+    staleTime: state => Math.max(0, (state.state.data?.pages[0]?.expiresAt ?? 0) - Date.now()), retry: false,
   });
-  const properties = useMemo(() => search.data?.pages?.flatMap((page) => page.properties) ?? [], [search.data]);
-  const loading = search.isLoading;
-  const error = search.error instanceof Error ? search.error.message : "";
-  const [destination, setDestination] = useState(searchParams.get("destination") ?? "");
+  const first = search.data?.pages[0];
+  const properties = useMemo(() => search.data?.pages.flatMap(page => page.properties) ?? [], [search.data]);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
-
-  // Filter States
-  const [maxPrice, setMaxPrice] = useState<number>(2000000); // in Paise (20,000 INR)
-  const [starRatings, setStarRatings] = useState<number[]>([]);
-  const [minGuestRating, setMinGuestRating] = useState<number | null>(null);
-  const [selectedPropertyTypes, setSelectedPropertyTypes] = useState<string[]>([]);
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
-  const [selectedBookingOptions, setSelectedBookingOptions] = useState<string[]>([]);
-  const [selectedNeighbourhoods, setSelectedNeighbourhoods] = useState<string[]>([]);
-  const sortParam = searchParams.get("sort");
-  const sort: SortKey = isSortKey(sortParam) ? sortParam : "top_picks";
-  const hasDestinationCoordinates = [searchParams.get("placeLat"), searchParams.get("placeLng")]
-    .every((coordinate) => coordinate !== null && Number.isFinite(Number(coordinate)));
-  const visibleSortOptions = SORT_OPTIONS.filter(
-    (option) => !option.needsDestinationCoordinates || hasDestinationCoordinates
-  );
-  const availableAmenities = useMemo(() => {
-    const values = new globalThis.Map<string, string>();
-    properties.forEach((property) => property.amenityCodes.forEach((amenity) => {
-      const key = amenityKey(amenity);
-      if (key) values.set(key, amenityLabel(amenity));
-    }));
-    return [...values.entries()].map(([code, label]) => ({ code, label })).sort((a, b) => a.label.localeCompare(b.label));
-  }, [properties]);
-
-  // Compute active filters count
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (maxPrice < 2000000) count++;
-    count += starRatings.length;
-    if (minGuestRating !== null) count++;
-    count += selectedPropertyTypes.length;
-    count += selectedAmenities.length;
-    count += selectedBookingOptions.length;
-    count += selectedNeighbourhoods.length;
-    return count;
-  }, [
-    maxPrice,
-    starRatings,
-    minGuestRating,
-    selectedPropertyTypes,
-    selectedAmenities,
-    selectedBookingOptions,
-    selectedNeighbourhoods,
-  ]);
-
-  const resetAllFilters = () => {
-    setMaxPrice(2000000);
-    setStarRatings([]);
-    setMinGuestRating(null);
-    setSelectedPropertyTypes([]);
-    setSelectedAmenities([]);
-    setSelectedBookingOptions([]);
-    setSelectedNeighbourhoods([]);
-  };
-
-  // The API applies ordering before limiting results; client state only filters that ordered set.
-  const filteredProperties = useMemo(() => {
-    let result = [...properties];
-
-    if (maxPrice < 2000000) {
-      result = result.filter(
-        (p) => p.minimumPricePaise !== null && p.minimumPricePaise <= maxPrice
-      );
-    }
-
-    if (starRatings.length > 0) {
-      result = result.filter((p) => {
-        const ratingFloor = Math.floor(p.ratingAverage || 4);
-        return starRatings.includes(ratingFloor);
-      });
-    }
-
-    if (minGuestRating !== null) {
-      result = result.filter((p) => (p.ratingAverage || 0) >= minGuestRating);
-    }
-
-    if (selectedPropertyTypes.length > 0) {
-      result = result.filter((p) =>
-        selectedPropertyTypes.some(
-          (t) => t.toLowerCase() === (p.propertyType || "hotel").toLowerCase()
-        )
-      );
-    }
-
-    if (selectedAmenities.length > 0) {
-      result = result.filter((p) =>
-        selectedAmenities.every(
-          (code) => p.amenityCodes.some((amenity) => amenityKey(amenity) === code)
-        )
-      );
-    }
-
-    if (selectedBookingOptions.includes("FREE_CANCEL")) {
-      result = result.filter((p) => p.freeCancellation);
-    }
-
-    return result;
-  }, [
-    properties,
-    maxPrice,
-    starRatings,
-    minGuestRating,
-    selectedPropertyTypes,
-    selectedAmenities,
-    selectedBookingOptions,
-  ]);
-
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
+  const [price, setPrice] = useState(params.get("maxPricePaise") ?? "");
+  const [priceChanged, setPriceChanged] = useState(false);
+  const saved = useSavedHotels(properties.map(property => property.id), () => setIsLoginOpen(true));
+  const refreshing = search.isFetching && !search.isFetchingNextPage;
+  const hasCoordinates = params.has("placeLat") && params.has("placeLng");
+  const activeCount = ["maxPricePaise", "minPricePaise", "minRating", "freeCancellation"].filter(name => params.has(name)).length + params.getAll("amenity").length + params.getAll("propertyType").length;
+  const push = (name: string, values: string[]) => {
     const next = new URLSearchParams(query);
-    destination.trim() ? next.set("destination", destination.trim()) : next.delete("destination");
-    router.push(`/search?${next}`);
+    next.delete("cursor"); next.delete(name);
+    values.forEach(value => next.append(name, value));
+    router.push(`/search?${next}`, { scroll: false });
   };
-
-  const selectSort = (nextSort: SortKey) => {
-    if (nextSort === sort) return;
+  const toggle = (name: string, value: string) => {
+    const values = params.getAll(name);
+    push(name, values.includes(value) ? values.filter(item => item !== value) : [...values, value]);
+  };
+  const reset = () => {
     const next = new URLSearchParams(query);
-    next.set("sort", nextSort);
-    router.push(`/search?${next}`);
+    ["maxPricePaise", "minPricePaise", "minRating", "freeCancellation", "amenity", "propertyType", "cursor"].forEach(name => next.delete(name));
+    router.push(`/search?${next}`, { scroll: false });
   };
-
-  const place = searchParams.get("destination") || "India";
-  const hotelQuery = useMemo(() => {
-    const next = new URLSearchParams(searchParams.toString());
-    // Sorting and presentation filters belong to the result list, not a shared hotel link.
-    next.delete("sort");
-    return next.toString();
-  }, [searchParams]);
-
-  return (
-    <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <SiteHeader onLoginClick={() => setIsLoginOpen(true)} />
-
-      {/* SEARCH HEADER BAR */}
-      <section className="relative z-10 border-b border-[var(--hk-border)] bg-[var(--hk-surface-container-low,#f9f9ff)] pb-5 pt-4">
-        <form
-          onSubmit={submit}
-          className="mx-auto grid max-w-[1280px] overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white shadow-[var(--hk-shadow-card)] md:grid-cols-[1.45fr_1fr_1fr_1fr_auto]"
-        >
-          <SearchPart label="Destination" icon={<MapPin />}>
-            <input
-              aria-label="Destination"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="City or property"
-              className="w-full bg-transparent text-sm font-semibold text-[var(--hk-ink)] outline-none placeholder:text-[var(--hk-muted)]"
-            />
-          </SearchPart>
-          <SearchPart
-            label="Check-in"
-            icon={<Calendar />}
-            value={formatStayDate(searchParams.get("checkIn") ?? undefined)}
-          />
-          <SearchPart
-            label="Check-out"
-            icon={<Calendar />}
-            value={formatStayDate(searchParams.get("checkOut") ?? undefined)}
-          />
-          <SearchPart
-            label="Guests & rooms"
-            icon={<Users />}
-            value={`${searchParams.get("adults") ?? 2} guests, 1 room`}
-          />
-          <button className="m-2 rounded-lg bg-[var(--hk-navy-strong)] px-6 py-3 text-sm font-extrabold text-white hover:bg-[var(--hk-navy)] transition">
-            Search hotels
-          </button>
-        </form>
-      </section>
-
-      {/* MAIN CONTENT CONTAINER */}
-      <main className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-          {/* DESKTOP SIDEBAR - STICKY AND COMPACT */}
-          <aside className="hidden w-[280px] shrink-0 rounded-2xl border border-[var(--hk-border)] bg-white p-5 shadow-[var(--hk-shadow-soft)] lg:block lg:sticky lg:top-6">
-            <FilterSidebarContent
-              maxPrice={maxPrice}
-              setMaxPrice={setMaxPrice}
-              starRatings={starRatings}
-              setStarRatings={setStarRatings}
-              minGuestRating={minGuestRating}
-              setMinGuestRating={setMinGuestRating}
-              selectedPropertyTypes={selectedPropertyTypes}
-              setSelectedPropertyTypes={setSelectedPropertyTypes}
-              selectedAmenities={selectedAmenities}
-              setSelectedAmenities={setSelectedAmenities}
-              selectedBookingOptions={selectedBookingOptions}
-              setSelectedBookingOptions={setSelectedBookingOptions}
-              selectedNeighbourhoods={selectedNeighbourhoods}
-              setSelectedNeighbourhoods={setSelectedNeighbourhoods}
-              availableAmenities={availableAmenities}
-              activeFilterCount={activeFilterCount}
-              resetAllFilters={resetAllFilters}
-            />
-          </aside>
-
-          {/* RESULTS MAIN AREA */}
-          <section className="flex-1 min-w-0">
-            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--hk-gold-strong)]">
-                  Find stays
-                </p>
-                <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">
-                  Hotels in {place}
-                </h1>
-                <p className="mt-1 text-sm text-[var(--hk-muted)]">
-                  {loading
-                    ? "Finding the best stays for you…"
-                    : `${filteredProperties.length} stays available`}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsMobileFilterOpen(true)}
-                  className="flex items-center gap-2 rounded-lg border border-[var(--hk-border)] bg-white px-3.5 py-2 text-xs font-bold text-slate-800 shadow-xs lg:hidden"
-                >
-                  <SlidersHorizontal className="h-4 w-4 text-[var(--hk-navy)]" />
-                  <span>Filters</span>
-                  {activeFilterCount > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--hk-navy)] text-[10px] text-white">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <b className="text-sm">Sort by</b>
-                  <SortMenu options={visibleSortOptions} selected={sort} onSelect={selectSort} />
-                  <button
-                    aria-label="Map view"
-                    className="rounded-lg border border-[var(--hk-border)] bg-white p-2.5 text-slate-700 hover:text-[var(--hk-navy)] transition"
-                  >
-                    <Map className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* QUICK FILTER CHIPS */}
-            <div className="mt-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              <Chip
-                icon={<Check />}
-                label="Free cancellation"
-                active={selectedBookingOptions.includes("FREE_CANCEL")}
-                onClick={() =>
-                  setSelectedBookingOptions((prev) =>
-                    prev.includes("FREE_CANCEL")
-                      ? prev.filter((x) => x !== "FREE_CANCEL")
-                      : [...prev, "FREE_CANCEL"]
-                  )
-                }
-              />
-              {availableAmenities.slice(0, 5).map((amenity) => (
-                <Chip
-                  key={amenity.code}
-                  icon={<BadgeCheck />}
-                  label={amenity.label}
-                  active={selectedAmenities.includes(amenity.code)}
-                  onClick={() => setSelectedAmenities((prev) => prev.includes(amenity.code) ? prev.filter((code) => code !== amenity.code) : [...prev, amenity.code])}
-                />
-              ))}
-            </div>
-
-            {/* ACTIVE FILTER BADGES */}
-            {activeFilterCount > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--hk-border)] bg-white p-3">
-                <span className="text-xs font-bold text-slate-500">Active filters:</span>
-                {maxPrice < 2000000 && (
-                  <ActiveFilterBadge
-                    label={`Under ${money(maxPrice, "INR")}`}
-                    onRemove={() => setMaxPrice(2000000)}
-                  />
-                )}
-                {starRatings.map((rating) => (
-                  <ActiveFilterBadge
-                    key={`star-${rating}`}
-                    label={`${rating} Stars`}
-                    onRemove={() => setStarRatings((prev) => prev.filter((r) => r !== rating))}
-                  />
-                ))}
-                {minGuestRating !== null && (
-                  <ActiveFilterBadge
-                    label={`Rated ${minGuestRating}+`}
-                    onRemove={() => setMinGuestRating(null)}
-                  />
-                )}
-                {selectedPropertyTypes.map((type) => (
-                  <ActiveFilterBadge
-                    key={`type-${type}`}
-                    label={type}
-                    onRemove={() =>
-                      setSelectedPropertyTypes((prev) => prev.filter((t) => t !== type))
-                    }
-                  />
-                ))}
-                {selectedAmenities.map((code) => {
-                  const amenity = availableAmenities.find((item) => item.code === code);
-                  return (
-                    <ActiveFilterBadge
-                      key={`am-${code}`}
-                      label={amenity?.label ?? amenityLabel(code)}
-                      onRemove={() =>
-                        setSelectedAmenities((prev) => prev.filter((c) => c !== code))
-                      }
-                    />
-                  );
-                })}
-                <button
-                  onClick={resetAllFilters}
-                  className="ml-auto text-xs font-bold text-[var(--hk-navy)] hover:underline"
-                >
-                  Clear all
-                </button>
-              </div>
-            )}
-
-            {error && (
-              <p
-                role="alert"
-                className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
-              >
-                {error}
-              </p>
-            )}
-
-            {!loading && !error && !filteredProperties.length && (
-              <Empty onReset={resetAllFilters} />
-            )}
-
-            <div className="mt-4 space-y-3">
-              {loading ? (
-                <SearchResultsSkeleton />
-              ) : (
-                filteredProperties.map((property, i) => (
-                  <StayCard key={property.id} property={property} recommended={sort === "top_picks" && i === 0} hotelQuery={hotelQuery} />
-                ))
-              )}
-            </div>
-
-            {!loading && !error && search.hasNextPage && (
-              <div className="mt-6 flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void search.fetchNextPage()}
-                  disabled={search.isFetchingNextPage}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-[#061224] shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {search.isFetchingNextPage ? "Loading more stays…" : "Show more stays"}
-                </button>
-                {activeFilterCount > 0 && (
-                  <p className="text-xs font-medium text-slate-400">Some fetched stays may be hidden by your active filters.</p>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      </main>
-
-      {/* MOBILE DRAWER */}
-      {isMobileFilterOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs hk-overlay-fade lg:hidden">
-          <div className="flex h-full w-full max-w-sm flex-col bg-white shadow-2xl hk-drawer-panel">
-            <div className="flex items-center justify-between border-b border-[var(--hk-border)] p-4">
-              <b className="text-base">Filter your results</b>
-              <button
-                type="button"
-                onClick={() => setIsMobileFilterOpen(false)}
-                className="rounded-full p-1 text-slate-500 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <FilterSidebarContent
-                maxPrice={maxPrice}
-                setMaxPrice={setMaxPrice}
-                starRatings={starRatings}
-                setStarRatings={setStarRatings}
-                minGuestRating={minGuestRating}
-                setMinGuestRating={setMinGuestRating}
-                selectedPropertyTypes={selectedPropertyTypes}
-                setSelectedPropertyTypes={setSelectedPropertyTypes}
-                selectedAmenities={selectedAmenities}
-                setSelectedAmenities={setSelectedAmenities}
-                selectedBookingOptions={selectedBookingOptions}
-                setSelectedBookingOptions={setSelectedBookingOptions}
-                selectedNeighbourhoods={selectedNeighbourhoods}
-                setSelectedNeighbourhoods={setSelectedNeighbourhoods}
-                availableAmenities={availableAmenities}
-                activeFilterCount={activeFilterCount}
-                resetAllFilters={resetAllFilters}
-              />
-            </div>
-            <div className="border-t border-[var(--hk-border)] p-4 flex gap-3">
-              <button
-                type="button"
-                onClick={resetAllFilters}
-                className="flex-1 rounded-lg border border-[var(--hk-border)] py-2.5 text-xs font-bold text-slate-700"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsMobileFilterOpen(false)}
-                className="flex-2 rounded-lg bg-[var(--hk-navy-strong)] py-2.5 text-xs font-bold text-white"
-              >
-                Apply ({filteredProperties.length})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FOOTER */}
-      <footer className="mt-8 border-t border-[var(--hk-border)] bg-white">
-        <div className="mx-auto grid max-w-[1280px] gap-4 px-4 py-5 text-sm sm:grid-cols-3 sm:px-6 lg:px-10">
-          <Trust icon="✓" title="Best Price Guarantee" text="We match any lower price you find" />
-          <Trust icon="×" title="Free Cancellation" text="On most stays" />
-          <Trust icon="✓" title="Verified Hotels" text="Trusted & quality stays" />
-        </div>
-      </footer>
-
-      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
-    </div>
-  );
-}
-
-function SortMenu({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: ReadonlyArray<{ value: SortKey; label: string }>;
-  selected: SortKey;
-  onSelect: (value: SortKey) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const selectedOption = options.find((option) => option.value === selected) ?? SORT_OPTIONS[0];
-
   useEffect(() => {
-    const closeWhenOutside = (event: MouseEvent) => {
-      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", closeWhenOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeWhenOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
-
-  return (
-    <div ref={root} className="relative">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((value) => !value)}
-        className="flex min-w-52 items-center justify-between gap-3 rounded-lg border border-[var(--hk-border)] bg-white px-3 py-2 text-left text-sm outline-none transition hover:border-[var(--hk-navy)] focus-visible:ring-2 focus-visible:ring-[var(--hk-navy)]/30"
-      >
-        <span>{selectedOption.label}</span>
-        <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          aria-label="Sort search results"
-          className="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-xl border border-[var(--hk-border)] bg-white py-1 shadow-[0_18px_42px_rgba(7,23,43,0.18)]"
-        >
-          {options.map((option) => {
-            const active = option.value === selected;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                onClick={() => {
-                  setOpen(false);
-                  onSelect(option.value);
-                }}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition ${
-                  active
-                    ? "bg-[var(--hk-surface-soft)] font-bold text-[var(--hk-navy-strong)]"
-                    : "text-slate-800 hover:bg-slate-50"
-                }`}
-              >
-                <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${active ? "border-[var(--hk-navy)]" : "border-slate-300"}`}>
-                  {active && <span className="h-2 w-2 rounded-full bg-[var(--hk-navy)]" />}
-                </span>
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================================
-   SIDEBAR FILTER CONTENT - CLEAN, SLEEK, UNBLOATED
-   ========================================================================= */
-
-function FilterSidebarContent({
-  maxPrice,
-  setMaxPrice,
-  starRatings,
-  setStarRatings,
-  minGuestRating,
-  setMinGuestRating,
-  selectedPropertyTypes,
-  setSelectedPropertyTypes,
-  selectedAmenities,
-  setSelectedAmenities,
-  selectedBookingOptions,
-  setSelectedBookingOptions,
-  selectedNeighbourhoods,
-  setSelectedNeighbourhoods,
-  availableAmenities,
-  activeFilterCount,
-  resetAllFilters,
-}: {
-  maxPrice: number;
-  setMaxPrice: (v: number) => void;
-  starRatings: number[];
-  setStarRatings: React.Dispatch<React.SetStateAction<number[]>>;
-  minGuestRating: number | null;
-  setMinGuestRating: (v: number | null) => void;
-  selectedPropertyTypes: string[];
-  setSelectedPropertyTypes: React.Dispatch<React.SetStateAction<string[]>>;
-  selectedAmenities: string[];
-  setSelectedAmenities: React.Dispatch<React.SetStateAction<string[]>>;
-  selectedBookingOptions: string[];
-  setSelectedBookingOptions: React.Dispatch<React.SetStateAction<string[]>>;
-  selectedNeighbourhoods: string[];
-  setSelectedNeighbourhoods: React.Dispatch<React.SetStateAction<string[]>>;
-  availableAmenities: ReadonlyArray<{ code: string; label: string }>;
-  activeFilterCount: number;
-  resetAllFilters: () => void;
-}) {
-  const [open, setOpen] = useState<string | null>(null);
-
-  const toggleStar = (star: number) => {
-    setStarRatings((prev) =>
-      prev.includes(star) ? prev.filter((s) => s !== star) : [...prev, star]
-    );
+    if (!priceChanged) return;
+    const timer = setTimeout(() => {
+      const next = new URLSearchParams(query);
+      next.delete("cursor");
+      if (price) next.set("maxPricePaise", price); else next.delete("maxPricePaise");
+      router.push(`/search?${next}`, { scroll: false });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [price, priceChanged, query, router]);
+  // Cache expiry means revalidation is needed, not that the visible hotels
+  // should disappear. Preserve the current cards while fetching a fresh page.
+  const refresh = async () => {
+    await client.cancelQueries({ queryKey: key, exact: true });
+    client.setQueryData<InfiniteData<CatalogPage, string>>(key, current => current ? {
+      ...current, pages: current.pages.slice(0, 1), pageParams: [""],
+    } : current);
+    await client.refetchQueries({ queryKey: key, exact: true });
   };
-
-  const togglePropertyType = (type: string) => {
-    setSelectedPropertyTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
+  const loadMore = async () => {
+    if (first && first.expiresAt <= Date.now()) { await refresh(); return; }
+    try { await search.fetchNextPage({ throwOnError: true }); }
+    catch (error) {
+      if (error instanceof ApiClientError && ["SEARCH_CURSOR_EXPIRED", "SEARCH_CHANGED"].includes(error.code)) await refresh();
+    }
   };
-
-  const toggleAmenity = (code: string) => {
-    setSelectedAmenities((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    );
-  };
-
-  const toggleBookingOption = (opt: string) => {
-    setSelectedBookingOptions((prev) =>
-      prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]
-    );
-  };
-
-  const toggleNeighbourhood = (code: string) => {
-    setSelectedNeighbourhoods((prev) =>
-      prev.includes(code) ? prev.filter((n) => n !== code) : [...prev, code]
-    );
-  };
-
-  return (
-    <div>
-      {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-[var(--hk-border)] pb-4">
-        <b className="text-sm text-slate-900">Filter your results</b>
-        {activeFilterCount > 0 && (
-          <button
-            onClick={resetAllFilters}
-            className="text-xs font-bold text-[var(--hk-navy)] hover:underline"
-          >
-            Reset all
-          </button>
-        )}
-      </div>
-
-      {/* PRICE RANGE */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <b className="text-xs text-slate-900">Price per night</b>
-        <div className="mt-2 flex justify-between text-xs text-[var(--hk-muted)]">
-          <span>₹0</span>
-          <span>{money(maxPrice, "INR")}+</span>
+  const filters = <div className="space-y-5 text-xs text-[var(--hk-navy)] [&_fieldset]:border-0 [&_fieldset]:border-b [&_fieldset]:border-[var(--hk-border)] [&_fieldset]:pb-4 [&_fieldset]:pt-0 [&_legend]:mb-3 [&_input[type=checkbox]]:accent-[var(--hk-navy)]">
+    <div className="flex justify-between"><b className="text-sm text-[var(--hk-ink)]">Filter your results</b>{activeCount > 0 && <button type="button" onClick={reset} className="text-xs underline">Clear all</button>}</div>
+    <fieldset className="border-t border-slate-200 pt-4"><legend className="font-semibold">Maximum stay price</legend><p className="mt-2 text-xs text-slate-500">{price ? formatMoney(Number(price)) : "Any price"}</p><input aria-label="Maximum price" type="range" min="10000" max="2000000" step="10000" value={price || "2000000"} onChange={event => { setPrice(event.target.value); setPriceChanged(true); }} className="mt-3 w-full accent-[var(--hk-navy)]" /><button type="button" onClick={() => { setPrice(""); setPriceChanged(true); }} className="text-xs underline">Any price</button></fieldset>
+    <fieldset className="space-y-2 border-t border-slate-200 pt-4"><legend className="font-semibold">Guest rating</legend>{[["4.5", "4.5+ Exceptional"], ["4", "4+ Very good"], ["3.5", "3.5+ Good"]].map(([value, label]) => <label key={value} className="flex items-center gap-2"><input type="checkbox" checked={params.get("minRating") === value} onChange={() => push("minRating", params.get("minRating") === value ? [] : [value])} />{label}</label>)}</fieldset>
+    <fieldset className="space-y-2 border-t border-slate-200 pt-4"><legend className="font-semibold">Property type</legend>{propertyTypes.map(([value, label]) => <label key={value} className="flex items-center gap-2"><input type="checkbox" checked={params.getAll("propertyType").map(value => value.toLowerCase()).includes(value)} onChange={() => toggle("propertyType", value)} />{label}</label>)}</fieldset>
+    <fieldset className="space-y-2 border-t border-slate-200 pt-4"><legend className="font-semibold">Amenities</legend>{[...new Set([...(first?.availableAmenities ?? []), ...params.getAll("amenity")])].map(value => <label key={value} className="flex items-center gap-2"><input type="checkbox" checked={params.getAll("amenity").includes(value)} onChange={() => toggle("amenity", value)} />{amenityLabel(value)}</label>)}{!first?.availableAmenities.length && <p className="text-xs text-slate-500">Amenities appear when results load.</p>}</fieldset>
+    <fieldset className="border-t border-slate-200 pt-4"><legend className="font-semibold">Booking options</legend><label className="mt-2 flex items-start gap-2"><input type="checkbox" disabled={!params.has("checkIn")} checked={params.get("freeCancellation") === "true"} onChange={() => push("freeCancellation", params.get("freeCancellation") === "true" ? [] : ["true"])} />Free cancellation</label>{!params.has("checkIn") && <p className="mt-1 text-xs text-slate-500">Choose dates to check cancellation eligibility.</p>}</fieldset>
+  </div>;
+  const errorCode = search.error instanceof ApiClientError ? search.error.code : "";
+  const restart = errorCode === "SEARCH_CURSOR_EXPIRED" || errorCode === "SEARCH_CHANGED";
+  return <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
+    <SiteHeader onLoginClick={() => setIsLoginOpen(true)} />
+    <section className="border-b border-slate-200 px-4 py-3 sm:px-6"><div className="mx-auto max-w-[1280px]"><TravelSearch initial={params} compact /></div></section>
+    <main className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10"><div className="flex items-start gap-8">
+      <aside className="hidden w-[280px] shrink-0 rounded-2xl border border-[var(--hk-border)] bg-white p-5 shadow-[var(--hk-shadow-soft)] lg:sticky lg:top-6 lg:block">{filters}</aside>
+      <section className="min-w-0 flex-1" aria-label="Search results">
+        <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--hk-gold-strong)]">Find stays</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Hotels in {params.get("destination") || "India"}</h1><p className="mt-1 text-sm text-slate-600" aria-live="polite">{search.isPending || refreshing ? "Checking available stays…" : first && !search.error ? `${first.total} ${first.total === 1 ? "stay" : "stays"} ${params.has("checkIn") ? "available" : "found"}` : "Find your next stay"}</p></div>
+          <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => setMobileFilters(true)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-sm lg:hidden"><SlidersHorizontal className="h-4 w-4" />Filters{activeCount ? ` (${activeCount})` : ""}</button><label className="flex items-center gap-2 text-sm font-bold">Sort by <select value={params.get("sort") || "top_picks"} onChange={event => push("sort", [event.target.value])} className="max-w-52 rounded-lg border border-[var(--hk-border)] bg-white px-3 py-2 text-sm font-normal">{sorts.filter(([value]) => value !== "distance_from_downtown" || hasCoordinates).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button type="button" disabled={!properties.length} aria-pressed={mapOpen} onClick={() => setMapOpen(value => !value)} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-2 text-sm disabled:opacity-50"><Map className="h-4 w-4" />{mapOpen ? "Hide map" : "Map"}</button></div>
         </div>
-        <input
-          type="range"
-          aria-label="Maximum price"
-          min="100000"
-          max="2000000"
-          step="100000"
-          value={maxPrice}
-          onChange={(e) => setMaxPrice(Number(e.target.value))}
-          className="mt-3 w-full accent-[var(--hk-navy)] cursor-pointer"
-        />
-      </div>
-
-      {/* STAR RATING */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <b className="text-xs text-slate-900">Star rating</b>
-        <div className="mt-3 space-y-3">
-          {[5, 4, 3, 2].map((n) => {
-            const checked = starRatings.includes(n);
-            return (
-              <label
-                key={n}
-                onClick={() => toggleStar(n)}
-                className="flex items-center justify-between text-xs cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => {}}
-                    className="accent-[var(--hk-navy)] cursor-pointer"
-                  />
-                  <span>{n} stars</span>
-                </div>
-                <span className="text-[var(--hk-gold-strong)] tracking-wide">★★★★★</span>
-              </label>
-            );
-          })}
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar" aria-label="Quick filters">
+          {params.has("checkIn") && <button type="button" aria-pressed={params.get("freeCancellation") === "true"} onClick={() => push("freeCancellation", params.get("freeCancellation") === "true" ? [] : ["true"])} className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${params.get("freeCancellation") === "true" ? "border-[var(--hk-navy)] bg-[var(--hk-navy)] text-white" : "border-[var(--hk-border)] bg-white"}`}><Check className="h-3.5 w-3.5 text-[var(--hk-success)]" />Free cancellation</button>}
+          {(first?.availableAmenities ?? []).slice(0, 5).map(value => <button key={value} type="button" aria-pressed={params.getAll("amenity").includes(value)} onClick={() => toggle("amenity", value)} className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${params.getAll("amenity").includes(value) ? "border-[var(--hk-navy)] bg-[var(--hk-navy)] text-white" : "border-[var(--hk-border)] bg-white"}`}><BadgeCheck className="h-3.5 w-3.5 text-[var(--hk-success)]" />{amenityLabel(value)}</button>)}
         </div>
-      </div>
-
-      {/* GUEST RATING */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <b className="text-xs text-slate-900">Guest rating</b>
-        <div className="mt-3 space-y-3">
-          {[
-            { val: 4.5, label: "4.5+ Exceptional" },
-            { val: 4.0, label: "4.0+ Very good" },
-            { val: 3.5, label: "3.5+ Good" },
-          ].map((item) => {
-            const checked = minGuestRating === item.val;
-            return (
-              <label
-                key={item.val}
-                onClick={() => setMinGuestRating(checked ? null : item.val)}
-                className="flex items-center gap-2 text-xs cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {}}
-                  className="accent-[var(--hk-navy)] cursor-pointer"
-                />
-                <span>{item.label}</span>
-              </label>
-            );
-          })}
+        {activeCount > 0 && <div className="mt-4 flex flex-wrap items-center gap-2 text-xs" aria-label="Active filters"><span className="font-semibold">Active filters:</span>{["maxPricePaise", "minPricePaise", "minRating", "freeCancellation", "amenity", "propertyType"].flatMap(name => params.getAll(name).map(value => <button key={`${name}:${value}`} type="button" onClick={() => push(name, params.getAll(name).filter(item => item !== value))} className="rounded-full border border-slate-200 bg-white px-3 py-1">{name === "maxPricePaise" ? `Under ${formatMoney(Number(value))}` : name === "minPricePaise" ? `From ${formatMoney(Number(value))}` : name === "minRating" ? `Guest rating ${value}+` : name === "freeCancellation" ? "Free cancellation" : amenityLabel(value)} ×</button>))}<button type="button" onClick={reset} className="underline">Clear all</button></div>}
+        {saved.error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{saved.error}</p>}
+        {search.error && (!restart || !properties.length) && <div role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><p>{properties.length || restart ? "We couldn’t update availability. You can keep browsing or try again." : search.error.message || "Unable to load hotels."}</p><button type="button" onClick={() => void refresh()} className="mt-2 font-semibold underline">Try again</button></div>}
+        <div className="mt-4 space-y-3">
+          {search.isPending && !first ? <ResultsSkeleton /> : <>{mapOpen && <SearchMap properties={properties} total={first?.total ?? properties.length} query={query} savedIds={saved.savedIds} onSave={saved.toggle} saving={saved.busy} />}{properties.map((property, index) => <StayCard accent={index === 0 && (!params.get("sort") || params.get("sort") === "top_picks")} key={property.id} property={property} query={query} saved={saved.savedIds.has(property.id)} onSave={() => saved.toggle(property.id)} saving={saved.busy} />)}{!search.error && properties.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"><h2 className="font-bold">No stays match this search</h2><p className="mt-2 text-sm text-slate-500">Try different dates, another destination, or fewer filters.</p>{activeCount > 0 && <button type="button" onClick={reset} className="mt-3 underline">Clear filters</button>}</div>}</>}
         </div>
-      </div>
-
-      {/* PROPERTY TYPE ACCORDION */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <button
-          type="button"
-          onClick={() => setOpen(open === "Property type" ? null : "Property type")}
-          className="flex w-full items-center justify-between text-xs font-bold text-slate-900"
-        >
-          <span>Property type</span>
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${
-              open === "Property type" ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {open === "Property type" && (
-          <div className="mt-3 space-y-2.5">
-            {PROPERTY_TYPES.map((pt) => (
-              <label
-                key={pt.code}
-                onClick={() => togglePropertyType(pt.label)}
-                className="flex items-center gap-2 text-xs cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedPropertyTypes.includes(pt.label)}
-                  onChange={() => {}}
-                  className="accent-[var(--hk-navy)] cursor-pointer"
-                />
-                <span>{pt.label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* POPULAR AMENITIES ACCORDION */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <button
-          type="button"
-          onClick={() => setOpen(open === "Popular amenities" ? null : "Popular amenities")}
-          className="flex w-full items-center justify-between text-xs font-bold text-slate-900"
-        >
-          <span>Popular amenities</span>
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${
-              open === "Popular amenities" ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {open === "Popular amenities" && (
-          <div className="mt-3 space-y-2.5">
-            {availableAmenities.map((item) => (
-              <label
-                key={item.code}
-                onClick={() => toggleAmenity(item.code)}
-                className="flex items-center gap-2 text-xs cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedAmenities.includes(item.code)}
-                  onChange={() => {}}
-                  className="accent-[var(--hk-navy)] cursor-pointer"
-                />
-                <span>{item.label}</span>
-              </label>
-            ))}
-            {!availableAmenities.length && <p className="text-xs text-[var(--hk-muted)]">No amenities are listed for these stays.</p>}
-          </div>
-        )}
-      </div>
-
-      {/* BOOKING OPTIONS ACCORDION */}
-      <div className="border-b border-[var(--hk-border)] py-4">
-        <button
-          type="button"
-          onClick={() => setOpen(open === "Booking options" ? null : "Booking options")}
-          className="flex w-full items-center justify-between text-xs font-bold text-slate-900"
-        >
-          <span>Booking options</span>
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${
-              open === "Booking options" ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {open === "Booking options" && (
-          <div className="mt-3 space-y-2.5">
-            <label
-              onClick={() => toggleBookingOption("FREE_CANCEL")}
-              className="flex items-center gap-2 text-xs cursor-pointer select-none"
-            >
-              <input
-                type="checkbox"
-                checked={selectedBookingOptions.includes("FREE_CANCEL")}
-                onChange={() => {}}
-                className="accent-[var(--hk-navy)] cursor-pointer"
-              />
-              <span>Free cancellation</span>
-            </label>
-            <label
-              onClick={() => toggleBookingOption("VERIFIED")}
-              className="flex items-center gap-2 text-xs cursor-pointer select-none"
-            >
-              <input
-                type="checkbox"
-                checked={selectedBookingOptions.includes("VERIFIED")}
-                onChange={() => {}}
-                className="accent-[var(--hk-navy)] cursor-pointer"
-              />
-              <span>Verified stay</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* NEIGHBOURHOOD ACCORDION */}
-      <div className="border-b border-[var(--hk-border)] py-4 last:border-0">
-        <button
-          type="button"
-          onClick={() => setOpen(open === "Neighbourhood" ? null : "Neighbourhood")}
-          className="flex w-full items-center justify-between text-xs font-bold text-slate-900"
-        >
-          <span>Neighbourhood</span>
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${
-              open === "Neighbourhood" ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {open === "Neighbourhood" && (
-          <div className="mt-3 space-y-2.5">
-            {NEIGHBOURHOODS.map((n) => (
-              <label
-                key={n.code}
-                onClick={() => toggleNeighbourhood(n.code)}
-                className="flex items-center gap-2 text-xs cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedNeighbourhoods.includes(n.code)}
-                  onChange={() => {}}
-                  className="accent-[var(--hk-navy)] cursor-pointer"
-                />
-                <span>{n.label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+        {search.hasNextPage && <div className="mt-6 text-center"><button type="button" disabled={search.isFetching} onClick={() => void loadMore()} className="rounded-lg border border-slate-200 bg-white px-6 py-3 text-sm font-semibold disabled:opacity-50">{search.isFetchingNextPage ? "Loading…" : `Show more stays (${properties.length} of ${first?.total})`}</button></div>}
+      </section>
+    </div></main>
+    {mobileFilters && <div className="fixed inset-0 z-50 bg-black/40 lg:hidden"><button type="button" aria-label="Close filters" className="absolute inset-0" onClick={() => setMobileFilters(false)} /><section role="dialog" aria-modal="true" aria-label="Filter hotels" className="absolute inset-y-0 right-0 w-full max-w-sm overflow-y-auto bg-white p-6"><button type="button" onClick={() => setMobileFilters(false)} aria-label="Close filters" className="mb-4 ml-auto block"><X /></button>{filters}</section></div>}
+    <LoginModal isOpen={isLoginOpen} onClose={() => { setIsLoginOpen(false); saved.cancelPending(); }} onSuccess={() => { setIsLoginOpen(false); saved.resumePending(); }} />
+  </div>;
 }
-
-/* =========================================================================
-   HELPER UI COMPONENTS
-   ========================================================================= */
-
-function ActiveFilterBadge({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--hk-surface-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--hk-ink)] border border-[var(--hk-border)]">
-      <span>{label}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded-full text-slate-400 hover:text-slate-700 transition"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </span>
-  );
-}
-
-function Chip({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-        active
-          ? "border-[var(--hk-navy)] bg-[var(--hk-navy)] text-white"
-          : "border-[var(--hk-border)] bg-white hover:border-[var(--hk-navy)] text-slate-800"
-      }`}
-    >
-      <span
-        className={`[&>svg]:h-4 [&>svg]:w-4 ${
-          active ? "text-white" : "text-[var(--hk-success)]"
-        }`}
-      >
-        {icon}
-      </span>
-      {label}
-    </button>
-  );
-}
-
-function SearchPart({
-  label,
-  icon,
-  value,
-  children,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  value?: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <label className="flex min-w-0 items-center gap-3 border-b border-[var(--hk-border)] px-5 py-4 text-[var(--hk-ink)] last:border-b-0 md:border-b-0 md:border-r">
-      <span className="shrink-0 text-[var(--hk-navy)]/70 [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
-      <span className="min-w-0">
-        <span className="block text-[10px] font-bold uppercase tracking-wide text-[var(--hk-muted)]">
-          {label}
-        </span>
-        {children ?? <span className="block truncate text-sm font-semibold">{value}</span>}
-      </span>
-    </label>
-  );
-}
-
-function Trust({ icon, title, text }: { icon: string; title: string; text: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--hk-navy)] font-bold text-[var(--hk-navy)]">
-        {icon}
-      </span>
-      <p>
-        <b className="block text-xs">{title}</b>
-        <span className="text-xs text-[var(--hk-muted)]">{text}</span>
-      </p>
-    </div>
-  );
-}
-
-function Empty({ onReset }: { onReset: () => void }) {
-  return (
-    <div className="mt-5 rounded-2xl border border-dashed border-[var(--hk-border-strong)] bg-white p-12 text-center">
-      <h2 className="text-lg font-bold">No stays match this search</h2>
-      <p className="mt-2 text-sm text-[var(--hk-muted)]">
-        Try another destination or remove a filter.
-      </p>
-      <button
-        onClick={onReset}
-        className="mt-4 rounded-lg bg-[var(--hk-navy-strong)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--hk-navy)] transition"
-      >
-        Reset all filters
-      </button>
-    </div>
-  );
-}
-
-/** Matches the result-card layout so client-side searches never leave a blank results pane. */
-function SearchResultsSkeleton() {
-  return (
-    <div aria-busy="true" aria-live="polite" className="space-y-3">
-      <span className="sr-only">Loading available stays</span>
-      {Array.from({ length: 3 }).map((_, index) => (
-        <article
-          key={index}
-          aria-hidden="true"
-          className="overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white shadow-[var(--hk-shadow-soft)]"
-        >
-          <div className="grid animate-pulse md:grid-cols-[250px_minmax(0,1fr)_180px]">
-            <div className="min-h-52 bg-slate-200/80" />
-            <div className="min-w-0 space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-2">
-                  <div className="h-5 w-48 max-w-full rounded bg-slate-200" />
-                  <div className="h-3 w-36 rounded bg-slate-200" />
-                </div>
-                <div className="h-7 w-9 rounded bg-slate-200" />
-              </div>
-              <div className="h-3 w-32 rounded bg-slate-200" />
-              <div className="h-3 w-full max-w-md rounded bg-slate-200" />
-              <div className="h-3 w-4/5 max-w-sm rounded bg-slate-200" />
-              <div className="flex gap-2 pt-1">
-                <div className="h-6 w-24 rounded-full bg-slate-200" />
-                <div className="h-6 w-20 rounded-full bg-slate-200" />
-              </div>
-            </div>
-            <div className="flex min-h-32 flex-col justify-end border-t border-[var(--hk-border)] p-4 md:min-h-52 md:border-l md:border-t-0">
-              <div className="ml-auto h-3 w-20 rounded bg-slate-200" />
-              <div className="ml-auto mt-2 h-7 w-28 rounded bg-slate-200" />
-              <div className="mt-4 h-10 w-full rounded-lg bg-slate-200" />
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function StayCard({ property, recommended, hotelQuery }: { property: Property; recommended: boolean; hotelQuery: string }) {
-  const rating = property.ratingAverage;
-  return (
-    <article
-      className={`overflow-hidden rounded-2xl border bg-white shadow-[var(--hk-shadow-soft)] ${
-        recommended ? "border-[var(--hk-gold)]" : "border-[var(--hk-border)]"
-      }`}
-    >
-      <div className="grid md:grid-cols-[250px_minmax(0,1fr)_180px]">
-        <div className="relative min-h-52 bg-[var(--hk-surface-muted)]">
-          {property.coverImageUrl ? (
-            <PublicMediaImage
-              src={property.coverImageUrl}
-              srcSet={property.coverImageSrcSet}
-              alt={property.name}
-              sizes="(min-width: 768px) 250px, 100vw"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Building2 className="h-9 w-9 text-[var(--hk-muted)]" />
-            </div>
-          )}
-          {recommended && (
-            <span className="absolute left-0 top-0 bg-[var(--hk-gold)] px-3 py-1 text-[10px] font-extrabold text-[var(--hk-primary-dark)]">
-              RECOMMENDED
-            </span>
-          )}
-          <button
-            aria-label={`Save ${property.name}`}
-            className="absolute right-3 top-3 rounded-full bg-white/90 p-2"
-          >
-            <Heart className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="min-w-0 p-4">
-          <div className="flex gap-3">
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-lg font-bold">{property.name}</h2>
-              <p className="mt-1 flex items-center gap-1 text-xs text-[var(--hk-muted)]">
-                <MapPin className="h-3.5 w-3.5" />
-                {property.city}
-                {property.state ? `, ${property.state}` : ""} · City centre
-              </p>
-            </div>
-            {rating > 0 && <span className="rounded bg-[var(--hk-navy)] px-2 py-1 text-xs font-bold text-white h-fit">
-              {rating.toFixed(1)}
-            </span>}
-          </div>
-
-          {rating > 0 ? <div className="mt-2 text-xs">
-            <span className="tracking-wide text-[var(--hk-gold-strong)]">★★★★★</span>{" "}
-            <b>{rating >= 4.5 ? "Exceptional" : "Very good"}</b>{" "}
-            <span className="text-[var(--hk-muted)]">
-              ({property.ratingCount || "New"} reviews)
-            </span>
-          </div> : <p className="mt-2 text-xs text-[var(--hk-muted)]">New to Helpkey</p>}
-
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--hk-border)] pb-3 text-xs text-[var(--hk-muted)]">
-            {property.amenityCodes.map((amenity) => (
-              <span key={amenity} className="flex items-center gap-1">
-                <BadgeCheck className="h-3.5 w-3.5 text-[var(--hk-success)]" />
-                {amenityLabel(amenity)}
-              </span>
-            ))}
-            {!property.amenityCodes.length && <span>Amenities not listed</span>}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs">
-            <span className="flex items-center gap-1 text-[var(--hk-success)]">
-              <BadgeCheck className="h-3.5 w-3.5" />
-              Verified stay
-            </span>
-            {property.freeCancellation && (
-              <span className="flex items-center gap-1 text-[var(--hk-success)]">
-                <Check className="h-3.5 w-3.5" />
-                Free cancellation
-              </span>
-            )}
-            <span>Breakfast available</span>
-          </div>
-
-          <div className="mt-3 flex justify-between text-xs">
-            <span className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" />2 guests
-            </span>
-            <span className="flex items-center gap-1">
-              <BedDouble className="h-3.5 w-3.5" />1 king bed
-            </span>
-            <span>Check-in 3:00 PM</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-t border-[var(--hk-border)] p-4 text-right md:border-l md:border-t-0">
-          <div>
-            <span className="rounded bg-[var(--hk-surface-soft)] px-2 py-1 text-[10px] font-bold text-[var(--hk-success)]">
-              Great value
-            </span>
-            <p className="mt-4 text-2xl font-extrabold">
-              {money(property.minimumPricePaise, property.currency)}
-            </p>
-            <p className="text-xs font-semibold">per night</p>
-            <p className="mt-1 text-[10px] text-[var(--hk-muted)]">
-              Taxes included <CircleHelp className="inline h-3 w-3" />
-            </p>
-          </div>
-
-          <div className="mt-4 grid gap-2">
-            <Link
-              href={`/hotels/${property.slug}${hotelQuery ? `?${hotelQuery}` : ""}`}
-              className="rounded-lg border border-[var(--hk-navy)] px-3 py-2 text-center text-xs font-bold text-[var(--hk-navy)] hover:bg-[var(--hk-surface-soft)] transition"
-            >
-              View details
-            </Link>
-            <Link
-              href={`/hotels/${property.slug}${hotelQuery ? `?${hotelQuery}&reserve=1` : "?reserve=1"}`}
-              className="rounded-lg bg-[var(--hk-navy-strong)] px-3 py-2 text-center text-xs font-bold text-white hover:bg-[var(--hk-navy)] transition"
-            >
-              Book now
-            </Link>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
+function ResultsSkeleton() {
+  return <div aria-busy="true" aria-label="Loading hotels" className="space-y-4">{[0, 1, 2].map(value => <div key={value} className="grid min-h-56 animate-pulse overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white md:grid-cols-[250px_1fr]"><div className="min-h-32 bg-slate-200" /><div className="space-y-4 p-5"><div className="h-6 w-2/3 rounded bg-slate-200" /><div className="h-3 w-1/2 rounded bg-slate-100" /><div className="h-3 w-3/4 rounded bg-slate-100" /></div></div>)}</div>;
 }

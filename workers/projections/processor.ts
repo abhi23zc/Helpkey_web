@@ -1,122 +1,100 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Query } from "firebase-admin/firestore";
 import type { Job } from "bullmq";
+import { startingPrice } from "../../lib/booking/duration-pricing";
 import { db } from "../media/firebase";
 import { publicObjectUrl } from "../media/r2";
 import { projectAmenityCodes } from "../../lib/customer/amenities";
+import { projectionSchema, projectionStateId, components, type ProjectionComponent } from "../../lib/background/jobs";
 import type { ProjectionJob } from "./queue";
-import { projectionConnection } from "./queue";
+import Redis from "ioredis";
+import { withFencedLease } from "../shared/lease";
+import { executeOutbox, LeaseBusy } from "../shared/outbox";
+import { invalidate } from "../shared/invalidate";
+import { updateReviews } from "./reviews";
 
-const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-type PublicVariant = Record<string, unknown> & { url: string };
-const cacheRedis = projectionConnection();
+const cacheRedis = new Redis(process.env.REDIS_URL ?? "redis://127.0.0.1:6379", { maxRetriesPerRequest: 1, commandTimeout: 5000 });
 export async function closeProjectionProcessor() { await cacheRedis.quit(); }
-
-async function invalidateCatalogCache() {
-  const environment = process.env.HELPKEY_ENV ?? process.env.NODE_ENV ?? "development";
-  let cursor = "0";
-  do {
-    const [next, keys] = await cacheRedis.scan(cursor, "MATCH", `helpkey:${environment}:v1:public:*`, "COUNT", 200);
-    cursor = next;
-    if (keys.length) await cacheRedis.del(...keys);
-  } while (cursor !== "0");
-}
-
-async function propertySearch(propertyId: string) {
-  const propertyRef = db.collection("properties").doc(propertyId);
-  const [property, rooms, rates, amenities, media] = await Promise.all([
-    propertyRef.get(),
-    db.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active").limit(50).get(),
-    db.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active").limit(100).get(),
-    db.collection("amenities").where("status", "!=", "archived").limit(500).get(),
-    db.collection("mediaAssets").where("propertyId", "==", propertyId).limit(50).get(),
-  ]);
-  if (!property.exists) return;
-  const data = property.data() ?? {};
-  const amenityById = new Map(amenities.docs.map((doc) => [doc.id, doc.data().code]).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-  const ids = [...new Set([...(Array.isArray(data.amenityIds) ? data.amenityIds : []), ...rooms.docs.flatMap((room) => Array.isArray(room.data().amenityIds) ? room.data().amenityIds : [])])];
-  const prices = rates.docs.map((rate) => rate.data().basePricePaise).filter((price): price is number => Number.isSafeInteger(price) && price >= 0);
-  const coverAsset = media.docs.find((doc) => doc.id === data.coverMediaId)?.data();
-  const cover = coverAsset?.publication?.variants;
-  const rawVariants: unknown[] = cover && typeof cover === "object" ? Object.values(cover as Record<string, unknown>) : [];
-  const approvedPublishedCover = (coverAsset?.moderationStatus ?? coverAsset?.status) === "approved" && coverAsset?.publication?.status === "published";
-  const variants: PublicVariant[] = approvedPublishedCover ? rawVariants.flatMap<PublicVariant>((variant) => {
-    if (!variant || typeof variant !== "object") return [];
-    const item = variant as Record<string, unknown>;
-    if (typeof item.objectKey !== "string") return [];
-    try { return [{ ...item, url: publicObjectUrl(item.objectKey) }]; } catch { return []; }
-  }).sort((a, b) => Number(a.width ?? 0) - Number(b.width ?? 0)) : [];
-  // A media asset can have an incomplete variant object. Only choose a cover
-  // from publishable variants, otherwise Firestore rejects `imageUrl: undefined`
-  // and the entire search projection is retried forever.
-  const largest = [...variants].sort((a, b) => Number(b.width ?? 0) - Number(a.width ?? 0))[0] ?? null;
-  const searchTokens = [...new Set([data.name, data.address?.city, data.address?.state, data.propertyType].flatMap((value) => normalize(value).split(/\s+/)).filter(Boolean))].slice(0, 40);
-  await propertyRef.set({
-    normalizedName: normalize(data.name),
-    normalizedCity: normalize(data.address?.city ?? data.city),
-    normalizedState: normalize(data.address?.state ?? data.state),
-    minimumPricePaise: prices.length ? Math.min(...prices) : null,
-    ratingAverage: Number(data.reviewSummary?.average ?? data.ratingAverage ?? 0),
-    ratingCount: Number(data.reviewSummary?.count ?? data.ratingCount ?? 0),
-    amenityCodes: projectAmenityCodes(ids, amenityById),
-    freeCancellation: Array.isArray(data.cancellationPolicyIds) && data.cancellationPolicyIds.length > 0,
-    searchTokens,
-    publicCover: largest ? { imageUrl: largest.url, srcSet: variants.map((variant) => `${variant.url} ${variant.width}w`).join(", "), width: Number(largest.width ?? 1), height: Number(largest.height ?? 1), checksum: String(coverAsset?.publication?.sourceChecksum ?? "") } : null,
-    searchProjectionVersion: 1,
-    searchProjectionUpdatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-}
-
-async function reviewSummary(propertyId: string) {
-  const reviews = await db.collection("propertyReviews").where("propertyId", "==", propertyId).where("status", "==", "approved").get();
-  const buckets = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 };
-  let ratingSum = 0;
-  let awaiting = 0; let withPhotos = 0;
-  const topics: Record<string, number> = {};
-  const topicPatterns: Array<[string, RegExp]> = [["Cleanliness", /\b(clean|cleanliness|spotless|hygiene)\b/i], ["Staff & service", /\b(staff|service|helpful|friendly|reception)\b/i], ["Breakfast", /\b(breakfast|food|dining)\b/i], ["Location", /\b(location|located|area|nearby)\b/i], ["Noise", /\b(noise|noisy|quiet|sound)\b/i], ["Check-in", /\b(check[ -]?in|arrival|wait)\b/i]];
-  const rows: Array<{ rating: number; time: number; hasReply: boolean; hasPhotos: boolean }> = [];
-  let batch = db.batch(); let batchSize = 0;
-  for (const review of reviews.docs) {
-    const data = review.data();
-    const rating = Math.max(1, Math.min(5, Number(data.rating) || 0));
-    if (rating) { ratingSum += rating; buckets[String(rating) as keyof typeof buckets] += 1; }
-    const hasReply = typeof data.partnerReply?.text === "string" && data.partnerReply.text.trim().length > 0;
-    const hasPhotos = Array.isArray(data.photoIds) && data.photoIds.length > 0;
-    rows.push({ rating, time: data.submittedAt?.toMillis?.() ?? data.updatedAt?.toMillis?.() ?? 0, hasReply, hasPhotos });
-    if (!hasReply) awaiting += 1; if (hasPhotos) withPhotos += 1;
-    for (const [name, pattern] of topicPatterns) if (pattern.test(String(data.text ?? ""))) topics[name] = (topics[name] ?? 0) + 1;
-    batch.set(review.ref, { replyState: hasReply ? "replied" : "awaiting", sentiment: rating >= 4 ? "positive" : rating <= 2 ? "critical" : "neutral", hasPhotos }, { merge: true });
-    if (++batchSize === 400) { await batch.commit(); batch = db.batch(); batchSize = 0; }
+const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+async function all(query: Query) {
+  const docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  while (true) {
+    let next = query.orderBy("__name__").limit(200); if (cursor) next = next.startAfter(cursor);
+    const page = await next.get(); docs.push(...page.docs);
+    console.info(JSON.stringify({ event: "projection.source_scan", documentsFetched: page.size, queryCalls: 1 }));
+    if (page.size < 200) return docs;
+    cursor = page.docs.at(-1);
   }
-  if (batchSize) await batch.commit();
-  const count = reviews.size;
-  const average = count ? Math.round(ratingSum / count * 10) / 10 : 0;
-  const now = Date.now();
-  const periods = Object.fromEntries(([7, 30, 90] as const).map((days) => {
-    const window = days * 86_400_000;
-    const summarize = (from: number, to: number) => { const matches = rows.filter((row) => row.time >= from && row.time < to); return { average: matches.length ? Math.round(matches.reduce((sum, row) => sum + row.rating, 0) / matches.length * 10) / 10 : 0, count: matches.length, awaiting: matches.filter((row) => !row.hasReply).length, withPhotos: matches.filter((row) => row.hasPhotos).length }; };
-    return [String(days), { current: summarize(now - window, now + 1), previous: summarize(now - window * 2, now - window) }];
-  }));
-  periods.all = { current: { average, count, awaiting, withPhotos }, previous: { average: 0, count: 0, awaiting: 0, withPhotos: 0 } };
-  await Promise.all([
-    db.collection("properties").doc(propertyId).set({ reviewSummary: { count, ratingSum, average, buckets }, ratingCount: count, ratingAverage: average, reviewProjectionUpdatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-    db.collection("propertyReviewMetrics").doc(propertyId).set({ propertyId, average, count, awaiting, withPhotos, buckets, periods, topics: Object.entries(topics).map(([name, topicCount]) => ({ name, count: topicCount })).sort((a, b) => b.count - a.count), updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-  ]);
 }
-
-async function dailyMetrics(propertyId: string) {
-  const date = new Date().toISOString().slice(0, 10);
-  const [bookings, reviews] = await Promise.all([
-    db.collection("bookings").where("propertyId", "==", propertyId).where("checkIn", ">=", date).limit(50).get(),
-    db.collection("propertyReviews").where("propertyId", "==", propertyId).where("status", "==", "approved").count().get(),
-  ]);
-  await db.collection("propertyDailyMetrics").doc(`${propertyId}_${date}`).set({ propertyId, date, upcomingReservations: bookings.size, reviewCount: reviews.data().count, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+async function propertySearch(propertyId: string, requested: ProjectionComponent[]) {
+  const property = await db.collection("properties").doc(propertyId).get();
+  if (!property.exists) return {};
+  const data = property.data()!, update: Record<string, unknown> = {};
+  if (Number(data.searchProjectionVersion ?? 0) < 3) requested = [...components];
+  if (requested.includes("identity")) Object.assign(update, {
+    normalizedName: normalize(data.name), normalizedCity: normalize(data.address?.city ?? data.city), normalizedState: normalize(data.address?.state ?? data.state),
+    freeCancellation: false, // Eligibility is rate- and arrival-specific; calculated by search.
+    searchTokens: [...new Set([data.name, data.address?.city, data.address?.state, data.propertyType].flatMap(value => normalize(value).split(/\s+/)).filter(Boolean))].slice(0, 40),
+  });
+  if (requested.includes("pricing")) {
+    const rates = await all(db.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active"));
+    const prices = rates.map(rate => startingPrice(rate.data())).filter((price): price is number => price !== null && Number.isSafeInteger(price) && price >= 0);
+    update.minimumPricePaise = prices.length ? Math.min(...prices) : null;
+  }
+  if (requested.includes("amenities")) {
+    const rooms = await all(db.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active"));
+    const ids = [...new Set([...(Array.isArray(data.amenityIds) ? data.amenityIds : []), ...rooms.flatMap(room => Array.isArray(room.data().amenityIds) ? room.data().amenityIds : [])])].filter((id): id is string => typeof id === "string" && !!id && !id.includes("/"));
+    const codeById = new Map<string, string>();
+    for (let offset = 0; offset < ids.length; offset += 200) {
+      const docs = await db.getAll(...ids.slice(offset, offset + 200).map(id => db.collection("amenities").doc(id)));
+      for (const doc of docs) if (doc.get("status") !== "archived" && typeof doc.get("code") === "string") codeById.set(doc.id, doc.get("code"));
+    }
+    update.amenityCodes = projectAmenityCodes(ids, codeById);
+    update.propertyAmenityCodes = projectAmenityCodes(Array.isArray(data.amenityIds) ? data.amenityIds : [], codeById);
+  }
+  if (requested.includes("cover")) {
+    const cover = typeof data.coverMediaId === "string" && data.coverMediaId ? await db.collection("mediaAssets").doc(data.coverMediaId).get() : null;
+    const asset = cover?.data();
+    const published = asset?.propertyId === propertyId && (asset?.moderationStatus ?? asset?.status) === "approved" && asset?.publication?.status === "published";
+    const variants = published ? Object.values(asset?.publication?.variants ?? {}).flatMap(value => {
+      const variant = value as { objectKey?: string; width?: number; height?: number };
+      if (!variant?.objectKey || !variant.width || !variant.height) return [];
+      try { return [{ ...variant, url: publicObjectUrl(variant.objectKey) }]; } catch { return []; }
+    }).sort((a, b) => a.width! - b.width!) : [];
+    const largest = variants.at(-1);
+    update.publicCover = largest ? { imageUrl: largest.url, srcSet: variants.map(value => `${value.url} ${value.width}w`).join(", "), width: largest.width, height: largest.height, checksum: asset!.publication.sourceChecksum ?? "" } : null;
+  }
+  return { ...update, searchProjectionVersion: 3, searchProjectionUpdatedAt: FieldValue.serverTimestamp() };
 }
-
 export async function processProjection(job: Job<ProjectionJob>) {
-  const { kind, entityId } = job.data;
-  if (kind === "property_search") await propertySearch(entityId);
-  else if (kind === "review_summary") { await reviewSummary(entityId); await propertySearch(entityId); }
-  else if (kind === "daily_metrics" || kind === "dashboard_summary") await dailyMetrics(entityId);
-  if (kind === "property_search" || kind === "review_summary" || kind === "cache_invalidation") await invalidateCatalogCache();
-  await db.collection("projectionJobs").doc(String(job.id)).set({ ...job.data, status: "completed", attempts: job.attemptsMade + 1, completedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const data = projectionSchema.parse(job.data), { kind, entityId } = data;
+  await executeOutbox(db, job, "projectionOutbox", "projectionJobs", () => withFencedLease(db, `projection:${entityId}:${kind === "review_summary" ? "reviews" : kind}`, async assert => {
+    if (kind === "property_search") {
+      const ref = db.collection("projectionState").doc(projectionStateId(entityId, kind));
+      const state = (await ref.get()).data() ?? {}, requested = state.requested ?? {};
+      const dirty = Object.keys(requested).filter(key => requested[key] !== state.applied?.[key]) as ProjectionComponent[];
+      const selected = Object.keys(requested).length ? dirty : data.components ?? [...components];
+      if (selected.length) {
+        const update = await propertySearch(entityId, selected);
+        await db.runTransaction(async tx => {
+          await assert(tx);
+          const current = (await tx.get(ref)).data() ?? {};
+          if (JSON.stringify(current.requested ?? {}) !== JSON.stringify(requested)) throw new LeaseBusy();
+          if (Object.keys(update).length) tx.set(db.collection("properties").doc(entityId), update, { merge: true });
+          tx.set(ref, { applied: requested, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        });
+      }
+    } else if (kind === "review_summary") await updateReviews(entityId, data.reviewId, assert);
+    else if (kind === "daily_metrics" || kind === "dashboard_summary") {
+      const date = new Date().toISOString().slice(0, 10);
+      const [bookings, reviews] = await Promise.all([
+        db.collection("bookings").where("propertyId", "==", entityId).where("checkIn", ">=", date).count().get(),
+        db.collection("propertyReviews").where("propertyId", "==", entityId).where("status", "==", "approved").count().get(),
+      ]);
+      await db.runTransaction(async tx => { await assert(tx); tx.set(db.collection("propertyDailyMetrics").doc(`${entityId}_${date}`), { propertyId: entityId, date, upcomingReservations: bookings.data().count, reviewCount: reviews.data().count, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); });
+    }
+    // Deliberately happens on replays too: a crash after data commit must not lose invalidation.
+    const property = await db.collection("properties").doc(entityId).get();
+    await invalidate(cacheRedis, entityId, property.get("slug"));
+  }));
 }

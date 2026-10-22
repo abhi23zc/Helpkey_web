@@ -36,7 +36,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
       tx.create(photoRef, { reviewId, propertyId, ownerId: user.uid, kind: "review_photo", fileName: data.fileName, mimeType: data.mimeType, sizeBytes: data.sizeBytes, checksum: data.checksum, r2ObjectKey: originalKey, status: "approved", isPrivate: true, publication: { status: "private", sourceChecksum: data.checksum, variants: {}, attempts: 0, lastErrorCode: null, queuedAt: null, publishedAt: null, updatedAt: FieldValue.serverTimestamp() }, createdAt: FieldValue.serverTimestamp(), createdBy: user.uid });
       enqueuePublicationInTransaction(tx, { operation: "publish", assetType: "review_photo", assetId: photoRef.id, sourceCollection: "reviewPhotos", sourceObjectKey: originalKey, sourceChecksum: data.checksum });
       tx.update(reviewRef, { photoIds: [...photoIds, photoRef.id], hasPhotos: true, photoModerationPending: false, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid, editHistory: FieldValue.arrayUnion({ action: "photo_published", at: new Date() }) });
-      enqueueProjection(tx, "review_summary", propertyId);
+      enqueueProjection(tx, "review_summary", propertyId, 1, { reviewId });
     });
     await upload.ref.delete();
     await deletePrivateObject(data.objectKey).catch(() => {});

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { getFirebaseAuth, hasFirebaseClientConfig, signOut } from "@/lib/firebase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import type { AppUser } from "@/types/auth";
 
 type AuthContextValue = {
@@ -16,50 +17,57 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const previousAccount = useRef<string | undefined>(undefined);
   const canUseFirebase = hasFirebaseClientConfig();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(canUseFirebase);
+  const [loading, setLoading] = useState(true);
 
-  const refreshUser = async () => {
-    const response = await fetch("/api/auth/me", { cache: "no-store" });
-
-    if (!response.ok) {
-      setAppUser(null);
-      return;
+  useEffect(() => {
+    const previous = previousAccount.current;
+    if (previous && previous !== appUser?.uid) {
+      void queryClient.cancelQueries({ queryKey: ["wishlist", previous] });
+      queryClient.removeQueries({ queryKey: ["wishlist", previous] });
     }
+    previousAccount.current = appUser?.uid;
+  }, [appUser?.uid, queryClient]);
 
-    const data = (await response.json()) as { user: AppUser };
-    setAppUser(data.user);
-  };
+  const refreshUser = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!response.ok) { setAppUser(null); return; }
+      const data = (await response.json()) as { user: AppUser };
+      setAppUser(data.user);
+    } catch { setAppUser(null); }
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    await signOut(getFirebaseAuth());
+    if (canUseFirebase) await signOut(getFirebaseAuth());
     setAppUser(null);
-  };
+  }, [canUseFirebase]);
 
   useEffect(() => {
     if (!canUseFirebase) {
+      void Promise.resolve().then(refreshUser).finally(() => setLoading(false));
       return undefined;
     }
 
     return onAuthStateChanged(getFirebaseAuth(), async (user) => {
       setFirebaseUser(user);
 
-      if (user) {
-        await refreshUser();
-      } else {
-        setAppUser(null);
-      }
+      // The server session is authoritative, including a valid session restored
+      // without a browser Firebase user (for example after reopening a tab).
+      await refreshUser();
 
       setLoading(false);
     });
-  }, [canUseFirebase]);
+  }, [canUseFirebase, refreshUser]);
 
   const value = useMemo(
     () => ({ firebaseUser, appUser, loading, refreshUser, logout }),
-    [firebaseUser, appUser, loading],
+    [firebaseUser, appUser, loading, refreshUser, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

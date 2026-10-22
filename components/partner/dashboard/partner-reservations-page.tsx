@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BedDouble,
@@ -49,7 +49,7 @@ type Booking = {
 };
 
 type StatusId = "all" | "arrivals" | "in_house" | "upcoming" | "pending_payment" | "cancelled" | "no_show";
-type ActionStatus = "checked_in" | "completed" | "no_show" | "cancelled";
+type ActionStatus = "checked_in" | "checked_out" | "no_show" | "cancelled";
 
 const statusTabs: Array<{ id: StatusId; label: string }> = [
   { id: "all", label: "All" },
@@ -143,6 +143,11 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 15;
+  const cursors = useRef<Record<number, string>>({});
+  const [totalCount, setTotalCount] = useState(0);
+  const [serverMetrics, setServerMetrics] = useState({ arrivals: 0, departures: 0, staying: 0, pendingRequests: 0, noShowRisk: 0 });
+  const [serverTabCounts, setServerTabCounts] = useState<Record<StatusId, number>>({ all: 0, arrivals: 0, in_house: 0, upcoming: 0, pending_payment: 0, cancelled: 0, no_show: 0 });
+  const [roomNames, setRoomNames] = useState<string[]>([]);
 
   const today = useMemo(() => getTodayKey(), []);
 
@@ -156,17 +161,22 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ propertyId, status: "all", q: query });
+      const params = new URLSearchParams({ propertyId, status, q: query, limit: String(PAGE_SIZE), ...(page > 1 && cursors.current[page] ? { cursor: cursors.current[page] } : {}), ...(roomFilter !== "all" ? { roomName: roomFilter } : {}), ...(paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}) });
       const response = await fetch(`/api/partner/bookings?${params}`, { cache: "no-store" });
-      const body = (await response.json()) as { bookings?: Booking[]; error?: string };
+      const body = (await response.json()) as { bookings?: Booking[]; error?: string; totalCount: number; metrics: typeof serverMetrics; tabCounts: Record<StatusId, number>; roomNames: string[]; nextCursor?: string };
       if (!response.ok) throw new Error(body.error ?? "Unable to load reservations.");
       setBookings(body.bookings ?? []);
+      setTotalCount(body.totalCount);
+      setServerMetrics(body.metrics);
+      setServerTabCounts(body.tabCounts);
+      setRoomNames(body.roomNames);
+      if (body.nextCursor) cursors.current[page + 1] = body.nextCursor;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load reservations.");
     } finally {
       setLoading(false);
     }
-  }, [propertyId, query]);
+  }, [propertyId, query, status, roomFilter, paymentFilter, page]);
 
   useEffect(() => {
     void Promise.resolve().then(() => load());
@@ -194,51 +204,10 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
     setPage(1);
   }, [status, roomFilter, paymentFilter, query]);
 
-  const rooms = useMemo(() => {
-    return Array.from(new Set(bookings.map((booking) => booking.roomName).filter(Boolean))).sort();
-  }, [bookings]);
-
-  const metrics = useMemo(() => {
-    const arrivals = bookings.filter((booking) => isArrivalToday(booking, today)).length;
-    const departures = bookings.filter(
-      (booking) => booking.checkOut === today && ["checked_in", "completed"].includes(booking.bookingStatus)
-    ).length;
-    const staying = bookings.filter((booking) => isStayingTonight(booking, today)).length;
-    const pendingRequests = bookings.filter((booking) => Boolean(booking.specialRequest)).length;
-    const noShowRisk = bookings.filter((booking) => isNoShowRisk(booking, today)).length;
-
-    return { arrivals, departures, staying, pendingRequests, noShowRisk };
-  }, [bookings, today]);
-
-  const tabCounts = useMemo<Record<StatusId, number>>(
-    () => ({
-      all: bookings.length,
-      arrivals: bookings.filter((booking) => isArrivalToday(booking, today)).length,
-      in_house: bookings.filter((booking) => booking.bookingStatus === "checked_in").length,
-      upcoming: bookings.filter((booking) => booking.checkIn > today && activeStatuses.has(booking.bookingStatus)).length,
-      pending_payment: bookings.filter((booking) => booking.bookingStatus === "pending_payment").length,
-      cancelled: bookings.filter((booking) => closedStatuses.has(booking.bookingStatus)).length,
-      no_show: bookings.filter((booking) => booking.bookingStatus === "no_show" || isNoShowRisk(booking, today)).length,
-    }),
-    [bookings, today]
-  );
-
-  const filtered = useMemo(() => {
-    return bookings.filter((booking) => {
-      const matchesStatus =
-        status === "all" ||
-        (status === "arrivals" && isArrivalToday(booking, today)) ||
-        (status === "in_house" && booking.bookingStatus === "checked_in") ||
-        (status === "upcoming" && booking.checkIn > today && activeStatuses.has(booking.bookingStatus)) ||
-        (status === "pending_payment" && booking.bookingStatus === "pending_payment") ||
-        (status === "cancelled" && closedStatuses.has(booking.bookingStatus)) ||
-        (status === "no_show" && (booking.bookingStatus === "no_show" || isNoShowRisk(booking, today)));
-
-      const matchesRoom = roomFilter === "all" || booking.roomName === roomFilter;
-      const matchesPayment = paymentFilter === "all" || booking.paymentStatus === paymentFilter;
-      return matchesStatus && matchesRoom && matchesPayment;
-    });
-  }, [bookings, paymentFilter, roomFilter, status, today]);
+  const rooms = roomNames;
+  const metrics = serverMetrics;
+  const tabCounts = serverTabCounts;
+  const filtered = bookings;
 
   const selectedBooking = useMemo(() => {
     return filtered.find((booking) => booking.id === selectedId) ?? filtered[0] ?? null;
@@ -250,11 +219,8 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
     return `${formatShortDate(sorted[0].checkIn)} – ${formatShortDate(sorted[sorted.length - 1].checkOut)}`;
   }, [filtered]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginatedBookings = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page, PAGE_SIZE]
-  );
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const paginatedBookings = filtered;
 
   const updateStatus = async (bookingId: string, nextStatus: ActionStatus) => {
     setBusy(bookingId);
@@ -455,7 +421,7 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
                 onUpdate={updateStatus}
                 page={page}
                 totalPages={totalPages}
-                totalCount={filtered.length}
+                totalCount={totalCount}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />
@@ -785,7 +751,7 @@ function InlineActions({
         disabled={busy}
         onClick={(event) => {
           event.stopPropagation();
-          void onUpdate(booking.id, "completed");
+          void onUpdate(booking.id, "checked_out");
         }}
         className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
       >
@@ -866,13 +832,13 @@ function BookingInspector({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void onUpdate(booking.id, "completed")}
+          onClick={() => void onUpdate(booking.id, "checked_out")}
           className="flex-1 rounded-xl bg-emerald-700 py-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-800 transition-colors disabled:opacity-50"
         >
           {busy ? "Updating..." : "Complete Stay"}
         </button>
       )}
-      {["completed", "cancelled", "no_show"].includes(booking.bookingStatus) && (
+      {["checked_out", "cancelled", "no_show"].includes(booking.bookingStatus) && (
         <button
           type="button"
           onClick={onClose}
@@ -1230,7 +1196,7 @@ function BookingInspector({
                 <button
                   type="button"
                   disabled={busy || booking.bookingStatus !== "checked_in"}
-                  onClick={() => void onUpdate(booking.id, "completed")}
+                  onClick={() => void onUpdate(booking.id, "checked_out")}
                   className="rounded-xl bg-emerald-700 py-2.5 font-bold text-white shadow-xs hover:bg-emerald-800 disabled:opacity-40 transition-colors"
                 >
                   Complete Stay
@@ -1337,7 +1303,7 @@ function StatusBadge({ value }: { value: string }) {
     arriving_today: "border-blue-100 bg-blue-50 text-blue-700",
     confirmed: "border-blue-100 bg-blue-50 text-blue-700",
     checked_in: "border-emerald-100 bg-emerald-50 text-emerald-700",
-    completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    checked_out: "border-emerald-200 bg-emerald-50 text-emerald-700",
     pending_payment: "border-amber-100 bg-amber-50 text-amber-700",
     cancelled: "border-red-100 bg-red-50 text-red-700",
     no_show: "border-red-100 bg-red-50 text-red-700",

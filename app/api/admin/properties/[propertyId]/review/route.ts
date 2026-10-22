@@ -1,3 +1,4 @@
+import { approvalReadiness } from "@/lib/admin/approval-readiness";
 import { withApiHandler } from "@/lib/api/handler";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
@@ -17,29 +18,21 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     if (input.decision !== "approve" && !input.reason?.trim()) throw new Error("REASON_REQUIRED");
     const ref = adminDb.collection("properties").doc(propertyId);
 
-    // Approval requires already-approved assets. Query them BEFORE the
-    // transaction (collection queries are not transactional), then re-assert
-    // the pending guard inside the transaction to avoid races.
-    let approvedMediaCount = 0;
-    let approvedDocKinds = new Set<string>();
-    if (input.decision === "approve") {
-      const [media, docs] = await Promise.all([
-        adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).get(),
-        adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).get(),
-      ]);
-      approvedMediaCount = media.docs.filter((doc) => doc.data().moderationStatus === "approved").length;
-      approvedDocKinds = new Set(docs.docs.filter((doc) => doc.data().status === "approved").map((d) => d.data().documentType));
-    }
-
     const result = await adminDb.runTransaction(async (tx) => {
       const current = await tx.get(ref);
       const data = current.data();
-      if (!current.exists || data?.approvalStatus !== "pending") throw new Error("PROPERTY_NOT_PENDING");
+      if (!current.exists) throw new Error("PROPERTY_NOT_FOUND");
+      if (data?.approvalStatus !== "pending") throw new Error("PROPERTY_NOT_PENDING");
 
       if (input.decision === "approve") {
-        if (approvedMediaCount < 6 || ["pan", "government_id_front", "government_id_back"].some((kind) => !approvedDocKinds.has(kind))) {
-          throw new Error("REQUIRED_ASSETS_NOT_APPROVED");
-        }
+        const [media, rooms, docs, rates] = await Promise.all([
+          tx.get(adminDb.collection("mediaAssets").where("propertyId", "==", propertyId)),
+          tx.get(adminDb.collection("roomTypes").where("propertyId", "==", propertyId)),
+          tx.get(adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId)),
+          tx.get(adminDb.collection("ratePlans").where("propertyId", "==", propertyId)),
+        ]);
+        const readiness = approvalReadiness(data!, media.docs.map(d => ({ id: d.id, ...d.data() })), rooms.docs.map(d => ({ ...d.data(), id: d.id, name: d.get("name") ?? "Room" })), docs.docs.map(d => d.data()), rates.docs.map(d => d.data()));
+        if (!readiness.ready) throw new Error(`REQUIRED_ASSETS_NOT_APPROVED: ${readiness.blockers.join("; ")}`);
       }
 
       const fromApprovalStatus = String(data?.approvalStatus ?? "pending");
@@ -88,7 +81,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
 
     return Response.json({ ok: true });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to review property." }, { status: 422 });
+    const message = error instanceof Error ? error.message : "Unable to review property."; return Response.json({ error: message }, { status: message === "FORBIDDEN" ? 403 : ["PROPERTY_NOT_FOUND", "ASSET_NOT_FOUND", "MEDIA_NOT_FOUND"].includes(message) ? 404 : 422 });
   }
 }
 

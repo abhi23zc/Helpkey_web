@@ -1,26 +1,17 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { disabledWorker } from "../shared/disabled";
 import { db } from "./firebase";
-import { connection, mediaQueue, type PublicationJob } from "./queue";
+import { connection, mediaQueue } from "./queue";
+import { publicationSchema, safeJobId } from "../../lib/background/jobs";
+import { positiveInteger, recoveryInterval, backgroundMode } from "../../lib/background/config";
+import { poll } from "../shared/poll";
+import { dispatchOutbox } from "../shared/outbox";
 
 const redis = connection(), queue = mediaQueue(redis);
-async function dispatchOnce() {
-  const pending = await db.collection("mediaPublicationOutbox").where("status", "==", "pending").limit(50).get();
-  for (const item of pending.docs) {
-    const data = item.data() as PublicationJob & { jobId?: string; bullJobId?: string };
-    if (!data.jobId || !data.bullJobId || !data.operation || !data.assetId || !data.sourceChecksum) continue;
-    try {
-      const existing = await queue.getJob(data.bullJobId);
-      if (existing && await existing.isFailed()) await existing.remove();
-      await queue.add(data.operation, { operation: data.operation, assetType: data.assetType, assetId: data.assetId, sourceCollection: data.sourceCollection, sourceObjectKey: data.sourceObjectKey, sourceChecksum: data.sourceChecksum }, { jobId: data.bullJobId, priority: data.operation === "unpublish" ? 1 : 10 });
-      await item.ref.set({ status: "dispatched", dispatchedAt: FieldValue.serverTimestamp(), dispatchAttempts: FieldValue.increment(1), lastDispatchError: null, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      console.info(`media outbox dispatched: ${data.bullJobId}`);
-    } catch (error) {
-      await item.ref.set({ dispatchAttempts: FieldValue.increment(1), lastDispatchError: error instanceof Error ? error.message : "REDIS_DISPATCH_FAILED", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-  }
-}
-let stopping = false;
-async function loop() { while (!stopping) { await dispatchOnce().catch((error) => console.error("media dispatcher error", error)); await new Promise((resolve) => setTimeout(resolve, 2_000)); } await queue.close(); await redis.quit(); }
-console.info("media dispatcher started");
-process.once("SIGTERM", () => { stopping = true; }); process.once("SIGINT", () => { stopping = true; });
-void loop();
+let nextRecovery = 0;
+if (backgroundMode() !== "queue") void poll({ name: "media-dispatcher", redis, minimum: 2_000, maximum: positiveInteger("MEDIA_IDLE_INTERVAL_MS", 30_000), task: async () => {
+  const common = { db, queue, collection: "mediaPublicationOutbox", parse: (value: unknown) => publicationSchema.parse(value), id: (_data: Record<string, unknown>, id: string) => safeJobId("media", id), name: (data: Record<string, unknown>) => String(data.operation), batchSize: positiveInteger("MEDIA_DISPATCH_BATCH_SIZE", 50, 200) };
+  if (Date.now() >= nextRecovery) { const result = await dispatchOutbox({ ...common, recover: true }); nextRecovery = Date.now() + (result.hasMore ? 0 : recoveryInterval()); }
+  return dispatchOutbox({ ...common, recover: false });
+} }).finally(async () => { await queue.close(); await redis.quit(); });
+
+else { console.info("Frequent dispatcher disabled in queue mode"); void queue.close().then(() => redis.quit()).then(() => disabledWorker("dispatcher")); }

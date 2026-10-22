@@ -39,14 +39,29 @@ const rawPATCH = async function PATCH(
     if (input.maxAdults !== undefined || input.maxChildren !== undefined || input.maxInfants !== undefined) {
       const maxAdults = input.maxAdults ?? data?.maxAdults ?? 1;
       const maxChildren = input.maxChildren ?? data?.maxChildren ?? 0;
-      const maxInfants = input.maxInfants ?? data?.maxInfants ?? 0;
-      update.maxOccupancy = maxAdults + maxChildren + maxInfants;
+      update.maxOccupancy = maxAdults + maxChildren;
     }
     const batch = adminDb.batch();
-    batch.update(ref, update);
-    enqueueProjection(batch, "property_search", propertyId);
+    await adminDb.runTransaction(async (tx) => {
+      const current = (await tx.get(ref)).data();
+      const property = (await tx.get(adminDb.collection("properties").doc(propertyId))).data();
+      if (!current || current.propertyId !== propertyId) throw new Error("ROOM_TYPE_NOT_FOUND");
+      if (input.totalInventory !== undefined && input.totalInventory < current.totalInventory) {
+        const calendars = await tx.get(adminDb.collection("inventoryCalendars").where("propertyId", "==", propertyId).where("roomTypeId", "==", roomTypeId));
+        const legacy = property?.inventoryEngine === "interval_v1" ? null : await tx.get(adminDb.collection("roomNightInventory").where("propertyId", "==", propertyId).where("roomTypeId", "==", roomTypeId));
+        const firstInterval = Math.floor(Date.now() / (15 * 60000));
+        for (const calendar of calendars.docs) {
+          const data = calendar.data();
+          const keys = new Set([...Object.keys(data.reserved ?? {}), ...Object.keys(data.blocked ?? {})]);
+          if ([...keys].some((key) => Number(key) >= firstInterval && (data.reserved?.[key] ?? 0) + (data.blocked?.[key] ?? 0) > input.totalInventory!)) throw new Error("CAPACITY_BELOW_COMMITMENTS");
+        }
+        if (legacy?.docs.some((doc) => doc.id.slice(-10) >= new Date().toISOString().slice(0, 10) && Number(doc.data().reserved ?? 0) > input.totalInventory!)) throw new Error("CAPACITY_BELOW_COMMITMENTS");
+      }
+      tx.update(ref, update);
+    });
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing", "amenities"] });
     await batch.commit();
-    await invalidatePublic("home", "search:*", "bookable:*");
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({
       ok: true,
@@ -55,6 +70,8 @@ const rawPATCH = async function PATCH(
         name: input.name ?? data?.name,
         description: input.description ?? data?.description,
         inventory: input.totalInventory ?? data?.totalInventory,
+        bookingModes: input.bookingModes ?? data?.bookingModes ?? ["overnight"],
+        cleaningBufferMinutes: input.cleaningBufferMinutes ?? data?.cleaningBufferMinutes ?? 30,
         maxAdults: input.maxAdults ?? data?.maxAdults,
         maxChildren: input.maxChildren ?? data?.maxChildren ?? 0,
         maxInfants: input.maxInfants ?? data?.maxInfants ?? 0,
@@ -97,11 +114,11 @@ const rawDELETE = async function DELETE(
       .get();
 
     const batch = adminDb.batch();
-    rates.docs.forEach((doc) => batch.delete(doc.ref));
-    batch.delete(ref);
-    enqueueProjection(batch, "property_search", propertyId);
+    rates.docs.forEach((doc) => batch.update(doc.ref, { status: "archived", updatedAt: FieldValue.serverTimestamp() }));
+    batch.update(ref, { status: "archived", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing", "amenities"] });
     await batch.commit();
-    await invalidatePublic("home", "search:*", "bookable:*");
+    await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({ ok: true, roomTypeId, removedRatePlans: rates.size });
   } catch (error) {

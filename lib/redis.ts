@@ -22,7 +22,7 @@ export function getRedis(): Redis | null {
     maxRetriesPerRequest: 1,
     connectTimeout: 1_500,
     commandTimeout: 1_500,
-    retryStrategy: () => null,
+    retryStrategy: times => Math.min(times * 200, 5_000),
   });
   redis.on("error", (error) => {
     console.warn(JSON.stringify({ level: "warn", event: "redis.error", code: error.name }));

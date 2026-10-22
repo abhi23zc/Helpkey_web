@@ -1,3 +1,4 @@
+import { assertCanEditKyc } from "@/lib/partner/kyc-policy";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -15,11 +16,15 @@ const rawDELETE = async function DELETE(
     const { propertyId, documentId } = await params;
     const propertyRef = await propertyOwner(user.uid, propertyId);
     const [property, document] = await Promise.all([propertyRef.get(), adminDb.collection("verificationDocuments").doc(documentId).get()]);
-    if (property.data()?.status !== "draft" || property.data()?.approvalStatus !== "not_submitted") throw new Error("Verification documents can only be removed while this listing is a draft.");
+    assertCanEditKyc(property.data());
     const data = document.data();
     if (!document.exists || !data || data.propertyId !== propertyId) throw new Error("DOCUMENT_NOT_FOUND");
-    await document.ref.delete();
-    await propertyRef.update({ updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    await adminDb.runTransaction(async (tx) => {
+      const current = await tx.get(propertyRef);
+      assertCanEditKyc(current.data());
+      tx.delete(document.ref);
+      tx.update(propertyRef, { updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    });
     if (typeof data.r2ObjectKey === "string") await deletePrivateObject(data.r2ObjectKey).catch(() => {});
     return Response.json({ ok: true, documentId });
   } catch (error) {

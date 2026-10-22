@@ -2,9 +2,12 @@ import { createHash } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import sharp from "sharp";
 import { UnrecoverableError, type Job } from "bullmq";
-import { maxAttempts, retryDelays } from "./config";
 import { db } from "./firebase";
 import type { PublicationJob } from "./queue";
+import { publicationSchema } from "../../lib/background/jobs";
+import { withFencedLease } from "../shared/lease";
+import { executeOutbox } from "../shared/outbox";
+import { writeProjection } from "../../lib/background/enqueue";
 import { deletePublicObject, getPrivateObject, headPrivateObject, headPublicObject, purgePublicUrls, putPublicObject } from "./r2";
 
 type VariantName = "thumb" | "card" | "large";
@@ -13,7 +16,7 @@ const variants: Record<VariantName, { width: number; quality: number }> = { thum
 const sourceLimit = 25 * 1024 * 1024, pixelLimit = 40_000_000;
 const terminalCodes = new Set(["MEDIA_CHECKSUM_MISMATCH", "MEDIA_UNSUPPORTED_TYPE", "MEDIA_DECODE_FAILED", "MEDIA_DIMENSIONS_INVALID", "MEDIA_NOT_APPROVED"]);
 function cleanChecksum(value: unknown) { return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value) ? value.toLowerCase() : null; }
-function objectPrefix(job: PublicationJob) { return `${job.assetType === "property_image" ? "properties" : "reviews"}/${job.assetId}/${job.sourceChecksum}`; }
+function objectPrefix(job: PublicationJob) { return `${job.assetType === "property_image" ? "properties" : "reviews"}/${job.assetId}/${job.sourceChecksum}${job.requestId ? `/${job.requestId}` : ""}`; }
 function code(error: unknown) { const message = error instanceof Error ? error.message : "MEDIA_PUBLICATION_FAILED"; return ["MEDIA_SOURCE_MISSING", "MEDIA_CHECKSUM_MISMATCH", "MEDIA_UNSUPPORTED_TYPE", "MEDIA_DECODE_FAILED", "MEDIA_DIMENSIONS_INVALID", "MEDIA_NOT_APPROVED", "MEDIA_STALE_JOB", "CACHE_PURGE_FAILED"].includes(message) ? message : "MEDIA_PUBLICATION_FAILED"; }
 
 async function publish(job: PublicationJob) {
@@ -38,26 +41,68 @@ async function publish(job: PublicationJob) {
   if ((await headPrivateObject(job.sourceObjectKey)).Metadata?.sha256 !== job.sourceChecksum) throw new Error("MEDIA_CHECKSUM_MISMATCH");
   return output;
 }
-async function unpublish(asset: FirebaseFirestore.DocumentData) { const keys = Object.values(asset.publication?.variants ?? {}).flatMap((v) => typeof (v as { objectKey?: unknown })?.objectKey === "string" ? [(v as { objectKey: string }).objectKey] : []); await Promise.all(keys.map(deletePublicObject)); await purgePublicUrls(keys); }
+function variantKeys(asset: FirebaseFirestore.DocumentData) {
+  return Object.values(asset.publication?.variants ?? {}).flatMap(value => typeof (value as { objectKey?: unknown })?.objectKey === "string" ? [(value as { objectKey: string }).objectKey] : []);
+}
+async function removeKeys(keys: string[]) { await Promise.all(keys.map(deletePublicObject)); if (keys.length) await purgePublicUrls(keys); }
+async function unpublish(asset: FirebaseFirestore.DocumentData) { await removeKeys([...new Set([...variantKeys(asset), ...(asset.publication?.cleanupKeys ?? [])])]); }
+
 async function deletePartial(job: PublicationJob) { await Promise.all((Object.keys(variants) as VariantName[]).map((name) => deletePublicObject(`${objectPrefix(job)}/${name}.webp`).catch(() => undefined))); }
 
 export async function processPublication(job: Job<PublicationJob>) {
-  const data = job.data, attempt = job.attemptsMade + 1, mirror = db.collection("mediaPublicationJobs").doc(job.id!), assetRef = db.collection(data.sourceCollection).doc(data.assetId);
-  try {
-    const asset = await assetRef.get(), assetData = asset.data();
-    if (!assetData || assetData.r2ObjectKey !== data.sourceObjectKey || cleanChecksum(assetData.checksum) !== data.sourceChecksum) throw new Error("MEDIA_CHECKSUM_MISMATCH");
-    if (data.operation === "publish" && (assetData.moderationStatus ?? assetData.status) !== "approved") throw new Error("MEDIA_STALE_JOB");
-    if (data.operation === "unpublish" && (assetData.moderationStatus ?? assetData.status) === "approved") throw new Error("MEDIA_STALE_JOB");
-    await Promise.all([mirror.set({ status: "processing", attempts: attempt, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }, { merge: true }), assetRef.set({ publication: { status: data.operation === "publish" ? "processing" : "unpublishing", attempts: attempt, updatedAt: FieldValue.serverTimestamp() } }, { merge: true })]);
-    const generated = data.operation === "publish" ? await publish(data) : (await unpublish(assetData), {});
-    await db.runTransaction(async (tx) => { const fresh = await tx.get(assetRef), current = fresh.data(); if (!current || current.r2ObjectKey !== data.sourceObjectKey || cleanChecksum(current.checksum) !== data.sourceChecksum) throw new Error("MEDIA_CHECKSUM_MISMATCH"); if (data.operation === "publish" && ((current.moderationStatus ?? current.status) !== "approved" || current.publication?.status !== "processing")) throw new Error("MEDIA_STALE_JOB"); if (data.operation === "unpublish" && ((current.moderationStatus ?? current.status) === "approved" || current.publication?.status !== "unpublishing")) throw new Error("MEDIA_STALE_JOB"); tx.update(assetRef, { publication: data.operation === "publish" ? { status: "published", sourceChecksum: data.sourceChecksum, variants: generated, attempts: attempt, lastErrorCode: null, queuedAt: current.publication?.queuedAt ?? null, publishedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() } : { status: "private", sourceChecksum: data.sourceChecksum, variants: {}, attempts: attempt, lastErrorCode: null, queuedAt: current.publication?.queuedAt ?? null, publishedAt: null, updatedAt: FieldValue.serverTimestamp() } }); tx.set(mirror, { status: "succeeded", attempts: attempt, lastErrorCode: null, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); });
-  } catch (error) {
-    const errorCode = code(error);
-    if (errorCode === "MEDIA_STALE_JOB") { if (data.operation === "publish") await deletePartial(data); await mirror.set({ status: "succeeded", attempts: attempt, lastErrorCode: errorCode, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); return; }
-    const dead = terminalCodes.has(errorCode) || attempt >= maxAttempts;
-    if (dead && data.operation === "publish") await deletePartial(data);
-    await Promise.all([mirror.set({ status: dead ? "dead" : "retryable", attempts: attempt, lastErrorCode: errorCode, notBefore: dead ? null : new Date(Date.now() + retryDelays[Math.min(job.attemptsMade, retryDelays.length - 1)]), updatedAt: FieldValue.serverTimestamp() }, { merge: true }), assetRef.set({ publication: { status: data.operation === "publish" ? "failed" : "unpublishing", attempts: attempt, lastErrorCode: errorCode, updatedAt: FieldValue.serverTimestamp() } }, { merge: true })]);
-    if (dead) throw new UnrecoverableError(errorCode);
-    throw new Error(errorCode);
-  }
+  await executeOutbox(db, job, "mediaPublicationOutbox", "mediaPublicationJobs", async () => {
+    const data = publicationSchema.parse(job.data);
+    await withFencedLease(db, `media:${data.sourceCollection}:${data.assetId}`, async assert => {
+      const ref = db.collection(data.sourceCollection).doc(data.assetId);
+      let previous: FirebaseFirestore.DocumentData | undefined;
+      const ready = await db.runTransaction(async tx => {
+        await assert(tx);
+        const asset = (await tx.get(ref)).data(); previous = asset;
+        if (!asset || (asset.publication?.requestId && asset.publication.requestId !== data.requestId)) return false;
+        if (asset.r2ObjectKey !== data.sourceObjectKey || cleanChecksum(asset.checksum) !== data.sourceChecksum) throw new UnrecoverableError("MEDIA_CHECKSUM_MISMATCH");
+        const approved = (asset.moderationStatus ?? asset.status) === "approved";
+        if (approved !== (data.operation === "publish")) return false;
+        // Resume acknowledgement after a successful commit without generating images again.
+        if (data.requestId && ["published", "private"].includes(asset.publication?.status)) return false;
+        tx.set(ref, { publication: { status: data.operation === "publish" ? "processing" : "unpublishing", updatedAt: FieldValue.serverTimestamp() } }, { merge: true });
+        return true;
+      });
+      const cleanup = async () => {
+        const asset = (await ref.get()).data();
+        if (!asset || asset.publication?.requestId !== data.requestId || !asset.publication?.cleanupKeys?.length) return;
+        await removeKeys(asset.publication.cleanupKeys);
+        await db.runTransaction(async tx => {
+          await assert(tx);
+          const current = (await tx.get(ref)).data();
+          if (current?.publication?.requestId === data.requestId) tx.update(ref, { "publication.cleanupKeys": [] });
+        });
+      };
+      if (!ready) { if (data.requestId && previous?.publication?.requestId === data.requestId) await cleanup(); return; }
+      try {
+        const generated = data.operation === "publish" ? await publish(data) : (await unpublish(previous!), {});
+        const committed = await db.runTransaction(async tx => {
+          await assert(tx);
+          const current = (await tx.get(ref)).data();
+          if (!current || (data.requestId && current.publication?.requestId !== data.requestId) || ((current.moderationStatus ?? current.status) === "approved") !== (data.operation === "publish")) return false;
+          if (current.r2ObjectKey !== data.sourceObjectKey || cleanChecksum(current.checksum) !== data.sourceChecksum) throw new UnrecoverableError("MEDIA_CHECKSUM_MISMATCH");
+          tx.update(ref, { publication: { ...(data.requestId ? { requestId: data.requestId } : {}), status: data.operation === "publish" ? "published" : "private", sourceChecksum: data.sourceChecksum, variants: generated, cleanupKeys: data.operation === "publish" ? [...new Set([...variantKeys(previous!), ...(previous!.publication?.cleanupKeys ?? [])])] : [], attempts: job.attemptsMade + 1, lastErrorCode: null, queuedAt: current.publication?.queuedAt ?? null, publishedAt: data.operation === "publish" ? FieldValue.serverTimestamp() : null, updatedAt: FieldValue.serverTimestamp() } });
+          if (current.propertyId) writeProjection(db, tx, "property_search", current.propertyId, 1, { components: ["cover"] });
+          if (data.assetType === "review_photo" && current.propertyId) writeProjection(db, tx, "cache_invalidation", current.propertyId);
+          return true;
+        });
+        if (!committed && data.operation === "publish" && data.requestId) await deletePartial(data);
+        // Old generations are kept until replacement commits. They are never the new generation's keys.
+        if (committed && data.operation === "publish" && data.requestId) await cleanup();
+      } catch (error) {
+        const errorCode = code(error);
+        await db.runTransaction(async tx => {
+          await assert(tx);
+          const current = (await tx.get(ref)).data();
+          if (current && (!data.requestId || current.publication?.requestId === data.requestId)) tx.set(ref, { publication: { lastErrorCode: errorCode, updatedAt: FieldValue.serverTimestamp() } }, { merge: true });
+        });
+        if (terminalCodes.has(errorCode)) throw new UnrecoverableError(errorCode);
+        throw error;
+      }
+    });
+  });
 }

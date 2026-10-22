@@ -1,18 +1,19 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, BadgeCheck, Ban, CheckCircle, Clock3, Eye, FileCheck, FileText, Image as ImageIcon, Landmark, RefreshCw, Search, ShieldCheck, SortDesc, Timer, UserCheck, X } from "lucide-react";
+import Link from "next/link";
+
+import { AlertTriangle, ArrowRight, BadgeCheck, Ban, CheckCircle, Clock3, Eye, RefreshCw, Search, ShieldCheck, SortDesc, Timer, UserCheck, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { adminApi } from "./api";
 import { useAdminShell } from "./admin-shell";
-import { AdminPropertyReviewDrawer } from "./admin-property-review-drawer";
 import { useAdminProperties, useAdminUsers } from "./use-admin-data";
-import { label, type PartnerListItem, type Property, type User } from "./types";
+import { label, type PropertyDetail, type PartnerListItem, type Property, type User } from "./types";
 
 export function AdminPartnersPage() {
   const { searchQuery, setSearchQuery } = useAdminShell();
   const usersData = useAdminUsers();
   const propertiesData = useAdminProperties();
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const error = usersData.error || propertiesData.error;
   const reload = () => {
     void usersData.reload();
@@ -26,17 +27,9 @@ export function AdminPartnersPage() {
         users={usersData.users}
         properties={propertiesData.properties}
         reload={reload}
-        onOpenProperty={setSelectedPropertyId}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
       />
-      {selectedPropertyId && (
-        <AdminPropertyReviewDrawer
-          propertyId={selectedPropertyId}
-          onClose={() => setSelectedPropertyId(null)}
-          onChanged={reload}
-        />
-      )}
     </>
   );
 }
@@ -54,14 +47,12 @@ function PartnersPanel({
   users,
   properties,
   reload,
-  onOpenProperty,
   searchQuery,
   setSearchQuery,
 }: {
   users: User[];
   properties: Property[];
   reload: () => void;
-  onOpenProperty: (id: string) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 }) {
@@ -93,14 +84,6 @@ function PartnersPanel({
           ).length;
           const primaryProperty = partnerProperties[0] ?? null;
           const city = primaryProperty?.address?.city ?? "Location pending";
-          const progress =
-            user.accountStatus === "suspended"
-              ? 2
-              : pendingCount > 0
-              ? 4
-              : activeCount > 0
-              ? 5
-              : 3;
           const state: PartnerListItem["state"] =
             user.accountStatus === "suspended"
               ? "suspended"
@@ -127,7 +110,6 @@ function PartnersPanel({
             activeCount,
             primaryProperty,
             city,
-            progress,
             state,
             risk,
           };
@@ -220,11 +202,11 @@ function PartnersPanel({
               <span>Institutional Compliance</span>
               <span className="h-1.5 w-1.5 rounded-full bg-[#755a1a]" />
               <span className="normal-case tracking-normal text-slate-500 font-normal">
-                KYC / AML Protocol 3.4
+                Partner directory
               </span>
             </div>
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-              Partner Verification
+              Partner Review
             </h2>
             <p className="mt-1 max-w-2xl text-xs sm:text-sm text-slate-500">
               Review partner accounts, listing portfolios, and compliance status from one focused queue.
@@ -249,7 +231,7 @@ function PartnersPanel({
           />
           <PartnerStatCard
             icon={BadgeCheck}
-            label="Verified"
+            label="Approved listings"
             value={counts.approved}
             detail="Active partner portfolios"
           />
@@ -342,7 +324,7 @@ function PartnersPanel({
                 <tr>
                   <th className="w-10 px-4 py-3" />
                   <th className="px-4 py-3">Partner / Entity</th>
-                  <th className="px-4 py-3">Verification Docs</th>
+                  <th className="px-4 py-3">Listing Review</th>
                   <th className="px-4 py-3">Portfolio</th>
                   <th className="px-4 py-3">Risk Level</th>
                   <th className="px-4 py-3 text-right">Intake</th>
@@ -388,7 +370,7 @@ function PartnersPanel({
                       <PartnerRisk risk={item.risk} />
                     </div>
                     <div className="mt-2">
-                      <PartnerProgress progress={item.progress} />
+                      <span className="text-xs">{label(item.primaryProperty?.approvalStatus ?? "not_submitted")}</span>
                     </div>
                   </div>
                 </div>
@@ -415,7 +397,7 @@ function PartnersPanel({
             <div className="flex flex-wrap items-center gap-4">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#755a1a]" />
-                <b>{counts.approved}</b> verified portfolios
+                <b>{counts.approved}</b> portfolios with live listings
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#e6c277]" />
@@ -434,7 +416,6 @@ function PartnersPanel({
             <PartnerDossier
               item={selected}
               busy={busy === selected.user.uid}
-              onOpenProperty={onOpenProperty}
               onMutate={mutate}
             />
           ) : (
@@ -469,10 +450,6 @@ function PartnersPanel({
             <PartnerDossier
               item={selected}
               busy={busy === selected.user.uid}
-              onOpenProperty={(id) => {
-                setDossierDrawerOpen(false);
-                onOpenProperty(id);
-              }}
               onMutate={mutate}
             />
           </div>
@@ -560,7 +537,7 @@ function PartnerLedgerRow({
         </div>
       </td>
       <td className="px-4 py-3.5">
-        <PartnerProgress progress={item.progress} />
+        <span className="text-xs">{label(item.primaryProperty?.approvalStatus ?? "not_submitted")}</span>
       </td>
       <td className="px-4 py-3.5">
         <p className="text-xs font-bold text-slate-900">
@@ -590,12 +567,10 @@ function PartnerLedgerRow({
 function PartnerDossier({
   item,
   busy,
-  onOpenProperty,
   onMutate,
 }: {
   item: PartnerListItem;
   busy: boolean;
-  onOpenProperty: (id: string) => void;
   onMutate: (user: User, patch: Record<string, unknown>) => Promise<void>;
 }) {
   const nextProperty =
@@ -633,64 +608,19 @@ function PartnerDossier({
         </div>
 
         <div className="mt-5">
-          <div className="flex items-center justify-between gap-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-              KYC & Verification Dossier
-            </h4>
-            <span className="text-xs font-bold text-[#755a1a]">
-              {item.progress} / 5 verified
-            </span>
-          </div>
-          <div className="mt-2.5 space-y-2">
-            {[
-              ["Government ID", item.progress >= 1, FileCheck],
-              ["PAN / Tax record", item.progress >= 2, Landmark],
-              ["Ownership proof", item.progress >= 3, FileText],
-              ["Property photos", item.progress >= 4, ImageIcon],
-              ["Final sign-off", item.progress >= 5, CheckCircle],
-            ].map(([name, complete, Icon]) => {
-              const ItemIcon = Icon as typeof FileCheck;
-              return (
-                <div
-                  key={String(name)}
-                  className="flex items-center gap-3 rounded-xl bg-slate-50 p-2.5 border border-slate-100"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#755a1a] shadow-2xs border border-slate-200">
-                    <ItemIcon className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-bold text-slate-900">
-                      {String(name)}
-                    </p>
-                    <p
-                      className={`text-[10px] font-semibold ${
-                        complete ? "text-emerald-700" : "text-amber-800"
-                      }`}
-                    >
-                      {complete ? "Verified" : "Action Needed"}
-                    </p>
-                  </div>
-                  {complete ? (
-                    <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <Clock3 className="h-4 w-4 text-amber-600 shrink-0" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <h4 className="font-semibold text-sm">KYC document review</h4>
+          {nextProperty ? <PartnerEvidence propertyId={nextProperty.id} /> : <p className="mt-2 text-xs">No property or verification evidence recorded.</p>}
         </div>
 
         <div className="mt-5 space-y-2">
           {nextProperty && (
-            <button
-              type="button"
-              onClick={() => onOpenProperty(nextProperty.id)}
+            <Link
+              href={`/admin/properties/${encodeURIComponent(nextProperty.id)}`}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b1f3a] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#07172b]"
             >
               <Eye className="h-4 w-4 text-[#fed88b]" />
               Review linked property
-            </button>
+            </Link>
           )}
           <div className="grid gap-2 sm:grid-cols-2">
             <button
@@ -763,26 +693,11 @@ function PartnerAvatar({
   );
 }
 
-function PartnerProgress({ progress }: { progress: number }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[11px] font-bold text-slate-900">
-        <span>{progress} / 5 Verification</span>
-      </div>
-      <div className="mt-1 h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-slate-100 border border-slate-200">
-        <div
-          className={`h-full rounded-full transition-all duration-300 ${
-            progress < 3
-              ? "bg-red-600"
-              : progress < 5
-              ? "bg-amber-500"
-              : "bg-emerald-600"
-          }`}
-          style={{ width: `${Math.min(progress, 5) * 20}%` }}
-        />
-      </div>
-    </div>
-  );
+function PartnerEvidence({ propertyId }: { propertyId: string }) {
+  const query = useQuery({ queryKey: ["admin", "property", propertyId], queryFn: ({ signal }) => adminApi<PropertyDetail>(`/api/admin/properties/${encodeURIComponent(propertyId)}`, { signal }) });
+  if (query.isPending) return <p className="mt-2 text-xs">Loading document statuses…</p>;
+  if (query.error) return <p role="alert" className="mt-2 text-xs">{query.error.message} <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>;
+  return <dl className="mt-2 space-y-2 text-xs">{["pan", "government_id_front", "government_id_back", "gst"].map(kind => <div key={kind}><dt className="font-semibold">{label(kind)}</dt><dd>{query.data?.documents.filter(document => document.documentType === kind).map(document => label(document.status)).join(", ") || "Not provided"}</dd></div>)}</dl>;
 }
 
 function PartnerRisk({ risk }: { risk: "Low" | "Medium" | "High" }) {

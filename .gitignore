@@ -42,3 +42,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Local queue backups; use a separate host-mounted backup destination in production.
+/backups/
