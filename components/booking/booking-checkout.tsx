@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 import type { CheckoutDisplay, CheckoutInput } from "@/lib/booking/checkout";
-import { isValidAadhaar, normalizeAadhaar } from "@/lib/aadhaar";
+import { normalizeAadhaar } from "@/lib/aadhaar";
 import {
   ArrowLeft,
   ArrowRight,
@@ -105,12 +105,10 @@ const formatAadhaar = (value: string) =>
     .slice(0, 12)
     .replace(/(\d{4})(?=\d)/g, "$1 ");
 
-/** Checks Aadhaar with support for test 12-digit numbers in development environments */
+/** Checkout requires only a 12-digit numeric ID; it does not validate Aadhaar checksums. */
 const checkAadhaarValidity = (val: string) => {
   const digits = normalizeAadhaar(val);
-  if (!/^\d{12}$/.test(digits) || /^(\d)\1{11}$/.test(digits)) return false;
-  if (process.env.NODE_ENV !== "production") return true;
-  return isValidAadhaar(digits);
+  return /^\d{12}$/.test(digits);
 };
 
 const cancellationDeadline = (quote: Quote) => {
