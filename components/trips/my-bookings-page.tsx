@@ -524,6 +524,14 @@ export function MyBookingsPage() {
 
                     {/* Action Buttons Footer */}
                     <div className="flex flex-wrap gap-3 mt-6 justify-end items-center">
+                      <Link
+                        href={`/trips/${booking.id}`}
+                        className="px-5 py-2.5 rounded-xl bg-[#0b1f3a] text-white font-semibold text-sm hover:bg-opacity-90 transition-colors flex items-center gap-2 shadow-sm"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Booking details
+                      </Link>
+
                       {/* Cancel / Change Booking */}
                       {["pending_payment", "confirmed"].includes(
                         booking.bookingStatus

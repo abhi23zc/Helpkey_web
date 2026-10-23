@@ -50,7 +50,10 @@ export function HotelLocation({
     setStatus("loading");
     try {
       const { mapsLibrary } = await import("@/lib/google/maps-loader");
-      const { Map, InfoWindow } = await mapsLibrary();
+      const [{ Map }, { AdvancedMarkerElement }] = await Promise.all([
+        mapsLibrary(),
+        (await import("@/lib/google/maps-loader")).markerLibrary(),
+      ]);
       if (!map.current || !property.coordinates)
         throw new Error("MAP_UNAVAILABLE");
       const center = {
@@ -59,17 +62,18 @@ export function HotelLocation({
       };
       const instance = new Map(map.current, {
         center,
-        zoom: 16,
+        zoom: 17,
+        mapId: process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || "DEMO_MAP_ID",
         mapTypeControl: false,
         streetViewControl: false,
+        gestureHandling: "cooperative",
+        fullscreenControl: true,
       });
-      new InfoWindow({
-        content: Object.assign(document.createElement("span"), {
-          textContent: property.name,
-          style: "font-weight: bold; font-family: sans-serif; padding: 4px;",
-        }),
-        position: center,
-      }).open(instance);
+      const pin = document.createElement("div");
+      pin.className = "hk-property-map-pin";
+      pin.setAttribute("aria-label", `${property.name} location`);
+      pin.innerHTML = '<span class="hk-property-map-pin__dot"></span><span class="hk-property-map-pin__stem"></span>';
+      new AdvancedMarkerElement({ map: instance, position: center, content: pin, title: property.name });
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -90,7 +94,7 @@ export function HotelLocation({
       </div>
 
       {/* Map Display & Interactive Trigger */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-200 shadow-xs">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-[0_12px_28px_rgba(11,31,58,0.10)]">
         {property.coordinates && status !== "ready" && (
           <div className="flex flex-col items-center justify-center bg-radial from-slate-50 to-slate-100 px-6 py-12 text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-md text-[var(--hk-navy)]">
@@ -119,9 +123,29 @@ export function HotelLocation({
 
         <div
           ref={map}
-          className={status === "idle" ? "hidden" : "h-80 w-full"}
+          className={status === "idle" ? "hidden" : "h-80 w-full sm:h-[380px]"}
           aria-label="Property map"
         />
+
+        {status === "ready" && (
+          <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-3 rounded-2xl border border-white/80 bg-white/95 p-3 shadow-xl backdrop-blur-sm sm:left-5 sm:right-auto sm:max-w-sm sm:flex-row sm:items-center">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--hk-navy)] text-white shadow-sm">
+              <Landmark className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold text-[var(--hk-navy)]">{property.name}</p>
+              <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-600">{address || "Exact property location"}</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" onClick={() => void copyAddress()} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[var(--hk-navy)] hover:text-[var(--hk-navy)]" aria-label="Copy property address" title="Copy address">
+                {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+              </button>
+              <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--hk-navy)] px-3 text-xs font-bold text-white hover:bg-[var(--hk-primary-dark)]">
+                <Navigation className="h-3.5 w-3.5" />Directions
+              </a>
+            </div>
+          </div>
+        )}
 
         {status === "error" && (
           <div className="p-4 bg-amber-50 border-t border-amber-200">

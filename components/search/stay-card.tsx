@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Heart, MapPin, Building2, Users, BedDouble, Check, BadgeCheck, Star } from "lucide-react";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import type { CatalogProperty } from "@/lib/customer/catalog";
@@ -21,20 +22,31 @@ const priority = ["wifi", "fast_wifi", "air_conditioning", "parking", "swimming_
 export function StayCard({ property, query = "", saved, onSave, saving = false, accent = false }: {
   property: CatalogProperty; query?: string; saved: boolean; onSave: () => void; saving?: boolean; accent?: boolean;
 }) {
+  const router = useRouter();
   const offer = property.offer;
   const params = new URLSearchParams(query);
   const guestCount = Number(params.get("adults") ?? 2) + Number(params.get("children") ?? 0);
   const infants = Number(params.get("infants") ?? 0);
   const cancellation = offer ? cancellationLabel(offer.cancellation, offer.timezone) : null;
+  const href = hotelHref(property, query);
   const amenities = [...new Set((offer?.amenityCodes ?? property.propertyAmenityCodes ?? property.amenityCodes).map(canonicalAmenityKey))].sort((a, b) => {
     const ai = priority.indexOf(a), bi = priority.indexOf(b);
     return (ai < 0 ? 100 : ai) - (bi < 0 ? 100 : bi) || a.localeCompare(b);
   }).slice(0, 4);
-  return <article data-hotel-id={property.id} className={`overflow-hidden rounded-2xl border bg-white shadow-[var(--hk-shadow-soft)] ${accent ? "border-[var(--hk-gold)]" : "border-[var(--hk-border)]"}`}>
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("a")) {
+      return;
+    }
+    router.push(href);
+  };
+
+  return <article data-hotel-id={property.id} onClick={handleCardClick} className={`cursor-pointer overflow-hidden rounded-2xl border bg-white shadow-[var(--hk-shadow-soft)] transition-all hover:border-[var(--hk-navy-strong)]/40 hover:shadow-md ${accent ? "border-[var(--hk-gold)]" : "border-[var(--hk-border)]"}`}>
     <div className="grid md:grid-cols-[250px_minmax(0,1fr)_180px]">
       <div className="relative min-h-52 bg-[var(--hk-surface-muted)]">
-        {property.coverImageUrl ? <PublicMediaImage src={property.coverImageUrl} srcSet={property.coverImageSrcSet} alt={property.name} sizes="(min-width: 768px) 250px, 100vw" className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 flex items-center justify-center"><Building2 className="h-10 w-10 text-slate-400" /><span className="sr-only">Photo unavailable</span></div>}
-        <button type="button" aria-label={`${saved ? "Unsave" : "Save"} ${property.name}`} aria-pressed={saved} disabled={saving} onClick={onSave} className="absolute right-3 top-3 rounded-full bg-white/90 p-2 text-[var(--hk-navy)] shadow-sm disabled:opacity-50"><Heart className={`h-4 w-4 ${saved ? "fill-red-500 text-red-500" : ""}`} /></button>
+        {property.coverImageUrl ? <PublicMediaImage src={property.coverImageUrl} srcSet={property.coverImageSrcSet} alt={property.name} sizes="(min-width: 768px) 250px, 100vw" className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 hover:scale-105" /> : <div className="absolute inset-0 flex items-center justify-center"><Building2 className="h-10 w-10 text-slate-400" /><span className="sr-only">Photo unavailable</span></div>}
+        <button type="button" aria-label={`${saved ? "Unsave" : "Save"} ${property.name}`} aria-pressed={saved} disabled={saving} onClick={(e) => { e.stopPropagation(); onSave(); }} className="absolute right-3 top-3 z-10 rounded-full bg-white/90 p-2 text-[var(--hk-navy)] shadow-sm transition hover:scale-110 disabled:opacity-50"><Heart className={`h-4 w-4 ${saved ? "fill-red-500 text-red-500" : ""}`} /></button>
       </div>
       <div className="min-w-0 p-4">
         <div className="flex items-start justify-between gap-2">

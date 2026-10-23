@@ -81,12 +81,28 @@ const isoDate = (offset: number) => {
 };
 
 const formatPrice = (price: number | null, currency: string) =>
-  price === null ? "Price on request" : new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(price / 100);
+  price === null
+    ? "Price on request"
+    : new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }).format(price / 100);
 
 const searchFields: SearchField[] = [
   { label: "Search destination", value: "London", icon: PinIcon },
-  { label: "Check in", value: "May 20, 2025", icon: CalendarIcon, chevron: true },
-  { label: "Check out", value: "May 22, 2025", icon: CalendarIcon, chevron: true },
+  {
+    label: "Check in",
+    value: "May 20, 2025",
+    icon: CalendarIcon,
+    chevron: true,
+  },
+  {
+    label: "Check out",
+    value: "May 22, 2025",
+    icon: CalendarIcon,
+    chevron: true,
+  },
   { label: "Guests", value: "2 Guests", icon: UserIcon, chevron: true },
 ];
 
@@ -155,22 +171,25 @@ const collections: Collection[] = [
     title: "Business Essentials",
     description:
       "Hotels featuring ultra-fast Wi-Fi, 24/7 business centers, and fully-equipped meeting rooms.",
-    image:
-      "/images/business-essentials.png",
+    image: "/images/business-essentials.png",
   },
   {
     tag: "Collection",
     title: "Luxury Escapes",
     description:
       "Unwind after hours in five-star suites with premium spa facilities and world-class dining.",
-    image:
-      "/images/luxury-escapes.png",
+    image: "/images/luxury-escapes.png",
   },
 ];
 
 const footerColumns = {
   Company: ["About Us", "Careers", "Press & Media", "Sustainability"],
-  Services: ["Helpkey for Business", "Travel Agents", "Meeting Spaces", "Concierge API"],
+  Services: [
+    "Helpkey for Business",
+    "Travel Agents",
+    "Meeting Spaces",
+    "Concierge API",
+  ],
   Support: ["Help Center", "Contact Us", "Privacy Policy", "Terms of Service"],
 };
 
@@ -180,14 +199,19 @@ export function HomePage() {
 
   useEffect(() => {
     void fetch("/api/home", { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<HomeCatalog> : null)
+      .then(async (response) =>
+        response.ok ? (response.json() as Promise<HomeCatalog>) : null,
+      )
       .then(setCatalog)
       .catch(() => setCatalog(null));
   }, []);
 
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <SiteHeader activeHref="/search" onLoginClick={() => setIsLoginOpen(true)} />
+      <SiteHeader
+        activeHref="/search"
+        onLoginClick={() => setIsLoginOpen(true)}
+      />
       <main>
         <HeroSection
           eyebrow="BUSINESS TRAVEL, MADE EASY"
@@ -201,7 +225,7 @@ export function HomePage() {
           loyaltyCta="Sign In / Register"
           onLoginClick={() => setIsLoginOpen(true)}
         />
-        
+
         {/* Agoda-style Destinations Carousel */}
         <DestinationsCarousel />
 
@@ -283,25 +307,7 @@ function LoyaltyBanner({
   loyaltyCta: string;
   onLoginClick: () => void;
 }) {
-  return (
-    <div className="mb-4 flex flex-col items-center justify-between gap-4 rounded-[12px] bg-[var(--hk-navy-strong)] px-6 py-4 shadow-lg sm:flex-row lg:px-8">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
-          <StarIcon className="h-5 w-5 text-[var(--hk-rating)]" />
-        </div>
-        <p className="text-[14px] font-medium text-white sm:text-[15px]">
-          <strong className="text-[var(--hk-rating)]">{loyaltyLead}</strong>{" "}
-          {loyaltyBody}
-        </p>
-      </div>
-      <button
-        onClick={onLoginClick}
-        className="whitespace-nowrap rounded-[8px] bg-white px-5 py-2.5 text-[13px] font-bold text-[var(--hk-navy-strong)] transition-colors hover:bg-gray-100"
-      >
-        {loyaltyCta}
-      </button>
-    </div>
-  );
+  return <></>;
 }
 
 function SearchPanel({
@@ -361,7 +367,15 @@ function SearchFieldCard({ field }: { field: SearchField }) {
   );
 }
 
-function SearchChipButton({ chip, active, onClick }: { chip: SearchChip; active: boolean; onClick: () => void }) {
+function SearchChipButton({
+  chip,
+  active,
+  onClick,
+}: {
+  chip: SearchChip;
+  active: boolean;
+  onClick: () => void;
+}) {
   const Icon = chip.icon;
 
   return (
@@ -380,9 +394,11 @@ function SearchChipButton({ chip, active, onClick }: { chip: SearchChip; active:
   );
 }
 
-
-
-function HubsSection({ cities }: { cities: Array<{ city: string; propertyCount: number }> }) {
+function HubsSection({
+  cities,
+}: {
+  cities: Array<{ city: string; propertyCount: number }>;
+}) {
   return (
     <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
       <div className="mb-8">
@@ -390,7 +406,8 @@ function HubsSection({ cities }: { cities: Array<{ city: string; propertyCount: 
           Top global hubs
         </h2>
         <p className="mt-2 text-[16px] text-[var(--hk-muted)]">
-          Explore premium business stays in major financial and cultural centers.
+          Explore premium business stays in major financial and cultural
+          centers.
         </p>
       </div>
 
@@ -404,11 +421,18 @@ function HubsSection({ cities }: { cities: Array<{ city: string; propertyCount: 
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(214,179,106,0.55),transparent_55%)]" />
             <div className="relative mt-auto w-full p-6">
               <h3 className="text-[24px] font-bold text-white">{hub.city}</h3>
-              <p className="mt-1 text-[14px] text-white/80">{hub.propertyCount} {hub.propertyCount === 1 ? "property" : "properties"}</p>
+              <p className="mt-1 text-[14px] text-white/80">
+                {hub.propertyCount}{" "}
+                {hub.propertyCount === 1 ? "property" : "properties"}
+              </p>
             </div>
           </Link>
         ))}
-        {!cities.length && <p className="rounded-[16px] border border-dashed border-[var(--hk-border-strong)] bg-white p-8 text-center text-sm text-[var(--hk-muted)] sm:col-span-2 lg:col-span-4">Cities will appear as soon as properties are available.</p>}
+        {!cities.length && (
+          <p className="rounded-[16px] border border-dashed border-[var(--hk-border-strong)] bg-white p-8 text-center text-sm text-[var(--hk-muted)] sm:col-span-2 lg:col-span-4">
+            Cities will appear as soon as properties are available.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -451,7 +475,11 @@ function CollectionsSection() {
                 {collection.description}
               </p>
               <Link
-                href={collection.title === "Business Essentials" ? "/search?amenity=business_ready" : "/search?amenity=luxury"}
+                href={
+                  collection.title === "Business Essentials"
+                    ? "/search?amenity=business_ready"
+                    : "/search?amenity=luxury"
+                }
                 className="mt-6 inline-flex w-max items-center rounded-[8px] bg-white px-6 py-3 text-[14px] font-semibold text-[var(--hk-navy-strong)] hover:bg-[#f8f7f3]"
               >
                 Explore Collection
@@ -499,7 +527,9 @@ function StoreButton({
         <span className="block text-[10px] font-semibold uppercase leading-none">
           {caption}
         </span>
-        <span className="block text-[14px] font-bold leading-tight">{label}</span>
+        <span className="block text-[14px] font-bold leading-tight">
+          {label}
+        </span>
       </span>
     </button>
   );
@@ -507,9 +537,7 @@ function StoreButton({
 
 function NewsletterSection() {
   return (
-    <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10">
-     
-    </section>
+    <section className="mx-auto mb-16 max-w-[1280px] px-4 sm:px-6 lg:mb-20 lg:px-10"></section>
   );
 }
 
@@ -562,10 +590,16 @@ function SiteFooter() {
             © 2024 Helpkey International. All rights reserved.
           </p>
           <div className="flex gap-6">
-            <Link href="/help" className="text-[12px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]">
+            <Link
+              href="/help"
+              className="text-[12px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
+            >
               Cookie Settings
             </Link>
-            <Link href="/help" className="text-[12px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]">
+            <Link
+              href="/help"
+              className="text-[12px] text-[var(--hk-muted)] hover:text-[var(--hk-navy-strong)]"
+            >
               Site Map
             </Link>
           </div>
@@ -585,7 +619,12 @@ function FooterIconButton({ icon: Icon }: { icon: IconComponent }) {
 
 function KeyIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M14.5 8.5a4.5 4.5 0 1 1-8.63 1.75A4.5 4.5 0 0 1 14.5 8.5ZM14.5 8.5H22m-3.5 0v3.25m-3.25-3.25V12"
         stroke="currentColor"
@@ -600,7 +639,12 @@ function KeyIcon({ className }: IconProps) {
 
 function GlobeIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.35 0 4.25-4.03 4.25-9S14.35 3 12 3 7.75 7.03 7.75 12 9.65 21 12 21Zm-8-9h16M5.56 6.75h12.88M5.56 17.25h12.88"
         stroke="currentColor"
@@ -614,7 +658,12 @@ function GlobeIcon({ className }: IconProps) {
 
 function ChevronDownIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="m5 7.5 5 5 5-5"
         stroke="currentColor"
@@ -628,7 +677,12 @@ function ChevronDownIcon({ className }: IconProps) {
 
 function UserCircleIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 8a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-5-2.2c.91-1.7 2.74-2.8 5-2.8s4.09 1.1 5 2.8"
         stroke="currentColor"
@@ -642,7 +696,12 @@ function UserCircleIcon({ className }: IconProps) {
 
 function BriefcaseIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M8 7V5.75C8 4.78 8.78 4 9.75 4h4.5C15.22 4 16 4.78 16 5.75V7m-8 3.5h8m-12 7h16A1.5 1.5 0 0 0 21.5 16V8.5A1.5 1.5 0 0 0 20 7H4A1.5 1.5 0 0 0 2.5 8.5V16A1.5 1.5 0 0 0 4 17.5Z"
         stroke="currentColor"
@@ -656,7 +715,12 @@ function BriefcaseIcon({ className }: IconProps) {
 
 function UsersIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M7.75 12a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5ZM16.25 10.75a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm-11 7.25v-.63c0-2.28 1.85-4.12 4.13-4.12h1.74c2.28 0 4.13 1.84 4.13 4.12V18m.5-.75c.37-.73 1.13-1.25 2.01-1.25h.74c1.24 0 2.25 1 2.25 2.25V18"
         stroke="currentColor"
@@ -670,7 +734,12 @@ function UsersIcon({ className }: IconProps) {
 
 function PinIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 20s6-5.27 6-10a6 6 0 1 0-12 0c0 4.73 6 10 6 10Zm0-7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
         stroke="currentColor"
@@ -684,7 +753,12 @@ function PinIcon({ className }: IconProps) {
 
 function CalendarIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M7.5 3.75v3m9-3v3M4.5 9.25h15m-13.25 10h11.5A1.75 1.75 0 0 0 19.5 17.5V7.25A1.75 1.75 0 0 0 17.75 5.5H6.25A1.75 1.75 0 0 0 4.5 7.25V17.5c0 .97.78 1.75 1.75 1.75Z"
         stroke="currentColor"
@@ -698,7 +772,12 @@ function CalendarIcon({ className }: IconProps) {
 
 function UserIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 12a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5ZM5.5 19.25A6.5 6.5 0 0 1 12 14.5a6.5 6.5 0 0 1 6.5 4.75"
         stroke="currentColor"
@@ -712,7 +791,12 @@ function UserIcon({ className }: IconProps) {
 
 function CityIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M4.75 19.25h14.5M6 19V9.25c0-.69.56-1.25 1.25-1.25h3.5c.69 0 1.25.56 1.25 1.25V19m0-7h6V19m0-11.5V19m-8-7h1m-1 3h1m6-1h1"
         stroke="currentColor"
@@ -726,7 +810,12 @@ function CityIcon({ className }: IconProps) {
 
 function DiamondIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="m12 19.5 7-8-3-5H8l-3 5 7 8Zm0 0-4-8m4 8 4-8m-8 0h8"
         stroke="currentColor"
@@ -740,7 +829,12 @@ function DiamondIcon({ className }: IconProps) {
 
 function DeskIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M4.5 10.5h15m-12.5 0V18m9-7.5V18M8 18h8M7 6h10c.55 0 1 .45 1 1v3.5H6V7c0-.55.45-1 1-1Z"
         stroke="currentColor"
@@ -754,7 +848,12 @@ function DeskIcon({ className }: IconProps) {
 
 function PlaneIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="m3 13.25 18-4.5-8 6.25v4l-2.25-2v-2.44L3 13.25Z"
         stroke="currentColor"
@@ -768,7 +867,12 @@ function PlaneIcon({ className }: IconProps) {
 
 function WifiIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M3.5 9.75a13.1 13.1 0 0 1 17 0M6.75 13a8.2 8.2 0 0 1 10.5 0M10 16.25a3.35 3.35 0 0 1 4 0M12 19.25h.01"
         stroke="currentColor"
@@ -782,7 +886,12 @@ function WifiIcon({ className }: IconProps) {
 
 function HeartIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="m12 20.5-1.1-1C5.7 14.8 3 12.3 3 8.95 3 6.44 4.96 4.5 7.45 4.5c1.42 0 2.79.66 3.67 1.82A4.63 4.63 0 0 1 14.8 4.5C17.3 4.5 19.25 6.44 19.25 8.95c0 3.36-2.7 5.84-7.9 10.56l-1.1 1Z"
         stroke="currentColor"
@@ -796,7 +905,12 @@ function HeartIcon({ className }: IconProps) {
 
 function StarIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="m10 2.5 2.1 4.25 4.7.68-3.4 3.3.8 4.67L10 13.2l-4.2 2.2.8-4.67-3.4-3.3 4.7-.68L10 2.5Z"
         stroke="currentColor"
@@ -809,7 +923,12 @@ function StarIcon({ className }: IconProps) {
 
 function ShieldIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 3.75 6.5 6v5.25c0 4.22 2.38 8.09 5.5 9 3.12-.91 5.5-4.78 5.5-9V6L12 3.75Z"
         stroke="currentColor"
@@ -830,7 +949,12 @@ function ShieldIcon({ className }: IconProps) {
 
 function CalendarCheckIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M7 3.75v2.5m10-2.5v2.5M4.5 8.5h15m-13 11.75h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 17.5 6.25h-11A1.5 1.5 0 0 0 5 7.75v11a1.5 1.5 0 0 0 1.5 1.5Zm2.25-5 1.75 1.75 4-4.25"
         stroke="currentColor"
@@ -844,7 +968,12 @@ function CalendarCheckIcon({ className }: IconProps) {
 
 function StarBadgeIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M12 4.5 14 8l3.75.55L15 11.2l.65 3.8L12 13.2 8.35 15l.65-3.8-2.75-2.65L10 8l2-3.5Zm-6.5 11.25 1.8 1.8M16.7 17.55l1.8-1.8"
         stroke="currentColor"
@@ -858,7 +987,12 @@ function StarBadgeIcon({ className }: IconProps) {
 
 function SupportIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M5 11.75a7 7 0 1 1 14 0V15a2 2 0 0 1-2 2h-1.25v-4.5H19m-14 0h3.25V17H7a2 2 0 0 1-2-2v-3.25Zm7 8.25h2.5"
         stroke="currentColor"
@@ -872,7 +1006,12 @@ function SupportIcon({ className }: IconProps) {
 
 function ArrowRightIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M4.5 10h11m0 0-4-4m4 4-4 4"
         stroke="currentColor"
@@ -886,7 +1025,12 @@ function ArrowRightIcon({ className }: IconProps) {
 
 function ShareIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M15 8.75a3.25 3.25 0 1 0-3.18-4m3.18 4-6 3.5m0 0a3.25 3.25 0 1 0 0 5.5m0-5.5 6 3.5m0 0a3.25 3.25 0 1 0 .22-5.74"
         stroke="currentColor"
@@ -900,7 +1044,12 @@ function ShareIcon({ className }: IconProps) {
 
 function MailIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M4 7.75A1.75 1.75 0 0 1 5.75 6h12.5A1.75 1.75 0 0 1 20 7.75v8.5A1.75 1.75 0 0 1 18.25 18H5.75A1.75 1.75 0 0 1 4 16.25v-8.5Zm1.5.25L12 12.5 18.5 8"
         stroke="currentColor"
@@ -914,7 +1063,12 @@ function MailIcon({ className }: IconProps) {
 
 function AppleIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M14.2 5.2c.8-1 1.3-2.3 1.2-3.7-1.2.1-2.6.8-3.4 1.8-.8.9-1.4 2.3-1.2 3.6 1.3.1 2.6-.7 3.4-1.7Zm3.7 11.1c-.5 1.1-.8 1.5-1.4 2.5-.8 1.3-2 2.9-3.4 2.9-1.3 0-1.6-.8-3.3-.8-1.7 0-2 .8-3.3.8-1.4 0-2.5-1.4-3.4-2.7-2.4-3.7-2.7-8.1-1.2-10.4 1.1-1.6 2.8-2.6 4.4-2.6 1.7 0 2.8.9 4.2.9 1.4 0 2.2-.9 4.2-.9 1.4 0 2.9.7 4 2-.3.2-2.4 1.4-2.4 4.2 0 3.4 3 4.6 3.1 4.6Z"
         fill="currentColor"
@@ -925,7 +1079,12 @@ function AppleIcon({ className }: IconProps) {
 
 function PlayIcon({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
       <path
         d="M5.5 4.75c-.57.3-.93.9-.93 1.54v11.42c0 .65.36 1.25.93 1.54l10.58-5.71a1.75 1.75 0 0 0 0-3.08L5.5 4.75Z"
         fill="currentColor"

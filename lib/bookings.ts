@@ -8,6 +8,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { resolvePublicImage } from "@/lib/media-resolver";
 import { invalidatePublic } from "@/lib/api/cache";
 import { providerFetch } from "@/lib/providers/http";
+import { generateBookingReference } from "@/lib/booking/reference";
+import { amenityLabel, canonicalAmenityKey } from "@/lib/customer/amenities";
 
 import { bookingInput, createBookingInput, paymentVerificationInput } from "@/lib/booking/contracts";
 export { bookingInput, createBookingInput, paymentVerificationInput } from "@/lib/booking/contracts";
@@ -17,11 +19,20 @@ import { calendarRef, hasCapacity, readAvailability, writeAllocation } from "@/l
 import type { CheckoutDisplay, CheckoutInput } from "@/lib/booking/checkout";
 
 const HOLD_TTL_MS = 10 * 60_000;
+const BOOKING_REFERENCE_ATTEMPTS = 12;
 const cancellableStatuses = new Set(["pending_payment", "confirmed"]);
 const releaseStatuses = new Set(["pending_payment", "confirmed"]);
 
 type BookingInput = z.infer<typeof bookingInput>;
 type CreateBookingInput = z.infer<typeof createBookingInput>;
+
+type AmenitySnapshotItem = { code: string; label: string };
+type AmenitySnapshot = {
+  version: 1;
+  roomAmenities: AmenitySnapshotItem[];
+  propertyAmenities: AmenitySnapshotItem[];
+  rateInclusions: AmenitySnapshotItem[];
+};
 
 function dateRange(checkIn: string, checkOut: string) {
   const out: string[] = [];
@@ -51,6 +62,49 @@ function safeCompare(left: string, right: string) {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function amenityIds(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(0, 100) : [];
+}
+
+function amenitySnapshotItems(ids: readonly string[], amenities: ReadonlyMap<string, FirebaseFirestore.DocumentData>): AmenitySnapshotItem[] {
+  const unique = new Map<string, AmenitySnapshotItem>();
+  for (const id of ids) {
+    const configured = amenities.get(id);
+    const rawCode = typeof configured?.code === "string" && configured.code.trim() ? configured.code : id;
+    const code = canonicalAmenityKey(rawCode);
+    if (!code || unique.has(code)) continue;
+    const configuredName = typeof configured?.name === "string" && configured.name.trim() ? configured.name.trim() : null;
+    unique.set(code, { code, label: configuredName ?? amenityLabel(rawCode) });
+  }
+  return [...unique.values()];
+}
+
+async function amenitySnapshotFor(property: FirebaseFirestore.DocumentData, room: FirebaseFirestore.DocumentData, rate: FirebaseFirestore.DocumentData, read: (ref: FirebaseFirestore.DocumentReference) => Promise<FirebaseFirestore.DocumentSnapshot>): Promise<AmenitySnapshot> {
+  const roomIds = amenityIds(room.amenityIds);
+  const propertyIds = amenityIds(property.amenityIds);
+  const ids = [...new Set([...roomIds, ...propertyIds])];
+  const docs = await Promise.all(ids.map((id) => read(adminDb.collection("amenities").doc(id))));
+  const amenities = new Map(docs.filter((doc) => doc.exists).map((doc) => [doc.id, doc.data() ?? {}]));
+  return {
+    version: 1,
+    roomAmenities: amenitySnapshotItems(roomIds, amenities),
+    propertyAmenities: amenitySnapshotItems(propertyIds, amenities),
+    rateInclusions: rate.breakfastIncluded === true ? [{ code: "breakfast", label: "Breakfast included" }] : [],
+  };
+}
+
+function savedAmenitySnapshot(value: unknown): AmenitySnapshot | null {
+  if (!value || typeof value !== "object" || (value as { version?: unknown }).version !== 1) return null;
+  const read = (items: unknown): AmenitySnapshotItem[] => Array.isArray(items) ? items.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const code = typeof (item as { code?: unknown }).code === "string" ? canonicalAmenityKey((item as { code: string }).code) : "";
+    const label = typeof (item as { label?: unknown }).label === "string" ? (item as { label: string }).label.trim() : "";
+    return code && label ? [{ code, label }] : [];
+  }) : [];
+  const snapshot = value as Record<string, unknown>;
+  return { version: 1, roomAmenities: read(snapshot.roomAmenities), propertyAmenities: read(snapshot.propertyAmenities), rateInclusions: read(snapshot.rateInclusions) };
 }
 
 async function propertyCover(propertyData: FirebaseFirestore.DocumentData) {
@@ -138,6 +192,7 @@ export function bookingError(error: unknown) {
     PAYMENT_METHOD_NOT_AVAILABLE: "This payment method is not available for the selected rate.",
     ONLINE_PAYMENT_NOT_CONFIGURED: "Online payment is not configured yet. Choose a pay-at-property rate.",
     PAYMENT_ORDER_CREATION_FAILED: "Unable to start secure payment. Please try again.",
+    BOOKING_REFERENCE_UNAVAILABLE: "Unable to reserve a booking reference. Please try again.",
     BOOKING_NOT_FOUND: "Booking not found.",
     BOOKING_NOT_CANCELLABLE: "This booking cannot be cancelled from here.",
     PAYMENT_NOT_EXPECTED: "Payment is not expected for this booking.",
@@ -223,6 +278,10 @@ async function buildQuote(input: BookingInput, timing: QuoteTiming) {
     propertyId: property.id,
     propertySlug: input.propertySlug,
     propertyName: propertyData?.name ?? "Property",
+    propertyAddress: [propertyData?.address?.line1, propertyData?.address?.line2, propertyData?.address?.landmark, propertyData?.address?.locality, propertyData?.address?.city, propertyData?.address?.state, propertyData?.address?.postalCode, propertyData?.address?.countryCode]
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim())).join(", ") || null,
+    propertyPublicPhone: typeof propertyData?.publicPhone === "string" ? propertyData.publicPhone : null,
+    propertyPublicEmail: typeof propertyData?.publicEmail === "string" ? propertyData.publicEmail : null,
     currency: propertyData?.currency ?? "INR",
     roomType: { id: room.id, name: roomData.name ?? "Room" },
     ratePlan: { id: rate.id, name: rateData.name ?? "Standard", paymentMode, depositBasisPoints },
@@ -250,14 +309,15 @@ async function buildQuote(input: BookingInput, timing: QuoteTiming) {
 }
 
 async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingInput, quoteData: Awaited<ReturnType<typeof quote>>, id: string, requestFingerprint: string, manual?: { totalPaise: number; subtotalPaise: number; taxPaise: number; customerFeePaise: number; paid: boolean; reason: string }) {
-  const confirmationCode = `HK-${id.slice(0, 20).toUpperCase()}`;
   const expiresAt = Timestamp.fromMillis(Math.min(Date.now() + HOLD_TTL_MS, Date.parse(quoteData.startAt)));
 
-  await adminDb.runTransaction(async (tx) => {
+  for (let attempt = 0; attempt < BOOKING_REFERENCE_ATTEMPTS; attempt += 1) {
+    try {
+      const confirmationCode = await adminDb.runTransaction(async (tx) => {
     const existing = await tx.get(adminDb.collection("bookings").doc(id));
     if (existing.exists) {
       if (existing.data()?.requestFingerprint !== requestFingerprint) throw new Error("IDEMPOTENCY_CONFLICT");
-      return;
+      return String(existing.data()?.confirmationCode);
     }
     if (manual) {
       const membership = await tx.get(adminDb.collection("propertyMemberships").doc(`${quoteData.propertyId}_${uid}`));
@@ -276,8 +336,16 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       if (JSON.stringify(snapshot) !== JSON.stringify(quoteData.cancellationPolicy)) throw new Error("QUOTE_CHANGED");
     }
     if ((rate.breakfastIncluded === true) !== quoteData.breakfastIncluded) throw new Error("QUOTE_CHANGED");
+    // Keep the exact guest-facing amenities promised at booking time. The
+    // catalog is read inside this transaction so a concurrent listing edit
+    // cannot silently change the record we create.
+    const amenitySnapshot = await amenitySnapshotFor(property, room, rate, (ref) => tx.get(ref));
     const current = evaluateStay(input, property, room, rate);
     if (JSON.stringify(current) !== JSON.stringify(Object.fromEntries(Object.keys(current).map((key) => [key, quoteData[key as keyof typeof quoteData]]))) || (property.inventoryEngine ?? "legacy") !== quoteData.inventoryEngine) throw new Error("QUOTE_CHANGED");
+    const configuredCity = typeof property.address?.city === "string" && property.address.city.trim() ? property.address.city : property.city;
+    const confirmationCode = generateBookingReference(configuredCity, property.slug ?? quoteData.propertySlug);
+    const referenceRef = adminDb.collection("bookingReferences").doc(confirmationCode);
+    if ((await tx.get(referenceRef)).exists) throw new Error("BOOKING_REFERENCE_COLLISION");
     const allocations = allocateIntervals(current.startAt, current.inventoryEndAt, current.timezone);
     if (quoteData.inventoryEngine === "interval_v1") {
       const docs = await Promise.all(allocations.map((a) => tx.get(calendarRef(propertyRef.id, roomRef.id, a.date))));
@@ -294,6 +362,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     const initialStatus = input.paymentMethod === "pay_at_property" ? "confirmed" : "pending_payment";
     tx.create(adminDb.collection("bookings").doc(id).collection("events").doc(), { from: null, to: initialStatus, actorId: uid, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, id, quoteData.propertyId, uid, initialStatus);
+    tx.create(referenceRef, { bookingId: id, confirmationCode, propertyId: propertyRef.id, createdAt: FieldValue.serverTimestamp() });
     const persistedQuote = quoteData;
     tx.create(adminDb.collection("bookings").doc(id), {
       ...persistedQuote,
@@ -315,6 +384,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       bookingContact: input.bookingContact ?? null,
       specialRequest: input.specialRequest || null,
       billing: input.billing,
+      amenitySnapshot,
       termsAcceptance: { version: "2026-09", cancellationPolicyId: quoteData.cancellationPolicyId, acceptedAt: FieldValue.serverTimestamp() },
       paymentMethod: input.paymentMethod,
       paymentStatus: input.paymentMethod === "pay_at_property" ? "pay_at_property" : "pending",
@@ -329,10 +399,17 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: uid,
     });
-  });
+    return confirmationCode;
+      });
 
-  await invalidatePublic("search:*");
-  return { id, confirmationCode };
+      await invalidatePublic("search:*");
+      return { id, confirmationCode };
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "BOOKING_REFERENCE_COLLISION") throw error;
+    }
+  }
+
+  throw new Error("BOOKING_REFERENCE_UNAVAILABLE");
 }
 
 export async function releaseBookingHold(bookingId: string, actorId: string, nextStatus: "cancelled" | "expired" | "payment_failed" | "no_show", reason: string) {
@@ -554,6 +631,8 @@ export async function expirePendingBookings(actorId: string, bookingId?: string)
 }
 
 export function serializeBooking(id: string, data: FirebaseFirestore.DocumentData) {
+  const billing = data.billing && typeof data.billing === "object" ? data.billing as Record<string, unknown> : null;
+  const billingAddress = billing?.address && typeof billing.address === "object" ? billing.address as Record<string, unknown> : null;
   return {
     id,
     confirmationCode: data.confirmationCode,
@@ -564,6 +643,9 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     propertyCity: data.propertyCity ?? data.city ?? null,
     propertyState: data.propertyState ?? data.state ?? null,
     propertyCoverImageUrl: data.propertyCoverImageUrl ?? data.coverImageUrl ?? null,
+    propertyAddress: data.propertyAddress ?? null,
+    propertyPublicPhone: data.propertyPublicPhone ?? null,
+    propertyPublicEmail: data.propertyPublicEmail ?? null,
     checkInTime: data.arrivalTime ?? data.checkInTime ?? "14:00",
     checkOutTime: data.departureTime ?? data.checkOutTime ?? "11:00",
     roomTypeId: data.roomType?.id ?? null,
@@ -575,8 +657,27 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     adults: data.adults ?? 1,
     children: data.children ?? 0,
     infants: data.infants ?? 0,
-    leadGuest: data.leadGuest ?? null,
-    bookingContact: data.bookingContact ?? null,
+    leadGuest: data.leadGuest ? {
+      name: data.leadGuest.name ?? "Guest",
+      email: data.leadGuest.email ?? "",
+      phone: data.leadGuest.phone ?? "",
+    } : null,
+    bookingContact: data.bookingContact ? {
+      name: data.bookingContact.name ?? "",
+      email: data.bookingContact.email ?? "",
+      phone: data.bookingContact.phone ?? "",
+    } : null,
+    billing: billing && billingAddress && typeof billing.legalName === "string" && typeof billing.gstin === "string" ? {
+      legalName: billing.legalName,
+      gstin: billing.gstin,
+      address: {
+        line1: typeof billingAddress.line1 === "string" ? billingAddress.line1 : "",
+        city: typeof billingAddress.city === "string" ? billingAddress.city : "",
+        state: typeof billingAddress.state === "string" ? billingAddress.state : "",
+        postalCode: typeof billingAddress.postalCode === "string" ? billingAddress.postalCode : "",
+      },
+    } : null,
+    amenitySnapshot: savedAmenitySnapshot(data.amenitySnapshot),
     specialRequest: data.specialRequest ?? null,
     subtotalPaise: data.subtotalPaise ?? 0,
     taxPaise: data.taxPaise ?? 0,
@@ -600,6 +701,7 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     overdue: data.bookingStatus === "checked_in" && Boolean(data.endAt && Date.parse(data.endAt) < Date.now()),
     paymentStatus: data.paymentStatus ?? "pending",
     paymentMethod: data.paymentMethod ?? null,
+    cancellationPolicy: data.cancellationPolicy ?? null,
     razorpayOrderId: data.razorpayOrderId ?? null,
     razorpayPaymentId: data.razorpayPaymentId ?? null,
     expiresAt: asIso(data.expiresAt),
@@ -612,7 +714,8 @@ export async function serializeBookingWithResolvedMedia(id: string, data: Fireba
   let imageUrl: string | null = null;
   const mediaIds = [data.propertyCoverMediaId].filter((value): value is string => typeof value === "string" && Boolean(value));
   const property = typeof data.propertyId === "string" ? await adminDb.collection("properties").doc(data.propertyId).get() : null;
-  const currentCoverId = property?.data()?.coverMediaId;
+  const propertyData = property?.data() ?? {};
+  const currentCoverId = propertyData.coverMediaId;
   if (typeof currentCoverId === "string" && !mediaIds.includes(currentCoverId)) mediaIds.push(currentCoverId);
   for (const mediaId of mediaIds) {
     const media = await adminDb.collection("mediaAssets").doc(mediaId).get(); const raw = media.data();
@@ -620,7 +723,54 @@ export async function serializeBookingWithResolvedMedia(id: string, data: Fireba
     const resolved = await resolvePublicImage(media.id, raw, typeof raw.altText === "string" ? raw.altText : "");
     if (resolved) { imageUrl = resolved.imageUrl; break; }
   }
-  return { ...serializeBooking(id, { ...data, propertyCoverImageUrl: imageUrl }), propertyCoverImageUrl: imageUrl ?? "/balmoral_hotel.png" };
+  const address = propertyData.address && typeof propertyData.address === "object" ? propertyData.address as Record<string, unknown> : {};
+  const addressParts = [address.line1, address.line2, address.landmark, address.locality, address.city, address.state, address.postalCode, address.countryCode]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  const snapshot = savedAmenitySnapshot(data.amenitySnapshot);
+  // Legacy bookings predate the snapshot. Resolve the room only for those
+  // records; this is intentionally a fallback, never a replacement for a
+  // booked snapshot.
+  if (!snapshot) {
+    const room = typeof data.roomType?.id === "string" ? await adminDb.collection("roomTypes").doc(data.roomType.id).get() : null;
+    const legacy = await amenitySnapshotFor(propertyData, room?.data() ?? {}, { breakfastIncluded: data.breakfastIncluded === true }, (ref) => ref.get());
+    return {
+      ...serializeBooking(id, {
+        ...data,
+        amenitySnapshot: legacy,
+        propertyCity: data.propertyCity ?? address.city ?? null,
+        propertyState: data.propertyState ?? address.state ?? null,
+        propertyAddress: data.propertyAddress ?? (addressParts.join(", ") || null),
+        propertyPublicPhone: data.propertyPublicPhone ?? (typeof propertyData.publicPhone === "string" ? propertyData.publicPhone : null),
+        propertyPublicEmail: data.propertyPublicEmail ?? (typeof propertyData.publicEmail === "string" ? propertyData.publicEmail : null),
+        propertyCoverImageUrl: imageUrl,
+      }),
+      amenitySource: "legacy_fallback",
+      propertyCoverImageUrl: imageUrl,
+    };
+  }
+  return {
+    ...serializeBooking(id, {
+      ...data,
+      amenitySnapshot: snapshot,
+      propertyCity: data.propertyCity ?? address.city ?? null,
+      propertyState: data.propertyState ?? address.state ?? null,
+      propertyAddress: data.propertyAddress ?? (addressParts.join(", ") || null),
+      propertyPublicPhone: data.propertyPublicPhone ?? (typeof propertyData.publicPhone === "string" ? propertyData.publicPhone : null),
+      propertyPublicEmail: data.propertyPublicEmail ?? (typeof propertyData.publicEmail === "string" ? propertyData.publicEmail : null),
+      propertyCoverImageUrl: imageUrl,
+    }),
+    // A booking detail must not present an unrelated hotel image when this
+    // property has no public cover media.
+    propertyCoverImageUrl: imageUrl,
+  };
+}
+
+/** Customer-safe booking lookup for itinerary pages and private API responses. */
+export async function bookingForGuest(uid: string, bookingId: string) {
+  const snap = await adminDb.collection("bookings").doc(bookingId).get();
+  if (!snap.exists || snap.data()?.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+  const { razorpayOrderId: _orderId, razorpayPaymentId: _paymentId, ...booking } = await serializeBookingWithResolvedMedia(snap.id, snap.data()!);
+  return booking;
 }
 
 /** Resolves booking covers with two getAll calls, independent of page size. */

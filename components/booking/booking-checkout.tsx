@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { GuestRules } from "@/components/hotel/guest-rules";
 import { formatMoney } from "@/lib/customer/offer";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,17 +15,14 @@ import {
   ArrowRight,
   BedDouble,
   Building2,
-  Calendar,
   Check,
   CheckCircle2,
   ChevronDown,
   Clock,
-  FileText,
   IndianRupee,
   Lock,
   Mail,
   MapPin,
-  Phone,
   ShieldCheck,
   Sparkles,
   User,
@@ -33,7 +31,6 @@ import {
 import { SiteHeader } from "@/components/shared/site-header";
 import { LoginModal } from "@/components/auth/login-modal";
 import { useAuth } from "@/components/auth/auth-provider";
-import { BookingConfirmationCard } from "@/components/booking/booking-confirmation-card";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type Quote = {
@@ -159,6 +156,7 @@ export function BookingCheckout({
   initialInput: CheckoutInput | null;
   initialDisplay: CheckoutDisplay | null;
 }) {
+  const router = useRouter();
   const { appUser, loading } = useAuth();
   const input = initialInput;
   const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
@@ -207,7 +205,6 @@ export function BookingCheckout({
   const [request, setRequest] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [rulesAccepted, setRulesAccepted] = useState(false);
-  const [confirmed, setConfirmed] = useState("");
   const bookingIdempotencyKey = useRef("");
   const lastQuoteFingerprint = useRef<string | null>(null);
 
@@ -448,6 +445,7 @@ export function BookingCheckout({
       if (!response.ok || !result.bookingId || !result.confirmationCode) {
         throw new Error(result.error ?? "Unable to create booking.");
       }
+      const bookingId = result.bookingId;
       if (result.requiresPayment) {
         setHoldExpiresAt(result.expiresAt ?? null);
         await loadRazorpay();
@@ -476,15 +474,17 @@ export function BookingCheckout({
               setBusy(false);
               return;
             }
-            setConfirmed(result.confirmationCode ?? "");
+            setHoldExpiresAt(null);
             setBusy(false);
+            router.replace(`/trips/${encodeURIComponent(bookingId)}`);
           },
           modal: { ondismiss: () => setBusy(false) },
         }).open();
         return;
       }
-      setConfirmed(result.confirmationCode);
+      setHoldExpiresAt(null);
       setBusy(false);
+      router.replace(`/trips/${encodeURIComponent(bookingId)}`);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Unable to create booking.",
@@ -592,20 +592,15 @@ export function BookingCheckout({
               <span className="text-slate-300">→</span>
               <div
                 className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
-                  confirmed
-                    ? "border-slate-200 bg-slate-100 text-[#000615]"
-                    : "border-[#000615] bg-[#000615] text-white shadow-xs"
+                  "border-[#000615] bg-[#000615] text-white shadow-xs"
                 }`}
               >
-                {confirmed && <CheckCircle2 className="h-3.5 w-3.5 text-[#000615]" />}
                 <span>2. Guest Details</span>
               </div>
               <span className="text-slate-300">→</span>
               <div
                 className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${
-                  confirmed
-                    ? "border-[#000615] bg-[#000615] text-white shadow-xs"
-                    : "border-slate-200 bg-white text-slate-400"
+                  "border-slate-200 bg-white text-slate-400"
                 }`}
               >
                 <span>3. Confirmation</span>
@@ -614,35 +609,7 @@ export function BookingCheckout({
           </div>
         </div>
 
-        {confirmed ? (
-          <div className="py-4">
-            <BookingConfirmationCard
-              confirmationCode={confirmed}
-              propertyName={initialDisplay?.propertyName ?? "Property"}
-              propertyAddress={
-                initialDisplay?.propertyAddress ??
-                [initialDisplay?.propertyCity, initialDisplay?.propertyState]
-                  .filter(Boolean)
-                  .join(", ")
-              }
-              guestEmail={email || appUser?.email || "guest@helpkey.com"}
-              checkInDate={quote?.checkIn ?? "2025-05-20"}
-              checkInTime={
-                initialDisplay?.arrivalTime
-                  ? `From ${initialDisplay.arrivalTime}`
-                  : "2:00 PM"
-              }
-              checkOutDate={quote?.checkOut ?? "2025-05-22"}
-              checkOutTime={
-                initialDisplay?.departureTime
-                  ? `Until ${initialDisplay.departureTime}`
-                  : "11:00 AM"
-              }
-              propertySlug={input?.propertySlug}
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             {/* Left Column: Form Details & Trust Badges */}
             <section className="space-y-6 lg:col-span-8">
               {/* Sign-In Prompt Banner */}
@@ -1208,9 +1175,9 @@ export function BookingCheckout({
                   </div>
                   <div className="rounded-2xl bg-slate-50/80 p-4 border border-[#c4c6ce]/30">
                     <strong className="block text-sm font-bold text-[#000615] mb-1">
-                      2. Voucher Issued
+                      2. Booking saved
                     </strong>
-                    <span className="leading-relaxed">Receive booking voucher and check-in instructions by email &amp; SMS.</span>
+                    <span className="leading-relaxed">Your booking details and receipt are always available in My Trips.</span>
                   </div>
                   <div className="rounded-2xl bg-slate-50/80 p-4 border border-[#c4c6ce]/30">
                     <strong className="block text-sm font-bold text-[#000615] mb-1">
@@ -1235,8 +1202,7 @@ export function BookingCheckout({
               }
               onRetry={() => void quoteQuery.refetch()}
             />
-          </div>
-        )}
+        </div>
       </div>
 
       <LoginModal isOpen={login} onClose={() => setLogin(false)} />
@@ -1389,24 +1355,31 @@ function BookingSummary({
 
           {/* Check-In / Check-Out Grid */}
           <div className="border-b border-[#c4c6ce]/30 bg-[#f1f3ff]/50 p-5 space-y-3.5">
-            <div className="relative grid grid-cols-2 gap-2.5 rounded-2xl border border-[#c4c6ce]/40 bg-white p-3.5 shadow-xs">
-              <SummaryDateBlock
-                label="Check-in"
-                value={display ? shortDate(display.checkIn) : "-"}
-                time={display ? displayTime(display.arrivalTime, "From") : ""}
-              />
-              <SummaryDateBlock
-                label="Check-out"
-                value={display ? shortDate(display.checkOut) : "-"}
-                time={display ? displayTime(display.departureTime, "Until") : ""}
-              />
-              {display && (
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[#000615] shadow-xs">
-                  {quote?.bookingMode === "hourly"
-                    ? `${quote.durationMinutes / 60}h Stay`
-                    : `${nightsCount} ${nightsCount === 1 ? "Night" : "Nights"}`}
-                </span>
-              )}
+            <div className="rounded-2xl border border-[#c4c6ce]/40 bg-white p-3.5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <SummaryDateBlock
+                  label="Check-in"
+                  value={display ? shortDate(display.checkIn) : "-"}
+                  time={display ? displayTime(display.arrivalTime, "From") : ""}
+                />
+
+                {display && (
+                  <div className="flex flex-col items-center justify-center px-1">
+                    <span className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#000615] shadow-xs">
+                      {quote?.bookingMode === "hourly"
+                        ? `${quote.durationMinutes / 60}h Stay`
+                        : `${nightsCount} ${nightsCount === 1 ? "Night" : "Nights"}`}
+                    </span>
+                  </div>
+                )}
+
+                <SummaryDateBlock
+                  label="Check-out"
+                  value={display ? shortDate(display.checkOut) : "-"}
+                  time={display ? displayTime(display.departureTime, "Until") : ""}
+                  align="right"
+                />
+              </div>
             </div>
 
             {/* Room Info */}
@@ -1569,20 +1542,27 @@ function SummaryDateBlock({
   label,
   value,
   time,
+  align = "left",
 }: {
   label: string;
   value: string;
   time: string;
+  align?: "left" | "right";
 }) {
+  const isRight = align === "right";
   return (
-    <div>
+    <div className={isRight ? "text-right" : "text-left"}>
       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </span>
       <span className="mt-0.5 block text-xs font-extrabold text-[#000615]">
         {value}
       </span>
-      <span className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-slate-500">
+      <span
+        className={`mt-0.5 flex items-center gap-1 text-[10px] font-medium text-slate-500 ${
+          isRight ? "justify-end" : "justify-start"
+        }`}
+      >
         <Clock className="h-3 w-3 text-[#000615]" />
         {time}
       </span>

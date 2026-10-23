@@ -1,263 +1,48 @@
 "use client";
 
-import React from "react";
-import { X, Printer, CheckCircle, Hotel, MapPin, Calendar, User, FileText } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, FileText, Hotel, MapPin, Printer, X } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 
+type Amenity = { code: string; label: string };
 export type BookingReceiptData = {
-  bookingMode?: "overnight" | "hourly";
-  durationMinutes?: number;
-  refundedPaise?: number;
-  balanceDuePaise?: number;
-  id: string;
-  confirmationCode: string;
-  propertyName: string;
-  propertyCity?: string | null;
-  propertyState?: string | null;
-  roomName: string;
-  ratePlanName: string;
-  checkIn: string;
-  checkOut: string;
-  checkInTime?: string;
-  checkOutTime?: string;
-  nights: number;
-  adults: number;
-  children: number;
-  leadGuest?: {
-    name: string;
-    email: string;
-    phone: string;
-  } | null;
-  bookingContact?: {
-    name: string;
-    email: string;
-    phone: string;
-  } | null;
-  subtotalPaise?: number;
-  taxPaise?: number;
-  customerFeePaise?: number;
-  totalPaise: number;
-  paidPaise: number;
-  currency: string;
-  bookingStatus: string;
-  paymentStatus: string;
-  paymentMethod?: string | null;
-  createdAt?: string | null;
+  id: string; confirmationCode: string; propertyName: string; propertyAddress?: string | null; propertyCity?: string | null; propertyState?: string | null; propertyPublicPhone?: string | null; propertyPublicEmail?: string | null;
+  roomName: string; ratePlanName: string; checkIn: string; checkOut: string; checkInTime?: string; checkOutTime?: string; nights: number; adults: number; children: number; infants?: number; bookingMode?: "overnight" | "hourly"; durationMinutes?: number;
+  leadGuest?: { name: string; email: string; phone: string } | null; bookingContact?: { name: string; email: string; phone: string } | null;
+  billing?: { legalName: string; gstin: string; address: { line1: string; city: string; state: string; postalCode: string } } | null;
+  amenitySnapshot?: { version: 1; roomAmenities: Amenity[]; propertyAmenities: Amenity[]; rateInclusions: Amenity[] } | null;
+  subtotalPaise?: number; taxPaise?: number; customerFeePaise?: number; totalPaise: number; paidPaise: number; balanceDuePaise?: number; refundDuePaise?: number; refundedPaise?: number; currency: string;
+  bookingStatus: string; paymentStatus: string; paymentMethod?: string | null; cancellationPolicy?: { name: string; description: string; refundableUntilHours: number; cancellationFeePercent: number } | null; createdAt?: string | null;
 };
-
-type Props = {
-  booking: BookingReceiptData | null;
-  onClose: () => void;
-};
-
-const formatMoney = (paise: number = 0, currency: string = "INR") => {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(paise / 100);
-};
-
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "";
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+type Props = { booking: BookingReceiptData | null; onClose: () => void };
+const money = (paise = 0, currency = "INR") => new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(paise / 100);
+const date = (value: string) => value ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T00:00:00`)) : "—";
+const human = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+const time = (value?: string) => { if (!value) return "—"; if (/am|pm/i.test(value)) return value; const [hours, minutes = "00"] = value.split(":"); const hour = Number(hours); return Number.isFinite(hour) ? `${hour % 12 || 12}:${minutes.slice(0, 2)} ${hour >= 12 ? "PM" : "AM"}` : value; };
 
 export function BookingReceiptModal({ booking, onClose }: Props) {
   if (!booking) return null;
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const locationText = [booking.propertyCity, booking.propertyState]
-    .filter(Boolean)
-    .join(", ");
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl print:max-w-none print:shadow-none print:m-0 print:p-0 print:overflow-visible">
-        {/* Header - Screen only */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 print:hidden">
-          <div className="flex items-center gap-2 text-[#0b1f3a] font-bold text-lg">
-            <FileText className="h-5 w-5 text-[#0b1f3a]" />
-            Booking Receipt
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
-            >
-              <Printer className="h-4 w-4" />
-              Print Receipt
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Receipt Printable Content */}
-        <div className="p-6 md:p-8 space-y-6">
-          {/* Brand Header & Confirmation */}
-          <div className="flex justify-between items-start border-b border-slate-200 pb-6">
-            <div>
-              <div className="flex items-center gap-2 text-2xl font-extrabold text-[#0b1f3a] tracking-tight">
-                <span className="bg-[#0b1f3a] text-white p-1 rounded-md">
-                  <Hotel className="h-5 w-5" />
-                </span>
-                Helpkey
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Official Booking & Payment Receipt</p>
-            </div>
-            <div className="text-right">
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                <CheckCircle className="h-3.5 w-3.5" />
-                {booking.paymentStatus === "paid" ? "Paid in Full" : booking.bookingStatus.toUpperCase()}
-              </span>
-              <p className="text-xs text-slate-500 mt-2 font-mono">
-                Code: <span className="font-bold text-slate-800">{booking.confirmationCode}</span>
-              </p>
-              {booking.createdAt && (
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Booked on {new Date(booking.createdAt).toLocaleDateString()}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Property Info */}
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-            <h3 className="font-bold text-lg text-[#0b1f3a]">{booking.propertyName}</h3>
-            {locationText && (
-              <p className="flex items-center gap-1.5 text-sm text-slate-600 mt-1">
-                <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                {locationText}
-              </p>
-            )}
-            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600 pt-2 border-t border-slate-200/60">
-              <div>
-                <span className="text-slate-400">Room:</span>{" "}
-                <span className="font-semibold text-slate-800">{booking.roomName}</span>
-              </div>
-              <div>
-                <span className="text-slate-400">Rate Plan:</span>{" "}
-                <span className="font-semibold text-slate-800">{booking.ratePlanName}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Stay Details Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-2">
-            <div className="border-l-2 border-[#0b1f3a] pl-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-In</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">{formatDate(booking.checkIn)}</p>
-              <p className="text-xs text-slate-500">{booking.checkInTime || "3:00 PM"}</p>
-            </div>
-            <div className="border-l-2 border-[#0b1f3a] pl-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-Out</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">{formatDate(booking.checkOut)}</p>
-              <p className="text-xs text-slate-500">{booking.checkOutTime || "11:00 AM"}</p>
-            </div>
-            <div className="border-l-2 border-[#0b1f3a] pl-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Duration</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">
-                {booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} nights`}
-              </p>
-            </div>
-            <div className="border-l-2 border-[#0b1f3a] pl-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Guests</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">
-                {booking.adults} Adult{booking.adults > 1 ? "s" : ""}
-                {booking.children ? `, ${booking.children} Child` : ""}
-              </p>
-            </div>
-          </div>
-
-          {/* Guest Details */}
-          {booking.leadGuest && (
-            <div className="border-t border-slate-100 pt-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Guest Information</h4>
-              <div className={`grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 text-xs ${booking.bookingContact ? "sm:grid-cols-1" : "sm:grid-cols-3"}`}>
-                <div>
-                  <span className="text-slate-400">{booking.bookingContact ? "Primary staying guest:" : "Lead guest:"}</span>{" "}
-                  <span className="font-semibold text-slate-800">{booking.leadGuest.name}</span>
-                </div>
-                {!booking.bookingContact && <div>
-                  <span className="text-slate-400">Email:</span>{" "}
-                  <span className="font-semibold text-slate-800">{booking.leadGuest.email}</span>
-                </div>}
-                {!booking.bookingContact && <div>
-                  <span className="text-slate-400">Phone:</span>{" "}
-                  <span className="font-semibold text-slate-800">{booking.leadGuest.phone}</span>
-                </div>}
-              </div>
-              {booking.bookingContact && (
-                <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-3">
-                  <div><span className="text-slate-400">Booking contact:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.name}</span></div>
-                  <div><span className="text-slate-400">Email:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.email}</span></div>
-                  <div><span className="text-slate-400">Phone:</span> <span className="font-semibold text-slate-800">{booking.bookingContact.phone}</span></div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Payment Summary Table */}
-          <div className="border-t border-slate-200 pt-4 space-y-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Payment Summary</h4>
-            {booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>Room charges ({booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} nights`})</span>
-                <span>{formatMoney(booking.subtotalPaise, booking.currency)}</span>
-              </div>
-            )}
-            {booking.taxPaise !== undefined && booking.taxPaise > 0 && (
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>Taxes & Service Fees</span>
-                <span>{formatMoney(booking.taxPaise, booking.currency)}</span>
-              </div>
-            )}
-            {booking.customerFeePaise !== undefined && booking.customerFeePaise > 0 && (
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>Convenience Fee</span>
-                <span>{formatMoney(booking.customerFeePaise, booking.currency)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-base font-bold text-[#0b1f3a] pt-3 border-t border-slate-200">
-              <span>Total Amount</span>
-              <span>{formatMoney(booking.totalPaise, booking.currency)}</span>
-            </div>
-
-            <div className="flex justify-between text-xs text-slate-600 pt-1">
-              <span>Amount Paid</span>
-              <span className="font-semibold text-emerald-700">{formatMoney(booking.paidPaise, booking.currency)}</span>
-            </div>
-            <div className="flex justify-between text-xs"><span>Balance due at property</span><span>{formatMoney(booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise), booking.currency)}</span></div>
-            {Boolean(booking.refundedPaise) && <div className="flex justify-between text-xs"><span>Refunded</span><span>{formatMoney(booking.refundedPaise, booking.currency)}</span></div>}
-
-            {booking.paymentMethod && (
-              <p className="text-[11px] text-slate-400 pt-2 italic">
-                Payment Method: {booking.paymentMethod === "pay_at_property" ? "Pay at Property" : "Online Payment (Razorpay)"}
-              </p>
-            )}
-          </div>
-
-          {/* Footer Note */}
-          <div className="border-t border-slate-100 pt-4 text-center text-xs text-slate-400">
-            <p>Thank you for choosing Helpkey! Need help with your stay? Contact Helpkey Support.</p>
-          </div>
-        </div>
-      </div>
+  const address = booking.propertyAddress || [booking.propertyCity, booking.propertyState].filter(Boolean).join(", ");
+  const duration = booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hour${(booking.durationMinutes ?? 0) === 60 ? "" : "s"}` : `${booking.nights} night${booking.nights === 1 ? "" : "s"}`;
+  const guests = [`${booking.adults} adult${booking.adults === 1 ? "" : "s"}`, booking.children ? `${booking.children} child${booking.children === 1 ? "" : "ren"}` : "", booking.infants ? `${booking.infants} infant${booking.infants === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+  const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise);
+  const amenityCount = booking.amenitySnapshot ? booking.amenitySnapshot.roomAmenities.length + booking.amenitySnapshot.propertyAmenities.length + booking.amenitySnapshot.rateInclusions.length : 0;
+  return <div className="booking-receipt-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Booking payment receipt">
+    <div className="booking-receipt-print max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div className="booking-receipt-controls flex items-center justify-between border-b border-slate-200 px-5 py-3"><span className="flex items-center gap-2 font-bold text-slate-800"><FileText className="h-5 w-5" />Receipt</span><span className="flex gap-2"><button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0b1f3a] px-3 py-2 text-sm font-semibold text-white"><Printer className="h-4 w-4" />Print / Save PDF</button><button type="button" onClick={onClose} aria-label="Close receipt" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></span></div>
+      <article className="p-5 text-sm text-slate-700 sm:p-8">
+        <header className="flex items-start justify-between gap-4 border-b-2 border-[#0b1f3a] pb-4"><div><div className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-[#0b1f3a]"><span className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b1f3a] text-white"><Hotel className="h-4 w-4" /></span>Helpkey</div><p className="mt-1 text-xs text-slate-500">Booking payment receipt</p></div><div className="max-w-[250px] text-right text-[11px] leading-relaxed"><p className="font-semibold text-slate-500">Confirmation reference</p><p className="break-all font-mono font-bold text-slate-900">{booking.confirmationCode}</p><p className="mt-1 text-slate-500">Generated {new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date())}</p><p className="mt-1 inline-flex items-center font-bold text-emerald-700"><CheckCircle2 className="mr-1 h-3.5 w-3.5" />{human(booking.paymentStatus)} · {human(booking.bookingStatus)}</p></div></header>
+        <section className="mt-4 grid items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-[1fr_auto]"><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Your stay</p><h2 className="mt-0.5 text-base font-extrabold text-slate-900">{booking.propertyName}</h2>{address && <p className="mt-1 flex gap-1 text-xs leading-relaxed text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#0b1f3a]" />{address}</p>}{(booking.propertyPublicPhone || booking.propertyPublicEmail) && <p className="mt-1.5 text-xs text-slate-500">{[booking.propertyPublicPhone, booking.propertyPublicEmail].filter(Boolean).join(" · ")}</p>}</div><div className="flex items-center gap-3 border-t border-slate-200 pt-3 sm:border-t-0 sm:border-l sm:pl-3 sm:pt-0"><QRCodeSVG value={booking.confirmationCode} size={68} level="M" includeMargin /><p className="max-w-[4.5rem] text-[10px] font-bold uppercase leading-snug tracking-wide text-slate-500">Present at check-in</p></div></section>
+        <section className="mt-4 grid gap-x-5 gap-y-4 border-y border-slate-200 py-4 sm:grid-cols-3"><Detail label="Room & rate" value={`${booking.roomName} · ${booking.ratePlanName}`} /><Detail label="Stay" value={`${date(booking.checkIn)} ${time(booking.checkInTime)} — ${date(booking.checkOut)} ${time(booking.checkOutTime)}`} /><Detail label="Booking mode" value={`${human(booking.bookingMode ?? "overnight")} · ${duration}`} /><Detail label="Guests" value={guests} /><Detail label="Staying guest" value={booking.leadGuest ? `${booking.leadGuest.name}${booking.leadGuest.email ? ` · ${booking.leadGuest.email}` : ""}` : "—"} /><Detail label="Booking contact" value={booking.bookingContact ? `${booking.bookingContact.name}${booking.bookingContact.email ? ` · ${booking.bookingContact.email}` : ""}` : "Same as staying guest"} /></section>
+        {booking.amenitySnapshot && amenityCount > 0 && <section className="mt-5"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Booked amenities & inclusions</h3><div className="mt-2 grid gap-2 sm:grid-cols-3"><AmenityGroup title="In your room" values={booking.amenitySnapshot.roomAmenities} /><AmenityGroup title="Hotel facilities" values={booking.amenitySnapshot.propertyAmenities} /><AmenityGroup title="Rate inclusions" values={booking.amenitySnapshot.rateInclusions} /></div></section>}
+        <section className="mt-6"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Payment details</h3><div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 px-4"><Row label={`Room charge (${duration})`} value={money(booking.subtotalPaise, booking.currency)} />{booking.taxPaise !== undefined && <Row label="Taxes" value={money(booking.taxPaise, booking.currency)} />}{booking.customerFeePaise !== undefined && <Row label="Platform fee" value={money(booking.customerFeePaise, booking.currency)} />}<Row label="Total" value={money(booking.totalPaise, booking.currency)} strong /><Row label="Paid" value={money(booking.paidPaise, booking.currency)} /><Row label="Balance due" value={money(balance, booking.currency)} />{Boolean(booking.refundDuePaise) && <Row label={`Refund pending (${human(booking.paymentStatus)})`} value={money(booking.refundDuePaise, booking.currency)} />}{Boolean(booking.refundedPaise) && <Row label="Refunded" value={money(booking.refundedPaise, booking.currency)} />}<Row label="Payment method" value={booking.paymentMethod === "pay_at_property" ? "Pay at property" : booking.paymentMethod === "online" ? "Online payment" : "—"} /></div></section>
+        {booking.billing && <section className="mt-6 rounded-lg bg-slate-50 p-4"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Corporate billing details</h3><p className="mt-1 font-semibold text-slate-900">{booking.billing.legalName}</p><p className="text-xs">GSTIN: {booking.billing.gstin}</p><p className="text-xs">{[booking.billing.address.line1, booking.billing.address.city, booking.billing.address.state, booking.billing.address.postalCode].filter(Boolean).join(", ")}</p></section>}
+        {booking.cancellationPolicy && <section className="mt-6 text-xs"><h3 className="font-bold text-slate-700">Cancellation policy: {booking.cancellationPolicy.name}</h3><p className="mt-1">{booking.cancellationPolicy.description || `Cancellation fee: ${booking.cancellationPolicy.cancellationFeePercent}%.`}</p></section>}
+        <footer className="mt-6 border-t border-slate-200 pt-4 text-xs text-slate-500">This is a booking payment receipt, not a GST tax invoice. Need help? <Link href="/help" className="font-semibold text-[#0b1f3a] underline">Contact Helpkey support</Link>.</footer>
+      </article>
     </div>
-  );
+  </div>;
 }
+function Detail({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-0.5 break-words text-xs font-medium leading-relaxed text-slate-800">{value}</p></div>; }
+function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <div className={`flex justify-between gap-4 py-2 text-xs ${strong ? "font-bold text-slate-900" : ""}`}><span>{label}</span><span className="text-right">{value}</span></div>; }
+function AmenityGroup({ title, values }: { title: string; values: Amenity[] }) { return values.length ? <div className="rounded-lg bg-slate-50 p-3 text-xs"><p className="font-semibold text-slate-700">{title}</p><p className="mt-1">{values.map(value => value.label).join(" · ")}</p></div> : null; }

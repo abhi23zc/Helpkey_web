@@ -3,6 +3,7 @@ import { Suspense } from "react";
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -268,7 +269,18 @@ const CELL_VALUE =
   "truncate text-[15px] font-semibold leading-tight text-[var(--hk-ink)]";
 
 export function TravelSearch(props: Props) {
-  return <Suspense fallback={<div aria-label="Loading stay search" className="h-24 animate-pulse rounded-2xl bg-slate-100" />}><TravelSearchContent {...props} /></Suspense>;
+  return (
+    <Suspense
+      fallback={
+        <div
+          aria-label="Loading stay search"
+          className="h-24 animate-pulse rounded-2xl bg-slate-100"
+        />
+      }
+    >
+      <TravelSearchContent {...props} />
+    </Suspense>
+  );
 }
 
 function TravelSearchContent({
@@ -344,6 +356,30 @@ function TravelSearchContent({
   const [term, setTerm] = useState("");
 
   const token = useRef<any>(null);
+
+  const scrollToConsole = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      if (!root.current) return;
+      const headerHeight = 76;
+      const padding = 16;
+      const rect = root.current.getBoundingClientRect();
+      const targetY = window.scrollY + rect.top - headerHeight - padding;
+
+      if (Math.abs(rect.top - (headerHeight + padding)) > 15) {
+        window.scrollTo({
+          top: Math.max(0, targetY),
+          behavior: "smooth",
+        });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      scrollToConsole();
+    }
+  }, [open, scrollToConsole]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -628,6 +664,7 @@ function TravelSearchContent({
         onClick={() => {
           setOpen("destination");
           inputRef.current?.focus();
+          scrollToConsole();
         }}
         className={`${CELL} cursor-text md:rounded-l-[20px] ${open === "destination" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
       >
@@ -644,7 +681,10 @@ function TravelSearchContent({
             id="destination-input"
             type="text"
             value={destination}
-            onFocus={() => setOpen("destination")}
+            onFocus={() => {
+              setOpen("destination");
+              scrollToConsole();
+            }}
             onChange={(e) => {
               setPlace(null);
               setDestination(e.target.value);
@@ -699,7 +739,11 @@ function TravelSearchContent({
       <button
         type="button"
         aria-expanded={open === "guests"}
-        onClick={() => setOpen(open === "guests" ? null : "guests")}
+        onClick={() => {
+          const next = open === "guests" ? null : "guests";
+          setOpen(next);
+          if (next) scrollToConsole();
+        }}
         className={`${CELL} ${open === "guests" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
       >
         <Users className={CELL_ICON} />
@@ -767,7 +811,7 @@ function TravelSearchContent({
         className={
           compact
             ? `relative ${open ? "z-[70]" : ""}`
-            : `relative transition-all duration-300 rounded-[24px] bg-white p-4 sm:p-6 ${
+            : `relative transition-all duration-300 rounded-[24px] bg-white p-4 sm:p-6 mt-10 ${
                 open
                   ? "z-[70] shadow-[0_30px_90px_rgba(15,23,42,0.32)] ring-2 ring-[var(--hk-navy-strong)]/20 scale-[1.015] -translate-y-2"
                   : "z-20 border border-white/80 shadow-[0_12px_40px_rgba(11,31,58,0.14)]"
@@ -783,7 +827,11 @@ function TravelSearchContent({
                 <button
                   type="button"
                   aria-expanded={open === "dayDate"}
-                  onClick={() => setOpen(open === "dayDate" ? null : "dayDate")}
+                  onClick={() => {
+                    const next = open === "dayDate" ? null : "dayDate";
+                    setOpen(next);
+                    if (next) scrollToConsole();
+                  }}
                   className={`${CELL} ${open === "dayDate" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
                 >
                   <Calendar className={CELL_ICON} />
@@ -810,7 +858,11 @@ function TravelSearchContent({
                 <button
                   type="button"
                   aria-expanded={open === "dayTime"}
-                  onClick={() => setOpen(open === "dayTime" ? null : "dayTime")}
+                  onClick={() => {
+                    const next = open === "dayTime" ? null : "dayTime";
+                    setOpen(next);
+                    if (next) scrollToConsole();
+                  }}
                   className={`${CELL} ${open === "dayTime" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
                 >
                   <Clock className={CELL_ICON} />
@@ -841,7 +893,11 @@ function TravelSearchContent({
                 <button
                   type="button"
                   aria-expanded={open === "dates"}
-                  onClick={() => setOpen(open === "dates" ? null : "dates")}
+                  onClick={() => {
+                    const next = open === "dates" ? null : "dates";
+                    setOpen(next);
+                    if (next) scrollToConsole();
+                  }}
                   className={`${CELL} ${open === "dates" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
                 >
                   <Calendar className={CELL_ICON} />
@@ -870,7 +926,11 @@ function TravelSearchContent({
                 <button
                   type="button"
                   aria-expanded={open === "dates"}
-                  onClick={() => setOpen(open === "dates" ? null : "dates")}
+                  onClick={() => {
+                    const next = open === "dates" ? null : "dates";
+                    setOpen(next);
+                    if (next) scrollToConsole();
+                  }}
                   className={`${CELL} ${open === "dates" ? "bg-slate-50" : "hover:bg-slate-50/70"}`}
                 >
                   <Calendar className={CELL_ICON} />

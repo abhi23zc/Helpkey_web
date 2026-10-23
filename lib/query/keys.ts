@@ -14,4 +14,5 @@ export const queryKeys = {
   partnerListing: (propertyId: string, section?: string) => ["partner", propertyId, "listing", section ?? "all"] as const,
   partnerReviews: (propertyId: string) => ["partner", propertyId, "reviews"] as const,
   bookings: ["customer", "bookings"] as const,
+  booking: (bookingId: string) => ["customer", "booking", bookingId] as const,
 } as const;
