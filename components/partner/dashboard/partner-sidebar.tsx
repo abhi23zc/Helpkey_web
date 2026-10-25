@@ -25,6 +25,7 @@ const navItems = [
   { label: "Overview", href: "/partner/dashboard", icon: Grid2X2 },
   { label: "Reservations", href: "/partner/reservations", icon: CalendarDays },
   { label: "Calendar", href: "", icon: CalendarDays },
+  { label: "Stay Customizations", href: "/partner/stay-customizations", icon: Star },
   { label: "Rooms", href: "/partner/rooms", icon: BedDouble },
   { label: "Property Listing", href: "/partner/listing", icon: Building2 },
   { label: "Reviews", href: "/partner/reviews", icon: Star },

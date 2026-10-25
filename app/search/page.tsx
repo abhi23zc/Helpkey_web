@@ -14,7 +14,7 @@ export default async function Page({ searchParams }: PageProps<"/search">) {
   if (input) {
     await client.prefetchInfiniteQuery({
       queryKey: queryKeys.search({ query: params.toString() }),
-      queryFn: ({ pageParam }) => searchCatalogPage({ ...input!, cursor: pageParam || undefined }),
+      queryFn: ({ pageParam }) => searchCatalogPage({ ...input!, cursor: pageParam || undefined }, { includeClientSnapshot: true }),
       initialPageParam: "" as string,
       staleTime: 60_000,
     });

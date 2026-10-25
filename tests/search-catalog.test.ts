@@ -18,6 +18,8 @@ vi.mock("@/lib/firebase/admin", () => ({ adminDb: { collection: (name: string) =
 vi.mock("@/lib/media-resolver", () => ({ resolvePublicImage: vi.fn() }));
 vi.mock("@/lib/redis", () => ({ cacheKey: (...parts: unknown[]) => parts.join(":"), withRedis: async () => null }));
 import { catalogPropertyBySlug, catalogSearchFromParams, searchCatalogPage } from "@/lib/customer/catalog";
+import { browserSearchPage, rememberSearchSnapshot } from "@/lib/customer/browser-search";
+import { catalogSorts } from "@/lib/customer/catalog-search-input";
 
 const hotel = (id: string, price: number, rating: number, type = "hotel", amenities = ["wifi"]) => ({ id, slug: id, name: id, status: "active", approvalStatus: "approved", isBookable: true, normalizedName: id, normalizedCity: "test city", address: { city: "Test City" }, propertyType: type, ratingAverage: rating, ratingCount: 2, minimumPricePaise: price, amenityCodes: amenities, propertyAmenityCodes: amenities });
 const input = (query = "") => catalogSearchFromParams(new URLSearchParams(`destination=test+city&${query}`));
@@ -68,5 +70,32 @@ describe("search selection before pagination", () => {
   it("asks customers to narrow broad searches instead of truncating them", async () => {
     state.properties = Array.from({ length: 1001 }, (_, i) => hotel(String(i), 100, 4));
     await expect(searchCatalogPage(input())).rejects.toMatchObject({ code: "NARROW_SEARCH_FILTERS", status: 422 });
+  });
+  it("opts into a complete public snapshot even on a filtered and paginated direct search", async () => {
+    state.properties[0].ownerId = "secret-owner";
+    const page = await searchCatalogPage(input("amenity=wifi&minRating=4&limit=1"), { includeClientSnapshot: true });
+    expect(page.total).toBe(1);
+    expect(page.clientSnapshot?.candidates).toHaveLength(3);
+    expect(JSON.stringify(page.clientSnapshot)).not.toContain("secret-owner");
+    expect((await searchCatalogPage(input())).clientSnapshot).toBeUndefined();
+    const snapshot = page.clientSnapshot!;
+    rememberSearchSnapshot(snapshot, 0);
+    for (const sort of catalogSorts) {
+      for (const filters of ["", "&amenity=wifi", "&minRating=4&maxPricePaise=50000", "&propertyType=resort", "&freeCancellation=true"]) {
+        const query = `destination=test+city&sort=${sort}&placeLat=26&placeLng=80${filters}`;
+        const server = await searchCatalogPage(catalogSearchFromParams(new URLSearchParams(query)));
+        const browser = browserSearchPage(snapshot, query);
+        expect(browser.properties).toEqual(server.properties);
+        expect(browser.total).toBe(server.total);
+        expect(browser.availableAmenities).toEqual(server.availableAmenities);
+      }
+    }
+  });
+  it("omits complete snapshots above the hotel or byte limits", async () => {
+    state.properties = Array.from({ length: 101 }, (_, i) => hotel(String(i), 100, 4));
+    expect((await searchCatalogPage(input(), { includeClientSnapshot: true })).clientSnapshot).toBeUndefined();
+    state.properties = [hotel("large", 100, 4)];
+    state.properties[0].publicCover = { imageUrl: "x".repeat(256 * 1024) };
+    expect((await searchCatalogPage(input(), { includeClientSnapshot: true })).clientSnapshot).toBeUndefined();
   });
 });

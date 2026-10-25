@@ -1,15 +1,15 @@
+import { memo } from "react";
 import type { GuestPolicies } from "@/lib/partner/guest-policies";
 import {
   Check,
   ShieldCheck,
   Users,
   Ban,
-  Sparkles,
   UserCheck,
   Dog,
 } from "lucide-react";
 
-export function GuestRules({ property }: { property: GuestPolicies }) {
+export const GuestRules = memo(function GuestRules({ property }: { property: GuestPolicies }) {
   const getRuleIcon = (rule: string) => {
     if (rule.includes("Children")) return Users;
     if (rule.includes("Pets")) return Dog;
@@ -88,4 +88,4 @@ export function GuestRules({ property }: { property: GuestPolicies }) {
       )}
     </div>
   );
-}
+});

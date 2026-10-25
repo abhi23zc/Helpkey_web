@@ -16,7 +16,7 @@ vi.mock("@/lib/firebase/admin", () => {
   });
   return { adminDb: {
     collection: (name: string) => ({
-      doc: (id: string) => ({ path: `${name}/${id}`, get: async () => snapshot(`${name}/${id}`) }),
+      doc: (id: string) => ({ path: `${name}/${id}`, get: async () => snapshot(`${name}/${id}`), collection: (child: string) => ({ get: async () => ({ docs: [...fixture.records.keys()].filter(path => path.startsWith(`${name}/${id}/${child}/`)).map(snapshot) }) }) }),
       where: (field: string, _operator: string, value: unknown) => ({ limit: () => ({
         get: async () => ({ docs: [...fixture.records.keys()]
           .filter(path => path.startsWith(`${name}/`) && fixture.records.get(path)?.[field] === value)
@@ -118,6 +118,33 @@ describe("checkout quote and booking comparison", () => {
     await expect(createBooking("guest", submission)).rejects.toThrow("QUOTE_CHANGED");
     expect(fixture.transaction).not.toHaveBeenCalled();
     expect(fixture.provider).not.toHaveBeenCalled();
+  });
+
+  it("prices selected extras, preserves the room deposit and ignores traveler suggestions in pricing", async () => {
+    fixture.records.get("ratePlans/rate")!.paymentMode = "deposit";
+    fixture.records.set("properties/hotel/stayCustomizations/decoration", { propertyId: "hotel", version: 1, name: "Decoration", description: "A prepared celebration", kind: "service", travelerCategories: ["Couple"], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 2, advanceNoticeMinutes: 60, confirmation: "approval", variants: [], status: "active" });
+    const input = { ...stay, customizationSelections: [{ offeringId: "decoration", variantId: null, quantity: 1 }] };
+    const initial = await quote(input);
+    expect(initial).toMatchObject({ roomTotalPaise: 140000, extrasTotalPaise: 20000, totalPaise: 160000, payableNowPaise: 55000, balanceDuePaise: 105000 });
+    vi.setSystemTime(Date.now() + 60000);
+    expect((await quote({ ...input, travelerPreferences: ["Couple", "Business"] })).fingerprint).toBe(initial.fingerprint);
+    fixture.records.get("properties/hotel/stayCustomizations/decoration")!.unitPricePaise = 25000;
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
+    fixture.records.get("properties/hotel/stayCustomizations/decoration")!.status = "paused";
+    await expect(quote(input)).rejects.toThrow("no longer available");
+  });
+
+  it("rejects changes to selected variant prices or offering versions", async () => {
+    const offering = { propertyId: "hotel", version: 1, name: "Aroma", description: "Choose your aroma", kind: "service", travelerCategories: [], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 3, advanceNoticeMinutes: 0, confirmation: "approval", variants: [{ id: "rose", name: "Rose", unitPricePaise: 0 }, { id: "lavender", name: "Lavender", unitPricePaise: 15000 }], status: "active" };
+    fixture.records.set("properties/hotel/stayCustomizations/aroma", offering);
+    const input = { ...stay, customizationSelections: [{ offeringId: "aroma", variantId: "rose", quantity: 1 }, { offeringId: "aroma", variantId: "lavender", quantity: 2 }] };
+    const initial = await quote(input);
+    expect(initial.extrasTotalPaise).toBe(30000);
+    offering.version++;
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
+    offering.version--;
+    offering.variants[1].unitPricePaise = 16000;
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
   });
 
   it("rejects sold-out inventory even with the original valid fingerprint", async () => {

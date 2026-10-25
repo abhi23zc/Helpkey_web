@@ -21,11 +21,20 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { StayRequestList } from "@/components/stay/stay-request-list";
+import type { StayBookingData } from "@/lib/stay/contracts";
 import { PartnerShell } from "./partner-shell";
 import { Drawer } from "./drawer";
 import { ManualBookingDialog } from "./manual-booking-dialog";
 
-type Booking = {
+type Booking = Partial<StayBookingData> & {
+  timezone?: string;
+  balanceDuePaise?: number;
+  effectiveTotalPaise?: number;
+  customizationCreditPaise?: number;
+  extrasTotalPaise?: number;
+  refundDuePaise?: number;
+  refundedPaise?: number;
   id: string;
   confirmationCode: string;
   propertyName: string;
@@ -68,7 +77,7 @@ const money = (value: number, currency = "INR") =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value / 100);
 
 const sentenceLabel = (value: string) =>
@@ -142,6 +151,7 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
   const [assignedRooms, setAssignedRooms] = useState<Record<string, string>>({});
   const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const loadController = useRef<AbortController | null>(null);
   const PAGE_SIZE = 15;
   const cursors = useRef<Record<number, string>>({});
   const [totalCount, setTotalCount] = useState(0);
@@ -151,18 +161,23 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
 
   const today = useMemo(() => getTodayKey(), []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
+    if (background && loadController.current) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     if (!propertyId) {
+      loadController.current = null;
       setBookings([]);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!background) setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams({ propertyId, status, q: query, limit: String(PAGE_SIZE), ...(page > 1 && cursors.current[page] ? { cursor: cursors.current[page] } : {}), ...(roomFilter !== "all" ? { roomName: roomFilter } : {}), ...(paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}) });
-      const response = await fetch(`/api/partner/bookings?${params}`, { cache: "no-store" });
+      const response = await fetch(`/api/partner/bookings?${params}`, { cache: "no-store", signal: controller.signal });
       const body = (await response.json()) as { bookings?: Booking[]; error?: string; totalCount: number; metrics: typeof serverMetrics; tabCounts: Record<StatusId, number>; roomNames: string[]; nextCursor?: string };
       if (!response.ok) throw new Error(body.error ?? "Unable to load reservations.");
       setBookings(body.bookings ?? []);
@@ -172,14 +187,15 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
       setRoomNames(body.roomNames);
       if (body.nextCursor) cursors.current[page + 1] = body.nextCursor;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load reservations.");
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Unable to load reservations.");
     } finally {
-      setLoading(false);
+      if (loadController.current === controller) { loadController.current = null; setLoading(false); }
     }
   }, [propertyId, query, status, roomFilter, paymentFilter, page]);
 
   useEffect(() => {
     void Promise.resolve().then(() => load());
+    return () => { loadController.current?.abort(); loadController.current = null; };
   }, [load]);
 
   useEffect(() => {
@@ -204,6 +220,13 @@ function PartnerReservations({ propertyId, propertyName }: { propertyId?: string
     setPage(1);
   }, [status, roomFilter, paymentFilter, query]);
 
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") void load(true); };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("stay-request-updated", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("stay-request-updated", refresh); };
+  }, [load]);
   const rooms = roomNames;
   const metrics = serverMetrics;
   const tabCounts = serverTabCounts;
@@ -804,7 +827,7 @@ function BookingInspector({
 
   const guestName = booking.leadGuest?.name ?? "Guest";
   const guests = booking.adults + booking.children;
-  const due = Math.max(0, booking.payableNowPaise - booking.paidPaise);
+  const due = booking.balanceDuePaise ?? Math.max(0, (booking.effectiveTotalPaise ?? booking.totalPaise) - booking.paidPaise);
   const readiness =
     booking.bookingStatus === "checked_in"
       ? 100
@@ -867,6 +890,14 @@ function BookingInspector({
       headerExtra={<PaymentBadge value={booking.paymentStatus} />}
       footer={footerAction}
     >
+      <section className="mb-5 space-y-3 rounded-xl bg-slate-50 p-4">
+        <h3 className="text-sm font-bold">Arrival preparation</h3>
+        <p className="text-xs">Travel preferences: {booking.travelerPreferences?.join(", ") || "Not specified"} · Pre check-in: {booking.preCheckin?.status === "submitted" ? "Submitted" : "Incomplete"}</p>
+        {booking.preCheckin?.expectedArrivalAt && <p className="text-xs">Expected arrival: {new Date(booking.preCheckin.expectedArrivalAt).toLocaleString("en-IN", { timeZone: booking.timezone ?? "Asia/Kolkata" })}</p>}
+        {booking.preCheckin?.notes && <p className="text-sm">Arrival notes: {booking.preCheckin.notes}</p>}
+        {booking.specialRequest && <p className="text-sm">Additional requests: {booking.specialRequest}</p>}
+        <StayRequestList requests={booking.customizations ?? []} timezone={booking.timezone ?? "Asia/Kolkata"} currency={booking.currency} staff={{ bookingId: booking.id, revision: booking.stayRevision ?? 0, enabled: ["confirmed", "checked_in"].includes(booking.bookingStatus), refresh: () => window.dispatchEvent(new Event("stay-request-updated")) }} />
+      </section>
       {/* Top Tab Bar (Matching Image 2 Room Editor tabs) */}
       <div className="flex gap-1 overflow-x-auto border-b border-slate-100 pb-2 mb-4">
         {[
@@ -1149,9 +1180,14 @@ function BookingInspector({
                 <PaymentBadge value={booking.paymentStatus} />
               </div>
               <div className="space-y-2 pt-1 border-t border-slate-100">
-                <DetailRow label="Total Stay Tariff" value={money(booking.totalPaise, booking.currency)} strong />
-                <DetailRow label="Payable at Property / Now" value={money(booking.payableNowPaise, booking.currency)} />
+                <DetailRow label="Original booking total" value={money(booking.totalPaise, booking.currency)} />
+                {!!booking.extrasTotalPaise && <DetailRow label="Extras included in total" value={money(booking.extrasTotalPaise, booking.currency)} />}
+                {!!booking.customizationCreditPaise && <DetailRow label="Declined extras credit" value={money(booking.customizationCreditPaise, booking.currency)} />}
+                <DetailRow label="Current total" value={money(booking.effectiveTotalPaise ?? booking.totalPaise, booking.currency)} strong />
+                <DetailRow label="Originally due at booking" value={money(booking.payableNowPaise, booking.currency)} />
                 <DetailRow label="Amount Paid" value={money(booking.paidPaise, booking.currency)} success />
+                {!!booking.refundDuePaise && <DetailRow label="Refund pending" value={money(booking.refundDuePaise, booking.currency)} />}
+                {!!booking.refundedPaise && <DetailRow label="Refunded" value={money(booking.refundedPaise, booking.currency)} />}
                 <div className="flex items-center justify-between border-t border-slate-100 pt-2 font-bold text-sm">
                   <span className="text-[#061224]">Outstanding Balance</span>
                   <span className={due > 0 ? "text-amber-700" : "text-emerald-700"}>

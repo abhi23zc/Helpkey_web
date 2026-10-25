@@ -1,5 +1,6 @@
 import { eligiblePricing, startingPrice, validDurationPrices } from "@/lib/booking/duration-pricing";
 import "server-only";
+import type { Availability } from "@/lib/customer/hotel-availability";
 
 import { cancellationTerms } from "@/lib/customer/offer";
 import { availableOffers } from "@/lib/booking/search-availability";
@@ -41,15 +42,15 @@ async function evaluateBookableProperty(slug: string, stay: Stay) {
       && stay.adults + stay.children <= Number(data.maxOccupancy ?? Number(data.maxAdults ?? 1) + Number(data.maxChildren ?? 0));
   });
   const coverIds = [...new Set(rooms.map((room) => room.data().coverMediaId).filter((id): id is string => typeof id === "string" && Boolean(id)))];
-  const coverDocuments = await getAllBounded(coverIds.map((id) => adminDb.collection("mediaAssets").doc(id)));
-  const coverById = new Map(coverDocuments.filter((doc) => doc.exists).map((doc) => [doc.id, doc]));
+  const coversPromise = getAllBounded(coverIds.map((id) => adminDb.collection("mediaAssets").doc(id)));
   const policies = new Map(policiesSnapshot.docs.map((doc) => [doc.id, doc.data()]));
   let inventoryDocumentsRead = 0;
-  const offers = stay.checkIn ? await availableOffers(adminDb, property, { ...stay, checkIn: stay.checkIn }, {
+  const [coverDocuments, offers] = await Promise.all([coversPromise, stay.checkIn ? availableOffers(adminDb, property, { ...stay, checkIn: stay.checkIn }, {
     codesById: amenityCodesById,
     onInventoryRead: count => { inventoryDocumentsRead = count; },
     preloaded: { rates: ratesSnapshot.docs, rooms: new Map(roomsSnapshot.docs.map(doc => [doc.ref.path, doc])), policies: new Map(policiesSnapshot.docs.map(doc => [doc.ref.path, doc])) },
-  }) : [];
+  }) : Promise.resolve([])]);
+  const coverById = new Map(coverDocuments.filter((doc) => doc.exists).map((doc) => [doc.id, doc]));
   const byRate = new Map(offers.map(offer => [offer.ratePlanId, offer]));
   const expiresAt = Math.min(evaluatedAt + 30_000, ...offers.map(offer => offer.validUntil));
 
@@ -82,7 +83,7 @@ async function evaluateBookableProperty(slug: string, stay: Stay) {
   // Public rate identity only: lets old links distinguish a different stay
   // type from an offer that genuinely disappeared within the current type.
   const ratePlanModes = Object.fromEntries(ratesSnapshot.docs.filter(rate => eligiblePricing(rate.data())).map(rate => [rate.id, rate.get("bookingMode") ?? "overnight"]));
-  return { evaluatedAt, expiresAt, ratePlanModes, hourlyDurations, rooms: output.filter((room): room is NonNullable<typeof room> => Boolean(room)) };
+  return { evaluatedAt, expiresAt, ratePlanModes, hourlyDurations, rooms: output.filter((room): room is NonNullable<typeof room> => Boolean(room)) } satisfies Availability & { evaluatedAt: number };
 }
 
 /** Shares search generation invalidation, single-flight and hard snapshot expiry. */

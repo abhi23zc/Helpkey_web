@@ -49,6 +49,26 @@ this code change.
 
 ## Interfaces
 
+The web search opts into `includeClientSnapshot=true`. For complete searches of
+at most 100 eligible hotels and 256 KiB of serialized snapshot data, the response
+also contains a versioned `clientSnapshot` with public hotel fields and every
+eligible room/rate offer. SSR requests the same snapshot. This is the complete
+candidate set before rating, amenity, cancellation, price and sort filters, even
+when the landing URL is filtered or the displayed page is small.
+
+The browser and server share the same result-selection and sorting functions.
+Fresh complete snapshots support local filtering, clearing, sorting, exact
+counts, facets and pagination without another search request. The price slider
+also updates locally; server searches retain a debounce. Incomplete, oversized,
+expired or mismatched snapshots use the normal server search. Snapshots remain
+in memory and never extend the server's 30-second or earlier offer deadline.
+Booking still performs authoritative server validation.
+
+Requests that take more than 120 ms show full hotel-card skeletons over the
+reserved result area, with stale cards hidden and inert until completion.
+Fast local changes do not flash loading placeholders. The previous small
+loading strip is removed; reduced-motion preferences are respected.
+
 `GET /api/search/properties` accepts repeated `propertyType` and `amenity`
 parameters plus `minRating`, price bounds, and `freeCancellation=true`. It returns
 exact `total`, `evaluatedAt`, `expiresAt`, amenity facets and a selected public

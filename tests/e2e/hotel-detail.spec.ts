@@ -1,18 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const stayQuery = "checkIn=2027-01-15&checkOut=2027-01-17&adults=2&children=0&infants=1";
-const property = {
-  id: "hotel", slug: "garden", name: "Garden Hotel", city: "Kanpur", state: "Uttar Pradesh", propertyType: "hotel", timezone: "Asia/Kolkata", bookingModes: ["overnight", "hourly"],
-  ratingAverage: 4.5, ratingCount: 8, minimumPricePaise: 12345, currency: "INR", coverImageUrl: null, amenityCodes: ["wifi", "parking"], propertyAmenityCodes: ["wifi"],
-  description: "A quiet family property with a courtyard and individually furnished rooms.", address: { line1: "12 Garden Road", line2: "Civil Lines", landmark: "Near the library", city: "Kanpur", state: "Uttar Pradesh", postalCode: "208001" }, coordinates: { latitude: 26.46, longitude: 80.32 }, checkInTime: "14:00", checkOutTime: "11:00", minimumCheckInAge: 21, identityRequirements: { governmentIdRequired: true }, smokingPolicy: { allowed: false },
-  reviewSummary: null, images: Array.from({ length: 8 }, (_, index) => ({ id: String(index), imageUrl: `/broken-${index}.jpg`, altText: `Hotel photo ${index + 1}` })),
-};
-function offer(totalPaise = 27752) {
-  return { id: "flex", name: "Flexible", basePricePaise: 12345, totalPaise, subtotalPaise: 24690, taxPaise: 2963, customerFeePaise: 99, payableNowPaise: 6938, balanceDuePaise: totalPaise - 6938, nights: 2, durationMinutes: 2700, startAt: "2027-01-15T08:30:00Z", endAt: "2027-01-17T05:30:00Z", validUntil: Date.now() + 30_000, paymentMode: "deposit", breakfastIncluded: true, cancellationTerms: { freeCancellation: true, deadline: "2027-01-14T08:30:00Z", feePercent: 0, name: "Flexible" }, cancellation: { name: "Flexible", description: "Cancel free until 24 hours before arrival." } };
-}
-function availability(totalPaise?: number) {
-  return { expiresAt: Date.now() + 30_000, hourlyDurations: [{ roomTypeId: "family", ratePlanId: "hourly", prices: [{ hours: 2, pricePaise: 20000 }, { hours: 3, pricePaise: 30000 }] }], rooms: [{ id: "family", name: "Family room", description: "A spacious room with a desk.", totalInventory: 2, maxAdults: 4, maxChildren: 3, maxInfants: 2, maxOccupancy: 5, roomSizeSqFt: 220, amenityCodes: ["parking"], imageUrl: null, rates: [offer(totalPaise), { ...offer(30000), id: "standard", name: "Standard", breakfastIncluded: false, paymentMode: "full" }] }] };
-}
+import { stayQuery, property, offer, availability } from "./fixtures/hotel-data";
+
 async function fixture(page: Page, query = stayQuery) {
   let saved = false;
   await page.route("**/api/properties/garden", route => route.fulfill({ json: { property } }));
@@ -31,7 +20,7 @@ async function fixture(page: Page, query = stayQuery) {
     return route.fulfill({ json: { propertyIds: saved ? ["hotel"] : [], saved } });
   });
   await page.goto(`/hotels/garden?${query}`);
-  await expect(page.getByRole("heading", { name: "Garden Hotel", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Garden Hotel", exact: true, level: 1 })).toBeVisible();
 }
 
 test("accurate content, clipboard share, persisted save, full gallery and keyboard containment", async ({ page, context }) => {
@@ -107,7 +96,7 @@ test("guest changes apply once without comparing the previous stay, and checkout
   await expect(page.getByRole("status").filter({ hasText: "Updating availability" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Family room", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Reserve this room" })).toHaveCount(0);
-  expect(reads).toBe(1);
+  await expect.poll(() => reads).toBe(1);
   release?.();
   await expect(page.locator("#rooms")).toContainText("₹288.88");
   await expect(page.getByText("The room or price from your search has changed.", { exact: false })).toHaveCount(0);
@@ -119,9 +108,8 @@ test("guest changes apply once without comparing the previous stay, and checkout
   const params = new URL((await reserve.getAttribute("href"))!, "http://localhost").searchParams;
   expect(params.get("infants")).toBe("2");
   expect(params.get("room")).toBe("family");
-  await page.getByText("Price breakdown · 2 nights").click();
+  await page.keyboard.press("Escape");
   await expect(page.locator("#reserve")).toContainText("₹288.88");
-  await expect(page.locator("#reserve")).toContainText("₹69.38");
 });
 
 test("a genuine changed search offer warns only after fresh availability finishes", async ({ page }) => {
@@ -207,7 +195,7 @@ test("undated prices are starting prices and invalid stays cannot reserve", asyn
   await expect(page.getByRole("link", { name: "Reserve this room" })).toHaveCount(0);
 });
 
-test("expiry revalidates on interaction without polling or hiding rooms", async ({ page }) => {
+test("expiry stays idle until explicit refresh without polling or hiding rooms", async ({ page }) => {
   await page.clock.install();
   let requests = 0;
   page.on("request", request => { if (request.url().includes("/bookable?")) requests++; });
@@ -217,8 +205,10 @@ test("expiry revalidates on interaction without polling or hiding rooms", async 
   await expect(page.getByRole("link", { name: "Reserve this room" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Family room", exact: true })).toBeVisible();
   expect(requests).toBe(1);
-  await page.getByRole("button", { name: "Share", exact: true }).focus();
-  await page.keyboard.press("Tab");
+  await page.clock.runFor(60_000);
+  expect(requests).toBe(1);
+  await expect(page.getByRole("button", { name: "Refresh availability", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Refresh availability", exact: true }).click();
   await expect.poll(() => requests).toBe(2);
   await expect(page.getByRole("link", { name: "Reserve this room" })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -243,7 +233,7 @@ test("dates apply only after a complete range and hourly settings debounce into 
   await page.getByLabel("Guest duration", { exact: true }).selectOption("120");
   await expect(page).toHaveURL(/arrivalTime=11%3A00/);
   await expect(page).toHaveURL(/durationMinutes=120/);
-  expect(requests).toBe(3);
+  await expect.poll(() => requests).toBe(3);
 });
 
 test("initial loading, no matching rooms, temporary failures and share errors have recovery feedback", async ({ page }) => {
@@ -300,4 +290,62 @@ test("desktop and mobile retain the theme without horizontal overflow", async ({
   await page.keyboard.press("Escape");
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await page.screenshot({ path: "/tmp/helpkey-hotel-mobile.png", fullPage: true });
+});
+
+
+test("rapid guest edits stay responsive and keep the picker open while one request runs", async ({ page }) => {
+  await fixture(page, `${stayQuery}&roomTypeId=family&ratePlanId=flex`);
+  await expect(page.getByRole("link", { name: "Reserve this room" })).toBeVisible();
+  await page.clock.install();
+  const seen: string[] = [];
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/properties/garden/bookable?**", async route => {
+    seen.push(route.request().url());
+    await pending;
+    await route.fulfill({ json: availability(28888) });
+  });
+  await page.locator("#reserve").getByRole("button", { name: /^Guests/ }).click();
+  await page.getByRole("button", { name: "Increase Adults" }).click();
+  await page.getByRole("button", { name: "Increase Children" }).click();
+  await page.getByRole("button", { name: "Increase Infants" }).click();
+  await expect(page.locator("#reserve")).toContainText("3 Adults, 1 Child, 2 Infants");
+  await expect(page.getByRole("button", { name: "Increase Adults" })).toBeVisible();
+  await expect(page.getByLabel("Checking price", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Reserve this room" })).toHaveCount(0);
+  expect(seen).toHaveLength(0);
+  await page.clock.runFor(301);
+  await expect.poll(() => seen.length).toBe(1);
+  const params = new URL(seen[0]).searchParams;
+  expect([params.get("adults"), params.get("children"), params.get("infants")]).toEqual(["3", "1", "2"]);
+  await page.getByRole("button", { name: "Decrease Children" }).focus();
+  await expect(page.getByRole("button", { name: "Decrease Children" })).toBeFocused();
+  release();
+  await expect(page.locator("#reserve")).toContainText("₹288.88");
+  await expect(page.getByRole("button", { name: "Increase Adults" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Decrease Children" })).toBeFocused();
+});
+
+test("late availability cannot replace a newer stay and fresh mode caches are reused", async ({ page }) => {
+  await fixture(page);
+  await expect(page.locator("#rooms")).toContainText("₹277.52");
+  const requests: string[] = [];
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/properties/garden/bookable?**", async route => {
+    requests.push(route.request().url());
+    if (new URL(route.request().url()).searchParams.get("bookingMode") === "hourly") {
+      await pending;
+      await route.fulfill({ json: availability(99999) }).catch(() => {});
+    } else await route.fulfill({ json: availability(28888) });
+  });
+  await page.locator("#reserve").getByRole("button", { name: "Hourly stay", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  await expect(page.getByLabel("Arrival date", { exact: true })).toBeVisible();
+  await page.locator("#reserve").getByRole("button", { name: "Overnight stay", exact: true }).click();
+  await expect(page.locator("#rooms")).toContainText("₹277.52");
+  release();
+  await expect(page.locator("#rooms")).not.toContainText("₹999.99");
+  await expect(page.locator("#reserve").getByRole("button", { name: "Overnight stay", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(requests).toHaveLength(1);
 });

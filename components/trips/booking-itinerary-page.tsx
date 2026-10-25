@@ -1,5 +1,7 @@
 "use client";
 
+import { PreCheckinPanel } from "@/components/stay/pre-checkin";
+import type { StayBookingData } from "@/lib/stay/contracts";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +45,7 @@ type CancellationPolicy = {
   cancellationFeePercent: number;
 } | null;
 
-export type CustomerBooking = BookingReceiptData & {
+export type CustomerBooking = BookingReceiptData & Partial<StayBookingData> & {
   propertySlug: string | null;
   propertyAddress: string | null;
   propertyPublicPhone: string | null;
@@ -159,7 +161,7 @@ const statusDetails = (booking: CustomerBooking) => {
       tone: "stone",
     } as const;
   }
-  if (booking.paymentStatus === "refund_pending" || booking.paymentStatus === "refunded") {
+  if (["cancelled", "no_show", "expired"].includes(booking.bookingStatus) && (booking.paymentStatus === "refund_pending" || booking.paymentStatus === "refunded")) {
     return {
       title: "Refund in progress",
       badge: "Refund Processing",
@@ -314,15 +316,15 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
       }),
     initialData: { booking: initialBooking },
     select: (result) => result.booking,
-    refetchInterval: (query) => (query.state.data?.booking.bookingStatus === "pending_payment" ? 4_000 : false),
+    refetchInterval: (query) => (query.state.data?.booking.bookingStatus === "pending_payment" ? 4_000 : ["confirmed", "checked_in"].includes(query.state.data?.booking.bookingStatus ?? "") ? 15_000 : false),
     refetchOnWindowFocus: true,
   });
 
   const booking = bookingQuery.data ?? initialBooking;
   const status = statusDetails(booking);
   const timing = getStayTiming(booking);
-  const balance = Math.max(0, booking.totalPaise - booking.paidPaise);
-  const isPaidInFull = booking.paidPaise >= booking.totalPaise;
+  const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise);
+  const isPaidInFull = (booking.netPaidPaise ?? booking.paidPaise) >= (booking.effectiveTotalPaise ?? booking.totalPaise);
   const bookedAmenities = booking.amenitySnapshot
     ? [
         ...booking.amenitySnapshot.roomAmenities.map((amenity) => ({ ...amenity, group: "In your room" })),
@@ -566,6 +568,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* LEFT / PRIMARY COLUMN */}
           <section className="space-y-6">
+            <PreCheckinPanel booking={booking} />
             {/* DIGITAL HOTEL CHECK-IN PASS (BOARDING CARD) */}
             <article className="overflow-hidden rounded-2xl border border-[#e7e4dc] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               {/* Hotel Featured Cover Image */}
@@ -1064,10 +1067,12 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                   />
                 )}
 
+                {!!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
+                {!!booking.customizationCreditPaise && <AmountRow label="Declined extras credit" value={formatMoney(booking.customizationCreditPaise, booking.currency)} />}
                 <div className="border-t border-stone-100 pt-2.5">
                   <AmountRow
                     label="Grand Total"
-                    value={formatMoney(booking.totalPaise, booking.currency)}
+                    value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise, booking.currency)}
                     isTotal
                   />
                 </div>

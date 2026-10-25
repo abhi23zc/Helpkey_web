@@ -1,7 +1,6 @@
 "use client";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import {
-  MapPin,
   Navigation,
   Copy,
   Check,
@@ -10,7 +9,7 @@ import {
 } from "lucide-react";
 import type { CatalogDetailProperty } from "@/lib/customer/catalog";
 
-export function HotelLocation({
+export const HotelLocation = memo(function HotelLocation({
   property,
 }: {
   property: CatalogDetailProperty;
@@ -72,8 +71,14 @@ export function HotelLocation({
       const pin = document.createElement("div");
       pin.className = "hk-property-map-pin";
       pin.setAttribute("aria-label", `${property.name} location`);
-      pin.innerHTML = '<span class="hk-property-map-pin__dot"></span><span class="hk-property-map-pin__stem"></span>';
-      new AdvancedMarkerElement({ map: instance, position: center, content: pin, title: property.name });
+      pin.innerHTML =
+        '<span class="hk-property-map-pin__dot"></span><span class="hk-property-map-pin__stem"></span>';
+      new AdvancedMarkerElement({
+        map: instance,
+        position: center,
+        content: pin,
+        title: property.name,
+      });
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -93,6 +98,20 @@ export function HotelLocation({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <p>{address || "Address unavailable"}</p>
+        {destination && (
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 font-semibold text-[var(--hk-navy)]"
+          >
+            <Navigation className="h-4 w-4" />
+            Get directions
+          </a>
+        )}
+      </div>
       {/* Map Display & Interactive Trigger */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-[0_12px_28px_rgba(11,31,58,0.10)]">
         {property.coordinates && status !== "ready" && (
@@ -133,15 +152,35 @@ export function HotelLocation({
               <Landmark className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-extrabold text-[var(--hk-navy)]">{property.name}</p>
-              <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-600">{address || "Exact property location"}</p>
+              <p className="truncate text-sm font-extrabold text-[var(--hk-navy)]">
+                {property.name}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-600">
+                {address || "Exact property location"}
+              </p>
             </div>
             <div className="flex shrink-0 gap-2">
-              <button type="button" onClick={() => void copyAddress()} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[var(--hk-navy)] hover:text-[var(--hk-navy)]" aria-label="Copy property address" title="Copy address">
-                {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+              <button
+                type="button"
+                onClick={() => void copyAddress()}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[var(--hk-navy)] hover:text-[var(--hk-navy)]"
+                aria-label="Copy property address"
+                title="Copy address"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
               </button>
-              <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--hk-navy)] px-3 text-xs font-bold text-white hover:bg-[var(--hk-primary-dark)]">
-                <Navigation className="h-3.5 w-3.5" />Directions
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--hk-navy)] px-3 text-xs font-bold text-white hover:bg-[var(--hk-primary-dark)]"
+              >
+                <Navigation className="h-3.5 w-3.5" />
+                Directions
               </a>
             </div>
           </div>
@@ -158,4 +197,4 @@ export function HotelLocation({
       </div>
     </section>
   );
-}
+});

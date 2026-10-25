@@ -1,5 +1,9 @@
 import { publicGuestPolicies } from "@/lib/partner/guest-policies";
 import "server-only";
+import { offeringsFor, readOffering } from "@/lib/stay/catalog";
+import { agreedRequests, eligibleOffering, extraTotals, emptyPreCheckin, stayFinancials, cancelOutstandingRequests, remainingCancellationRefund } from "@/lib/stay/domain";
+import { selectedRequests, StaySelectionError } from "@/lib/stay/domain";
+import type { StayRequest } from "@/lib/stay/contracts";
 
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -14,7 +18,8 @@ import { amenityLabel, canonicalAmenityKey } from "@/lib/customer/amenities";
 import { bookingInput, createBookingInput, paymentVerificationInput } from "@/lib/booking/contracts";
 export { bookingInput, createBookingInput, paymentVerificationInput } from "@/lib/booking/contracts";
 import { enqueueBookingNotification } from "@/lib/booking/notifications";
-import { evaluateStay, allocateIntervals, canonicalStatus, assertTransition, cancellationRefund } from "@/lib/booking/domain";
+import { evaluateStay, allocateIntervals, canonicalStatus, assertTransition } from "@/lib/booking/domain";
+import { backfillUserPhoneNumber } from "@/lib/auth/users";
 import { calendarRef, hasCapacity, readAvailability, writeAllocation } from "@/lib/booking/inventory";
 import type { CheckoutDisplay, CheckoutInput } from "@/lib/booking/checkout";
 
@@ -145,6 +150,13 @@ export async function checkoutDisplay(input: CheckoutInput): Promise<CheckoutDis
       propertyRules: publicGuestPolicies(propertyData),
       timezone: propertyData.timezone ?? "Asia/Kolkata",
       roomType: { id: room.id, name: roomData.name ?? "Room" },
+      // Same defaults the server applies when it validates capacity.
+      capacity: {
+        maxAdults: asNumber(roomData.maxAdults, 1),
+        maxChildren: asNumber(roomData.maxChildren, 0),
+        maxInfants: asNumber(roomData.maxInfants, 10),
+        maxOccupancy: asNumber(roomData.maxOccupancy, asNumber(roomData.maxAdults, 1) + asNumber(roomData.maxChildren, 0)),
+      },
       ratePlan: { id: rate.id, name: rateData.name ?? "Standard", paymentMode: evaluated.paymentMode === "deposit" || evaluated.paymentMode === "pay_at_property" ? evaluated.paymentMode : "full" },
       bookingMode: input.bookingMode,
       checkIn: input.checkIn,
@@ -163,6 +175,7 @@ export async function checkoutDisplay(input: CheckoutInput): Promise<CheckoutDis
 }
 
 export function bookingError(error: unknown) {
+  if (error instanceof StaySelectionError) return error.message;
   if (error instanceof z.ZodError) {
     const field = error.issues[0]?.path.join(".");
     return field ? `Please check ${field.replaceAll(".", " ")} and try again.` : "Please review your booking details and try again.";
@@ -204,13 +217,13 @@ export function bookingError(error: unknown) {
   return messages[code] ?? "Unable to process this booking. Please try again.";
 }
 
-export async function quote(input: BookingInput) {
+export async function quote(input: z.input<typeof bookingInput>) {
   return (await quoteWithTiming(input)).quote;
 }
 
 export type QuoteTiming = Record<"property" | "roomRate" | "inventory" | "policy" | "total", number>;
 
-export async function quoteWithTiming(input: BookingInput): Promise<{ quote: Awaited<ReturnType<typeof buildQuote>>; timing: QuoteTiming }> {
+export async function quoteWithTiming(input: z.input<typeof bookingInput>): Promise<{ quote: Awaited<ReturnType<typeof buildQuote>>; timing: QuoteTiming }> {
   const started = performance.now();
   const timing: QuoteTiming = { property: 0, roomRate: 0, inventory: 0, policy: 0, total: 0 };
   // TypeScript's BookingInput type does not remove runtime properties. In
@@ -272,6 +285,10 @@ async function buildQuote(input: BookingInput, timing: QuoteTiming) {
   timing.policy = Math.round(performance.now() - stage);
   const policyData = policy?.data();
   if (rateData.cancellationPolicyId && (!policyData || policyData.propertyId !== property.id || policyData.status !== "active")) throw new Error("RATE_NOT_AVAILABLE");
+  const offerings = await offeringsFor(property.id);
+  const customizations = selectedRequests(offerings, input.customizationSelections, room.id, evaluated.bookingMode, evaluated.startAt, policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null);
+  const totals = extraTotals(totalPaise, payableNowPaise, paymentMode, customizations);
+  const includedAmenities = await amenitySnapshotFor(propertyData ?? {}, roomData, rateData, ref => ref.get());
   return {
     ...evaluated,
     inventoryEngine: propertyData.inventoryEngine ?? "legacy",
@@ -297,14 +314,17 @@ async function buildQuote(input: BookingInput, timing: QuoteTiming) {
     taxBasisPoints,
     taxPaise,
     customerFeePaise,
-    totalPaise,
-    payableNowPaise,
+    ...totals,
+    customizations,
+    travelerPreferences: input.travelerPreferences,
+    availableCustomizations: offerings.filter(o => eligibleOffering(o, room.id, evaluated.bookingMode, evaluated.startAt)),
+    includedAmenities,
     breakfastIncluded: rateData.breakfastIncluded === true,
     cancellationPolicyId: rateData.cancellationPolicyId ?? null,
     cancellationPolicy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null,
     quotedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
-    fingerprint: createHash("sha256").update(JSON.stringify({ input, evaluated, policy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null, breakfastIncluded: rateData.breakfastIncluded === true })).digest("hex"),
+    fingerprint: createHash("sha256").update(JSON.stringify({ input: { ...input, travelerPreferences: [] }, evaluated, includedAmenities, customizations: agreedRequests(customizations), policy: policyData ? { name: policyData.name ?? "Cancellation policy", description: policyData.description ?? "", refundableUntilHours: asNumber(policyData.refundableUntilHours), cancellationFeePercent: asNumber(policyData.cancellationFeePercent) } : null, breakfastIncluded: rateData.breakfastIncluded === true })).digest("hex"),
   };
 }
 
@@ -340,8 +360,18 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     // catalog is read inside this transaction so a concurrent listing edit
     // cannot silently change the record we create.
     const amenitySnapshot = await amenitySnapshotFor(property, room, rate, (ref) => tx.get(ref));
+    if (JSON.stringify(amenitySnapshot) !== JSON.stringify(quoteData.includedAmenities)) throw new Error("QUOTE_CHANGED");
+    const offeringIds = [...new Set(input.customizationSelections.map(s => s.offeringId))];
+    const offeringDocs = await Promise.all(offeringIds.map(id => tx.get(propertyRef.collection("stayCustomizations").doc(id))));
+    const offerings = offeringDocs.flatMap(d => { const o = d.exists ? readOffering(d.id, d.data()!) : null; return o ? [o] : []; });
+    const customizations = selectedRequests(offerings, input.customizationSelections, roomRef.id, input.bookingMode, quoteData.startAt, quoteData.cancellationPolicy);
+    if (JSON.stringify(agreedRequests(customizations)) !== JSON.stringify(agreedRequests(quoteData.customizations))) throw new Error("QUOTE_CHANGED");
     const current = evaluateStay(input, property, room, rate);
-    if (JSON.stringify(current) !== JSON.stringify(Object.fromEntries(Object.keys(current).map((key) => [key, quoteData[key as keyof typeof quoteData]]))) || (property.inventoryEngine ?? "legacy") !== quoteData.inventoryEngine) throw new Error("QUOTE_CHANGED");
+    const roomQuote = { ...quoteData, totalPaise: quoteData.roomTotalPaise,
+      payableNowPaise: quoteData.payableNowPaise - (quoteData.paymentMode === "pay_at_property" ? 0 : quoteData.extrasTotalPaise) };
+    const expectedRoom = { ...roomQuote, balanceDuePaise: roomQuote.totalPaise - roomQuote.payableNowPaise };
+    if (Object.entries(current).some(([key, value]) => value !== expectedRoom[key as keyof typeof expectedRoom]) ||
+      (property.inventoryEngine ?? "legacy") !== quoteData.inventoryEngine) throw new Error("QUOTE_CHANGED");
     const configuredCity = typeof property.address?.city === "string" && property.address.city.trim() ? property.address.city : property.city;
     const confirmationCode = generateBookingReference(configuredCity, property.slug ?? quoteData.propertySlug);
     const referenceRef = adminDb.collection("bookingReferences").doc(confirmationCode);
@@ -363,7 +393,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     tx.create(adminDb.collection("bookings").doc(id).collection("events").doc(), { from: null, to: initialStatus, actorId: uid, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, id, quoteData.propertyId, uid, initialStatus);
     tx.create(referenceRef, { bookingId: id, confirmationCode, propertyId: propertyRef.id, createdAt: FieldValue.serverTimestamp() });
-    const persistedQuote = quoteData;
+    const persistedQuote = { ...quoteData, availableCustomizations: [], includedAmenities: amenitySnapshot };
     tx.create(adminDb.collection("bookings").doc(id), {
       ...persistedQuote,
       quoteSnapshot: persistedQuote,
@@ -383,6 +413,11 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       },
       bookingContact: input.bookingContact ?? null,
       specialRequest: input.specialRequest || null,
+      customizations,
+      travelerPreferences: input.travelerPreferences,
+      stayRevision: 0,
+      preCheckin: emptyPreCheckin(),
+      customizationCreditPaise: 0,
       billing: input.billing,
       amenitySnapshot,
       termsAcceptance: { version: "2026-09", cancellationPolicyId: quoteData.cancellationPolicyId, acceptedAt: FieldValue.serverTimestamp() },
@@ -443,14 +478,16 @@ export async function releaseBookingHold(bookingId: string, actorId: string, nex
       const days = Array.isArray(data.dates) ? data.dates : dateRange(String(data.checkIn), String(data.checkOut));
       for (const day of days) tx.set(inventoryRef(String(data.propertyId), String(data.roomType?.id), String(day)), { reserved: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
-    const refundPaise = data.paymentMethod === "online" && ["cancelled", "no_show"].includes(nextStatus) ? cancellationRefund(data.paidPaise ?? 0, data.refundedPaise ?? 0, data.startAt ?? `${data.checkIn}T00:00:00Z`, data.cancellationPolicy, now, ["PARTNER_CANCELLED", "ADMIN_CANCELLED"].includes(reason), data.totalPaise ?? data.paidPaise ?? 0) : 0;
+    const refundPaise = data.paymentMethod === "online" && ["cancelled", "no_show"].includes(nextStatus) ? remainingCancellationRefund({ ...data, checkIn: data.checkIn }, now, ["PARTNER_CANCELLED", "ADMIN_CANCELLED"].includes(reason)) : 0;
     if (refundPaise > 0) tx.set(adminDb.collection("refunds").doc(`${bookingId}_cancellation`), { bookingId, propertyId: data.propertyId, paymentId: data.razorpayPaymentId, amountPaise: refundPaise, status: "pending", nextAttemptAt: Timestamp.now(), reason, updatedAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp() });
     tx.create(ref.collection("events").doc(), { from: data.bookingStatus, to: nextStatus, reason, actorId, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, bookingId, data.propertyId, data.guestId, nextStatus);
     tx.update(ref, {
       bookingStatus: nextStatus,
       paymentStatus: refundPaise > 0 ? "refund_pending" : data.paymentStatus,
-      refundDuePaise: refundPaise,
+      refundDuePaise: (data.refundDuePaise ?? 0) + refundPaise,
+      customizations: cancelOutstandingRequests((data.customizations ?? []) as StayRequest[], now),
+      stayRevision: (data.stayRevision ?? 0) + 1,
       inventoryReleased: true,
       statusReason: reason,
       cancelledAt: ["cancelled", "no_show"].includes(nextStatus) ? FieldValue.serverTimestamp() : data.cancelledAt ?? null,
@@ -484,6 +521,9 @@ export async function createBooking(uid: string, raw: unknown, idempotencyKey?: 
   if (input.paymentMethod === "online" && (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET)) throw new Error("ONLINE_PAYMENT_NOT_CONFIGURED");
 
   const booking = await holdInventoryAndCreateBooking(uid, input, quoteData, id, requestFingerprint);
+  // Remember the mobile number a guest first provides so later bookings prefill
+  // it. Non-destructive and best-effort: never fail a booking over this.
+  try { await backfillUserPhoneNumber(uid, input.leadPhone); } catch { /* ignore */ }
   if (input.paymentMethod === "online") {
     try {
       const orderRef = adminDb.collection("bookings").doc(booking.id);
@@ -576,7 +616,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
       if (expireNow) {
         if (allocations) { writeAllocation(tx, data.propertyId, data.roomType.id, allocations, -1); tx.update(holdRef, { status: "released", releasedAt: FieldValue.serverTimestamp() }); }
         else for (const day of data.dates ?? dateRange(data.checkIn, data.checkOut)) tx.set(inventoryRef(data.propertyId, data.roomType.id, day), { reserved: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        tx.update(ref, { bookingStatus: "expired", inventoryReleased: true, statusReason: "CAPTURE_AFTER_HOLD" });
+        tx.update(ref, { bookingStatus: "expired", inventoryReleased: true, statusReason: "CAPTURE_AFTER_HOLD", customizations: cancelOutstandingRequests(data.customizations ?? []), stayRevision: (data.stayRevision ?? 0) + 1 });
         tx.create(ref.collection("events").doc(), { from: "pending_payment", to: "expired", actorId: input.actorId, reason: "CAPTURE_AFTER_HOLD", createdAt: FieldValue.serverTimestamp() });
         enqueueBookingNotification(tx, bookingId, data.propertyId, data.guestId, "expired");
       }
@@ -679,6 +719,14 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     } : null,
     amenitySnapshot: savedAmenitySnapshot(data.amenitySnapshot),
     specialRequest: data.specialRequest ?? null,
+    travelerPreferences: data.travelerPreferences ?? [],
+    customizations: data.customizations ?? [],
+    stayRevision: data.stayRevision ?? 0,
+    preCheckin: data.preCheckin ?? emptyPreCheckin(),
+    guestNames: data.leadGuest?.adultGuestNames ?? [data.leadGuest?.name ?? "Guest"],
+    extrasTotalPaise: data.extrasTotalPaise ?? 0,
+    customizationCreditPaise: data.customizationCreditPaise ?? 0,
+    ...stayFinancials(data),
     subtotalPaise: data.subtotalPaise ?? 0,
     taxPaise: data.taxPaise ?? 0,
     customerFeePaise: data.customerFeePaise ?? 0,
@@ -693,7 +741,7 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     endAt: data.endAt ?? null,
     durationMinutes: data.durationMinutes ?? null,
     billedHours: data.billedHours ?? 0,
-    balanceDuePaise: ["cancelled", "expired", "no_show", "payment_failed"].includes(data.bookingStatus) ? 0 : Math.max(0, (data.totalPaise ?? 0) - (data.paidPaise ?? 0)),
+    balanceDuePaise: stayFinancials(data).balanceDuePaise,
     refundDuePaise: data.refundDuePaise ?? 0,
     refundedPaise: data.refundedPaise ?? 0,
     bookingStatus: canonicalStatus(data.bookingStatus ?? "pending_payment"),
@@ -824,6 +872,7 @@ export const manualReservationInput = bookingInput.omit({ propertySlug: true }).
 });
 export async function createManualReservation(uid: string, raw: unknown, key: string) {
   const input = manualReservationInput.parse(raw);
+  if (input.customizationSelections.length) throw new Error("Add customizations through the customer checkout.");
   const membership = await adminDb.collection("propertyMemberships").doc(`${input.propertyId}_${uid}`).get();
   if (membership.data()?.status !== "active") throw new Error("FORBIDDEN");
   const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");

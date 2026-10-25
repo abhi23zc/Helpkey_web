@@ -2,7 +2,7 @@
 
 import { guestScoreLabel as scoreLabel } from "@/lib/customer/offer";
 import { ArrowRight, Star, X, MessageSquare, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { useDialog } from "@/components/shared/use-dialog";
@@ -61,7 +61,7 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase() || "G";
 
-export function Reviews({
+export const Reviews = memo(function Reviews({
   property,
 }: {
   property: Property;
@@ -616,4 +616,4 @@ export function Reviews({
       )}
     </section>
   );
-}
+});

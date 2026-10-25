@@ -36,7 +36,9 @@
     "reviews:rebuild": "tsx --env-file=.env.local scripts/reviews-rebuild.ts",
     "test:workers:integration": "vitest run tests/background.integration.test.ts tests/booking-transactions.emulator.test.ts tests/queue-delivery.integration.test.ts",
     "worker:recovery": "node --env-file=.env.local dist/workers/shared/recovery-runner.js",
-    "background:rebuild": "tsx --env-file=.env.local scripts/background-rebuild.ts"
+    "background:rebuild": "tsx --env-file=.env.local scripts/background-rebuild.ts",
+    "test:e2e:hotel-next": "playwright test --config playwright.hotel-next.config.ts",
+    "test:e2e:stay": "playwright test --config playwright.stay.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

@@ -1,8 +1,11 @@
 import { z } from "zod";
+import { selectionsSchema, travelerPreferencesSchema } from "@/lib/stay/contracts";
 import { validDate } from "./domain";
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 export const bookingInput = z.object({
+  customizationSelections: selectionsSchema.optional().default([]),
+  travelerPreferences: travelerPreferencesSchema.optional().default([]),
   propertySlug: z.string().min(1).max(180),
   roomTypeId: z.string().min(1),
   ratePlanId: z.string().min(1),

@@ -116,14 +116,14 @@ const rawGET = async function GET(request: Request) {
     const dayBookings = bookings.filter((booking) => booking.checkIn === input.date && occupiedStatuses.has(String(booking.bookingStatus)));
     const departures = bookings.filter((booking) => booking.checkOut === input.date && ["checked_in", "checked_out", "completed"].includes(String(booking.bookingStatus)));
     const staying = bookings.filter((booking) => booking.checkIn <= input.date && booking.checkOut > input.date && occupiedStatuses.has(String(booking.bookingStatus)));
-    const pendingRequests = bookings.filter((booking) => Boolean(booking.specialRequest) && activeBookingStatuses.has(String(booking.bookingStatus)));
+    const pendingRequests = bookings.filter((booking) => (Boolean(booking.specialRequest) || (Array.isArray(booking.customizations) && booking.customizations.some((r: { status?: string }) => r.status === "requested"))) && activeBookingStatuses.has(String(booking.bookingStatus)));
     const noShowRisk = bookings.filter((booking) => booking.bookingStatus === "confirmed" && (booking.startAt ? Date.parse(booking.startAt) < Date.now() : booking.checkIn < input.date));
 
     const series = buckets.map((bucket) => {
       let bookedPaise = 0;
       let paidPaise = 0;
       for (const booking of bookings) {
-        if (!terminalBookingStatuses.has(String(booking.bookingStatus)) && dateInBucket(bookingDate(booking, "createdAt", property.timezone ?? "Asia/Kolkata"), bucket, input.range)) bookedPaise += Math.max(0, number(booking.totalPaise));
+        if (!terminalBookingStatuses.has(String(booking.bookingStatus)) && dateInBucket(bookingDate(booking, "createdAt", property.timezone ?? "Asia/Kolkata"), bucket, input.range)) bookedPaise += Math.max(0, number(booking.totalPaise) - number(booking.customizationCreditPaise));
         if (number(booking.paidPaise) > 0 && dateInBucket(bookingDate(booking, "paidAt", property.timezone ?? "Asia/Kolkata"), bucket, input.range)) paidPaise += Math.max(0, number(booking.paidPaise));
       }
       const report = intervalReport(bookings as Parameters<typeof intervalReport>[0], bucket.start, addDays(bucket.end, 1), property.timezone ?? "Asia/Kolkata", sellableInventory);

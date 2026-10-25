@@ -2,13 +2,12 @@
 import {
   formatMoney,
   cancellationLabel,
-  type CancellationTerms,
 } from "@/lib/customer/offer";
 import { useSavedHotels } from "@/components/wishlist/use-saved-hotels";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowUpDown,
   Bath,
@@ -17,43 +16,36 @@ import {
   Calendar,
   Car,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Coffee,
-  Copy,
   Dumbbell,
   Heart,
   HelpCircle,
   Hotel,
   Images,
-  Layers,
   MapPin,
-  Minus,
-  Plus,
   Share2,
   ShieldCheck,
-  Sparkles,
   Star,
   Tv,
   Users,
   Utensils,
   Wifi,
   Wind,
-  X,
   Zap,
 } from "lucide-react";
 import { SiteHeader } from "@/components/shared/site-header";
-import { LoginModal } from "@/components/auth/login-modal";
+import { GuestCounterRow } from "@/components/booking/guest-counter-row";
+const HotelGalleryDialog = lazy(() => import("@/components/hotel/hotel-gallery-dialog").then(module => ({ default: module.HotelGalleryDialog })));
+const LoginModal = lazy(() => import("@/components/auth/login-modal").then(module => ({ default: module.LoginModal })));
 import { Reviews } from "@/components/hotel/hotel-reviews";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import {
   availabilityParams,
   normalizedStay,
-  staySearchFromParams,
-  withStaySearch,
   type StaySearch,
 } from "@/lib/customer/stay-search";
 import { canonicalAmenityKey, amenityLabel } from "@/lib/customer/amenities";
@@ -65,64 +57,16 @@ import {
 import { queryKeys } from "@/lib/query/keys";
 import { ApiClientError, apiFetch } from "@/lib/api/client";
 import { buildTimeOptions } from "@/components/shared/form-controls";
-import { useDialog } from "@/components/shared/use-dialog";
 import { HotelLocation } from "@/components/hotel/hotel-location";
 import { GuestRules } from "@/components/hotel/guest-rules";
 import type { CatalogDetailProperty } from "@/lib/customer/catalog";
 import { localParts } from "@/lib/booking/domain";
 import { checkoutInputFromSearchParams } from "@/lib/booking/checkout";
 
+import { useHotelStay } from "@/components/hotel/use-hotel-stay";
+import { availabilityRemaining, rememberAvailability, type Availability, type BookableRoom, type HourlyDurationOption } from "@/lib/customer/hotel-availability";
+
 type Property = CatalogDetailProperty;
-type BookableRoom = {
-  id: string;
-  name: string;
-  description: string;
-  totalInventory: number;
-  maxAdults: number;
-  maxChildren: number;
-  maxInfants?: number;
-  maxOccupancy: number;
-  roomSizeSqFt: number | null;
-  amenityCodes: string[];
-  bedConfigurations?: Array<{ bedType: string; count: number }>;
-  imageUrl: string | null;
-  rates: Array<{
-    id: string;
-    name: string;
-    bookingMode?: "overnight" | "hourly";
-    endAt?: string | null;
-    startAt?: string | null;
-    nights?: number | null;
-    validUntil?: number | null;
-    subtotalPaise?: number | null;
-    taxPaise?: number | null;
-    payableNowPaise?: number | null;
-    balanceDuePaise?: number | null;
-    totalPaise?: number | null;
-    durationMinutes?: number | null;
-    basePricePaise: number;
-    paymentMode: "full" | "deposit" | "pay_at_property";
-    taxBasisPoints?: number;
-    customerFeePaise?: number;
-    breakfastIncluded?: boolean;
-    cancellationTerms?: CancellationTerms;
-    cancellation: { name: string; description: string } | null;
-  }>;
-};
-
-type Availability = {
-  ratePlanModes?: Record<string, "overnight" | "hourly">;
-  rooms: BookableRoom[];
-  hourlyDurations: HourlyDurationOption[];
-  expiresAt: number;
-};
-
-type HourlyDurationOption = {
-  roomTypeId: string;
-  ratePlanId: string;
-  prices: { hours: number; pricePaise: number }[];
-};
-
 const money = formatMoney;
 const formatHours = (minutes: number) =>
   `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`;
@@ -138,104 +82,6 @@ const readableDate = (dateStr: string) => {
   }).format(new Date(y, m - 1, d));
 };
 
-function HotelSubNav({
-  minPrice,
-  currency,
-}: {
-  minPrice: number;
-  currency: string;
-}) {
-  const [activeTab, setActiveTab] = useState("overview");
-
-  useEffect(() => {
-    const sectionIds = [
-      "overview",
-      "amenities",
-      "rooms",
-      "location",
-      "policies",
-      "reviews",
-    ];
-    const handleScroll = () => {
-      const scrollPos = window.scrollY + 160;
-      for (let i = sectionIds.length - 1; i >= 0; i--) {
-        const id = sectionIds[i];
-        const el = document.getElementById(id);
-        if (el && scrollPos >= el.offsetTop) {
-          setActiveTab(id);
-          break;
-        }
-      }
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-      setActiveTab(id);
-    }
-  };
-
-  const navItems = [
-    { id: "overview", label: "Overview" },
-    { id: "amenities", label: "Amenities" },
-    { id: "rooms", label: "Rooms" },
-    { id: "location", label: "Location" },
-    { id: "policies", label: "Good to know" },
-    { id: "reviews", label: "Reviews" },
-  ];
-
-  return (
-    <nav
-      aria-label="Hotel section navigation"
-      className="sticky top-0 z-30 mb-8 border-b border-slate-200/90 bg-white/95 backdrop-blur-md shadow-xs transition -mx-4 sm:-mx-6 lg:-mx-10 px-4 sm:px-6 lg:px-10"
-    >
-      <div className="mx-auto max-w-[1280px] flex items-center justify-between overflow-x-auto no-scrollbar py-0.5">
-        <div className="flex items-center gap-1 sm:gap-2">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => scrollTo(item.id)}
-              className={`relative px-3.5 py-3.5 text-xs sm:text-sm tracking-tight whitespace-nowrap transition-colors ${
-                activeTab === item.id
-                  ? "text-[var(--hk-navy)] font-bold"
-                  : "text-slate-500 hover:text-slate-900 font-semibold"
-              }`}
-            >
-              {item.label}
-              {activeTab === item.id && (
-                <span className="absolute bottom-0 inset-x-3 h-[2px] rounded-full bg-[var(--hk-navy)]" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="hidden md:flex items-center gap-4 shrink-0 pl-4">
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider leading-tight">
-              Starting from
-            </span>
-            <span className="text-sm font-extrabold text-[var(--hk-navy)]">
-              {formatMoney(minPrice, currency)}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => scrollTo("rooms")}
-            className="rounded-xl bg-[var(--hk-navy)] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition active:scale-95"
-          >
-            Select Room
-          </button>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
 function formatHotelTime(timeStr?: string | null, fallback = "12:00 PM") {
   if (!timeStr || timeStr === "00:00") return fallback;
   const parts = timeStr.split(":");
@@ -248,12 +94,7 @@ function formatHotelTime(timeStr?: string | null, fallback = "12:00 PM") {
 }
 
 export function LiveHotelDetail({ slug }: { slug: string }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const stay = useMemo(
-    () => staySearchFromParams(new URLSearchParams(searchParams.toString())),
-    [searchParams],
-  );
   const propertyQuery = useQuery({
     queryKey: queryKeys.property(slug),
     queryFn: ({ signal }) =>
@@ -263,87 +104,63 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
       ),
     staleTime: 60_000,
   });
-  const availability = useMemo(() => availabilityParams(stay), [stay]);
+  const controller = useHotelStay(propertyQuery.data?.property.timezone ?? "Asia/Kolkata");
+  const { stay } = controller;
+  const queryClient = useQueryClient();
+  const availability = useMemo(() => availabilityParams(controller.requested), [controller.requested]);
   const roomsQuery = useQuery({
     queryKey: queryKeys.bookable(slug, Object.fromEntries(availability)),
-    queryFn: ({ signal }) =>
-      apiFetch<Availability>(
-        `/api/properties/${encodeURIComponent(slug)}/bookable?${availability}`,
-        { signal },
-      ),
-    enabled: stay !== null,
-    staleTime: (query) =>
-      Math.max(
-        0,
-        (query.state.data?.expiresAt ?? 0) - query.state.dataUpdatedAt,
-      ),
+    queryFn: async ({ signal }) => {
+      const started = performance.now();
+      const response = await apiFetch<Availability>(
+        `/api/properties/${encodeURIComponent(slug)}/bookable?${availability}`, { signal },
+      );
+      return rememberAvailability(response, performance.now() - started);
+    },
+    enabled: controller.requested !== null && stay !== null && !controller.pending,
+    // Response identity carries its monotonic deadline through cache reuse.
+    structuralSharing: false,
+    staleTime: (query) => query.state.data
+      ? Math.max(0, availabilityRemaining(query.state.data) + Date.now() - query.state.dataUpdatedAt)
+      : 0,
     placeholderData: keepPreviousData,
-    retry: (count, error) =>
-      error instanceof ApiClientError &&
-      error.code === "SEARCH_CHANGED" &&
-      count < 1,
+    retry: (count, error) => error instanceof ApiClientError && error.code === "SEARCH_CHANGED" && count < 1,
     retryDelay: 0,
   });
-  // React Query drops placeholder data on errors; retain the last successful
-  // response for browsing while reservation remains disabled.
   const [retainedRooms, setRetainedRooms] = useState<Availability>();
-  if (
-    roomsQuery.data &&
-    !roomsQuery.isPlaceholderData &&
-    roomsQuery.data !== retainedRooms
-  )
-    setRetainedRooms(roomsQuery.data);
-  const displayedRooms = roomsQuery.data ?? retainedRooms;
-  const [expired, setExpired] = useState(false);
-  const expiresAt = roomsQuery.data?.expiresAt;
-  const {
-    refetch: refreshRooms,
-    isFetching: updatingRooms,
-    isPlaceholderData: previousRooms,
-    isError: roomsFailed,
-  } = roomsQuery;
-  // Expiry disables offers. Revalidate on the next interaction or tab return,
-  // without running a background availability polling loop.
   useEffect(() => {
-    if (!expiresAt || previousRooms || roomsFailed) return;
-    setExpired(false);
-    const remaining = expiresAt - Date.now();
-    const delay = Math.max(0, Math.min(remaining, 30_000));
-    const timer = setTimeout(() => {
-      setExpired(true);
-    }, delay);
-    const refreshExpired = () => {
-      if (
-        (expired || expiresAt <= Date.now()) &&
-        !updatingRooms &&
-        document.visibilityState === "visible"
-      )
-        void refreshRooms();
+    if (roomsQuery.data && !roomsQuery.isPlaceholderData) {
+      // Retain browseable room descriptions after errors, without updating during render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRetainedRooms(roomsQuery.data);
+    }
+  }, [roomsQuery.data, roomsQuery.isPlaceholderData]);
+  const displayedRooms = roomsQuery.data ?? retainedRooms;
+  const [expiredResult, setExpiredResult] = useState<Availability>();
+  const expired = !!roomsQuery.data && (expiredResult === roomsQuery.data || availabilityRemaining(roomsQuery.data) <= 0);
+  const refreshRooms = useCallback(() => {
+    if (!controller.pending && stay && !roomsQuery.isFetching) void roomsQuery.refetch();
+  }, [controller.pending, stay, roomsQuery]);
+  useEffect(() => {
+    const result = roomsQuery.data;
+    if (!result || roomsQuery.isPlaceholderData) return;
+    const timer = setTimeout(() => setExpiredResult(result), availabilityRemaining(result));
+    return () => clearTimeout(timer);
+  }, [roomsQuery.data, roomsQuery.isPlaceholderData]);
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "visible" && availabilityRemaining(roomsQuery.data) <= 0) refreshRooms();
     };
-    window.addEventListener("pointerdown", refreshExpired);
-    window.addEventListener("keydown", refreshExpired);
-    document.addEventListener("visibilitychange", refreshExpired);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("pointerdown", refreshExpired);
-      window.removeEventListener("keydown", refreshExpired);
-      document.removeEventListener("visibilitychange", refreshExpired);
-    };
-  }, [
-    expiresAt,
-    previousRooms,
-    roomsFailed,
-    updatingRooms,
-    refreshRooms,
-    expired,
-  ]);
-  const offersCurrent =
-    !!stay &&
-    !roomsQuery.isPlaceholderData &&
-    !roomsQuery.isFetching &&
-    !roomsQuery.isError &&
-    !!expiresAt &&
-    !expired;
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => document.removeEventListener("visibilitychange", refreshOnReturn);
+  }, [roomsQuery.data, refreshRooms]);
+  // Disable old work as soon as the draft changes, including the debounce window.
+  useEffect(() => {
+    if (controller.pending || !stay) void queryClient.cancelQueries({ queryKey: queryKeys.bookable(slug, Object.fromEntries(availability)) });
+  }, [controller.pending, stay, queryClient, slug, availability]);
+  const checking = !!stay && (controller.pending || roomsQuery.isFetching || roomsQuery.isPlaceholderData);
+  const pricesUnavailable = checking || !stay || roomsQuery.isError;
+  const offersCurrent = !!stay && !checking && !roomsQuery.isError && !!roomsQuery.data && !expired;
   const [shareMessage, setShareMessage] = useState("");
   const share = async () => {
     const url = new URL(
@@ -404,6 +221,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
       : "";
   };
   const setSelectedChoice = (choice: string) => {
+    if (pricesUnavailable) return;
     setSelection({ stayKey, choice, signature: signature(choice) });
     const [roomId, rateId] = choice.split(":");
     const rate = rooms
@@ -526,7 +344,6 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                 Number(searchParams.get("searchTotalPaise"))))));
   const reviewCount = property.ratingCount;
   const location = `${property.city}${property.state ? `, ${property.state}` : ""}`;
-  const amenities = property.propertyAmenityCodes ?? [];
   const chosenRate = rooms
     .flatMap((room) =>
       room.rates.map((rate) => ({ choice: `${room.id}:${rate.id}`, rate })),
@@ -540,7 +357,8 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen bg-[var(--hk-ivory)] text-[var(--hk-ink)]">
-      <SiteHeader onLoginClick={() => setIsLoginOpen(true)} />
+      <SiteHeader availableStayTypes={property.bookingModes.map(mode => mode === "hourly" ? "dayuse" : "overnight")} onLoginClick={() => setIsLoginOpen(true)} stayType={controller.draft.bookingMode === "hourly" ? "dayuse" : "overnight"}
+        onStayTypeChange={(mode) => controller.switchMode(mode === "dayuse" ? "hourly" : "overnight")} />
       {/* Floating status notifications */}
       <div className="fixed top-20 right-6 z-50 flex flex-col gap-2 pointer-events-none">
         {shareMessage && (
@@ -553,7 +371,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
             <span>{shareMessage}</span>
           </div>
         )}
-        {roomsQuery.isFetching && rooms.length > 0 && (
+        {checking && rooms.length > 0 && (
           <div
             role="status"
             className="pointer-events-auto flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 backdrop-blur-md px-3.5 py-2 text-xs font-medium text-[var(--hk-navy)] shadow-lg animate-in fade-in duration-200"
@@ -732,38 +550,14 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
 
         <div className="mt-8 grid gap-10 lg:grid-cols-3">
           <div className="space-y-14 lg:col-span-2">
-            <section id="overview" className="scroll-mt-24 space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--hk-navy)]">
-                About this stay
-              </h2>
-              <p className="text-sm sm:text-base leading-relaxed text-slate-600 font-normal">
-                {property.description ||
-                  "A description has not been provided for this property."}
-              </p>
-            </section>
-
-            <section id="amenities" className="scroll-mt-24 space-y-4">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--hk-navy)]">
-                Premium amenities
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-5 gap-x-8 pt-1">
-                {amenities.map((amenity) => (
-                  <Amenity key={amenity} code={amenity} />
-                ))}
-                {!amenities.length && (
-                  <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white p-6 text-sm text-[var(--hk-muted)]">
-                    Amenities are not listed for this stay.
-                  </div>
-                )}
-              </div>
-            </section>
+            <HotelOverview property={property} />
 
             <section
               id="rooms"
               className="scroll-mt-24"
-              aria-busy={roomsQuery.isFetching}
+              aria-busy={checking}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-2xl font-bold text-[var(--hk-navy)]">
                   Available rooms
                 </h2>
@@ -773,8 +567,9 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
               </div>
               <div className="mt-6 space-y-5">
                 {roomsLoading && (
-                  <div className="rounded-xl border border-[var(--hk-border)] bg-white p-6 text-sm text-[var(--hk-muted)]">
-                    Loading available rooms...
+                  <div className="min-h-48 rounded-xl border border-slate-200 bg-white p-6" role="status">
+                    <p className="text-sm text-[var(--hk-muted)]">Loading available rooms...</p>
+                    <div aria-hidden="true" className="mt-4 space-y-4 animate-pulse motion-reduce:animate-none"><div className="h-7 w-2/3 rounded bg-slate-100" /><div className="h-16 rounded bg-slate-100" /></div>
                   </div>
                 )}
                 {!roomsLoading && !roomsQuery.error && rooms.length === 0 && (
@@ -828,7 +623,9 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                               : null,
                           ].filter(Boolean) as string[]
                         }
-                        price={cheapest.totalPaise ?? cheapest.basePricePaise}
+                        price={pricesUnavailable ? null : cheapest.totalPaise ?? cheapest.basePricePaise}
+                        checking={checking}
+                        disabled={pricesUnavailable}
                         from={!stay?.checkIn}
                         priceLabel={
                           stay?.bookingMode === "hourly"
@@ -839,24 +636,27 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                         }
                         currency={property.currency}
                         image={room.imageUrl}
+                        imageSrcSet={room.imageSrcSet}
+                        imageWidth={room.imageWidth}
+                        imageHeight={room.imageHeight}
                         selected={
                           !offerChanged &&
                           effectiveSelectedChoice.startsWith(`${room.id}:`)
                         }
                         onSelect={() => setSelectedChoice(choice)}
                         cancellation={
-                          cheapest.cancellationTerms
+                          !pricesUnavailable && cheapest.cancellationTerms
                             ? cancellationLabel(
                                 cheapest.cancellationTerms,
                                 property.timezone ?? "Asia/Kolkata",
                               )
                             : null
                         }
-                        breakfastIncluded={cheapest.breakfastIncluded === true}
+                        breakfastIncluded={!pricesUnavailable && cheapest.breakfastIncluded === true}
                         guests={room.maxOccupancy}
                         premium={false}
                       />
-                      {room.rates.length > 1 && (
+                      {!pricesUnavailable && room.rates.length > 1 && (
                         <details className="group mt-3 rounded-2xl border border-slate-200/90 bg-gradient-to-b from-slate-50/60 to-white p-4 shadow-2xs transition-all">
                           <summary className="flex cursor-pointer items-center justify-between text-sm font-bold text-[var(--hk-navy)] select-none">
                             <span className="flex items-center gap-2">
@@ -965,30 +765,11 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
             </section>
 
             <HotelLocation property={property} />
-            <section id="policies" className="scroll-mt-24 space-y-4">
-              <h2 className="text-2xl font-bold text-[var(--hk-navy)]">
-                Good to know
-              </h2>
-              <p className="text-sm font-medium text-slate-700">
-                Check-in from{" "}
-                <span className="font-semibold text-[var(--hk-navy)]">
-                  {formatHotelTime(property.checkInTime, "12:00 PM")}
-                </span>{" "}
-                · Check-out until{" "}
-                <span className="font-semibold text-[var(--hk-navy)]">
-                  {formatHotelTime(property.checkOutTime, "11:00 AM")}
-                </span>
-              </p>
-              <GuestRules property={property} />
-              <p className="text-xs text-[var(--hk-muted)]">
-                Cancellation and payment terms depend on your selected rate.
-              </p>
-            </section>
+            <HotelPolicies property={property} />
             <Reviews property={property} />
           </div>
 
           <BookingCard
-            key={JSON.stringify(stay)}
             offersCurrent={offersCurrent && !offerChanged}
             onRefresh={() => void refreshRooms()}
             property={property}
@@ -997,26 +778,14 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
             hourlyDurations={displayedRooms?.hourlyDurations ?? []}
             selectedChoice={effectiveSelectedChoice}
             onChoiceChange={setSelectedChoice}
-            initialStay={stay}
-            onStayChange={(next) => {
-              const params = withStaySearch(
-                new URLSearchParams(searchParams.toString()),
-                next,
-              );
-              // A changed guest count must never reuse a quoted price, but it
-              // can retain the guest's room/rate preference. The following
-              // availability request determines whether that preference still
-              // exists for the new party and supplies its fresh price.
-              if (effectiveSelectedChoice) {
-                const [roomTypeId, ratePlanId] =
-                  effectiveSelectedChoice.split(":");
-                params.set("roomTypeId", roomTypeId);
-                params.set("ratePlanId", ratePlanId);
-              }
-              router.replace(`/hotels/${encodeURIComponent(slug)}?${params}`, {
-                scroll: false,
-              });
-            }}
+            initialStay={controller.draft}
+            onStayChange={controller.update}
+            onModeChange={controller.switchMode}
+            checking={checking}
+            expired={expired}
+            failed={roomsQuery.isError}
+            invalid={!stay}
+            canReserve={() => offersCurrent && availabilityRemaining(roomsQuery.data) > 0}
           />
         </div>
       </main>
@@ -1024,7 +793,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
       <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-4 border-t border-slate-200/90 bg-white/95 backdrop-blur-md px-5 py-3.5 pb-[max(14px,env(safe-area-inset-bottom))] shadow-xl lg:hidden">
         <div className="min-w-0">
           <span className="block text-sm sm:text-base font-extrabold text-[var(--hk-navy)] truncate">
-            {mobilePrice}
+            {checking ? "Checking availability…" : pricesUnavailable ? "Choose a valid stay" : mobilePrice}
           </span>
           <span className="block text-[11px] text-slate-400">
             {stay?.checkIn
@@ -1039,7 +808,7 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
           Choose room
         </a>
       </div>
-      <LoginModal
+      {isLoginOpen && <Suspense fallback={null}><LoginModal
         isOpen={isLoginOpen}
         onClose={() => {
           setIsLoginOpen(false);
@@ -1049,15 +818,15 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
           setIsLoginOpen(false);
           favorites.resumePending();
         }}
-      />
+      /></Suspense>}
     </div>
   );
 }
 
-function Gallery({ property }: { property: Property }) {
+const Gallery = memo(function Gallery({ property }: { property: Property }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const dialogRef = useDialog(activeIndex !== null, () => setActiveIndex(null));
-  const images = property.images.length
+  const closeGallery = useCallback(() => setActiveIndex(null), []);
+  const images = useMemo(() => property.images.length
     ? property.images
     : property.coverImageUrl
       ? [
@@ -1068,28 +837,7 @@ function Gallery({ property }: { property: Property }) {
             altText: property.name,
           },
         ]
-      : [];
-  const activeImage = activeIndex === null ? null : images[activeIndex];
-
-  useEffect(() => {
-    if (activeIndex === null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setActiveIndex(null);
-      if (event.key === "ArrowLeft")
-        setActiveIndex((current) =>
-          current === null
-            ? null
-            : (current - 1 + images.length) % images.length,
-        );
-      if (event.key === "ArrowRight")
-        setActiveIndex((current) =>
-          current === null ? null : (current + 1) % images.length,
-        );
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [activeIndex, images.length]);
-
+      : [], [property]);
   if (!images.length)
     return (
       <section
@@ -1123,10 +871,11 @@ function Gallery({ property }: { property: Property }) {
               alt={image.altText || `${property.name} photo ${index + 1}`}
               sizes={
                 index === 0
-                  ? "(min-width: 1024px) 50vw, 100vw"
-                  : "(min-width: 1024px) 25vw, 50vw"
+                  ? "(min-width: 1280px) 600px, (min-width: 1024px) 50vw, (min-width: 640px) 67vw, 100vw"
+                  : "(min-width: 1280px) 294px, (min-width: 1024px) 25vw, 33vw"
               }
               loading={index === 0 ? "eager" : "lazy"}
+              fetchPriority={index === 0 ? "high" : "auto"}
               className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
             />
             {index === 0 && (
@@ -1140,88 +889,68 @@ function Gallery({ property }: { property: Property }) {
         ))}
       </section>
 
-      {activeImage && activeIndex !== null && (
-        <div
-          ref={dialogRef}
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${property.name} photo gallery`}
-          className="fixed inset-0 z-[60] flex flex-col bg-[rgba(4,15,31,0.94)] p-4 text-white sm:p-6"
-        >
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
-            <p className="text-sm font-semibold">
-              {activeIndex + 1} of {images.length}
-            </p>
-            <button
-              type="button"
-              onClick={() => setActiveIndex(null)}
-              aria-label="Close photo gallery"
-              className="rounded-full p-2 transition hover:bg-white/15"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-
-          <div className="relative mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center py-4">
-            <PublicMediaImage
-              src={activeImage.imageUrl}
-              srcSet={activeImage.imageSrcSet}
-              alt={activeImage.altText || property.name}
-              sizes="100vw"
-              loading="eager"
-              className="max-h-full max-w-full rounded-xl object-contain"
-            />
-            <button
-              type="button"
-              onClick={() =>
-                setActiveIndex(
-                  (activeIndex - 1 + images.length) % images.length,
-                )
-              }
-              aria-label="Previous photo"
-              className="absolute left-0 rounded-full bg-black/45 p-3 transition hover:bg-black/70"
-            >
-              <ChevronLeft className="h-6 w-6" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveIndex((activeIndex + 1) % images.length)}
-              aria-label="Next photo"
-              className="absolute right-0 rounded-full bg-black/45 p-3 transition hover:bg-black/70"
-            >
-              <ChevronRight className="h-6 w-6" />
-            </button>
-          </div>
-
-          <div className="mx-auto flex w-full max-w-6xl gap-2 overflow-x-auto py-2">
-            {images.map((image, index) => (
-              <button
-                key={image.id}
-                type="button"
-                onClick={() => setActiveIndex(index)}
-                aria-label={`Show photo ${index + 1}`}
-                className={`h-16 w-20 shrink-0 overflow-hidden rounded-md border-2 ${
-                  index === activeIndex
-                    ? "border-white"
-                    : "border-transparent opacity-65 hover:opacity-100"
-                }`}
-              >
-                <PublicMediaImage
-                  src={image.imageUrl}
-                  srcSet={image.imageSrcSet}
-                  alt=""
-                  sizes="80px"
-                  className="h-full w-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {activeIndex !== null && <Suspense fallback={<div role="status" className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/95 text-white"><button onClick={() => setActiveIndex(null)}>Loading photos… · Close</button></div>}>
+        <HotelGalleryDialog images={images} activeIndex={activeIndex} propertyName={property.name} onIndexChange={setActiveIndex} onClose={closeGallery} />
+      </Suspense>}
     </>
   );
-}
+});
+
+const HotelPolicies = memo(function HotelPolicies({ property }: { property: Property }) {
+  return (
+            <section id="policies" className="scroll-mt-24 space-y-4">
+              <h2 className="text-2xl font-bold text-[var(--hk-navy)]">
+                Good to know
+              </h2>
+              <p className="text-sm font-medium text-slate-700">
+                Check-in from{" "}
+                <span className="font-semibold text-[var(--hk-navy)]">
+                  {formatHotelTime(property.checkInTime, "12:00 PM")}
+                </span>{" "}
+                · Check-out until{" "}
+                <span className="font-semibold text-[var(--hk-navy)]">
+                  {formatHotelTime(property.checkOutTime, "11:00 AM")}
+                </span>
+              </p>
+              <GuestRules property={property} />
+              <p className="text-xs text-[var(--hk-muted)]">
+                Cancellation and payment terms depend on your selected rate.
+              </p>
+            </section>
+  );
+});
+
+const HotelOverview = memo(function HotelOverview({ property }: { property: Property }) {
+  const amenities = property.propertyAmenityCodes ?? [];
+  return <>
+            <section id="overview" className="scroll-mt-24 space-y-3">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--hk-navy)]">
+                About this stay
+              </h2>
+              <p className="text-sm sm:text-base leading-relaxed text-slate-600 font-normal">
+                {property.description ||
+                  "A description has not been provided for this property."}
+              </p>
+            </section>
+
+            <section id="amenities" className="scroll-mt-24 space-y-4">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--hk-navy)]">
+                Premium amenities
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-5 gap-x-8 pt-1">
+                {amenities.map((amenity) => (
+                  <Amenity key={amenity} code={amenity} />
+                ))}
+                {!amenities.length && (
+                  <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white p-6 text-sm text-[var(--hk-muted)]">
+                    Amenities are not listed for this stay.
+                  </div>
+                )}
+              </div>
+            </section>
+
+  </>;
+});
 
 function Amenity({ code }: { code: string }) {
   const icons: Record<string, typeof Wifi> = {
@@ -1271,6 +1000,11 @@ function RoomCard({
   price,
   currency,
   image,
+  imageSrcSet,
+  imageWidth,
+  imageHeight,
+  checking,
+  disabled,
   selected,
   onSelect,
   cancellation,
@@ -1286,6 +1020,11 @@ function RoomCard({
   price: number | null;
   currency: string;
   image: string | null;
+  imageSrcSet?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  checking: boolean;
+  disabled: boolean;
   selected: boolean;
   onSelect: () => void;
   cancellation?: string | null;
@@ -1314,6 +1053,10 @@ function RoomCard({
         {image ? (
           <PublicMediaImage
             src={image}
+            srcSet={imageSrcSet}
+            width={imageWidth}
+            height={imageHeight}
+            sizes="(min-width: 1024px) 240px, (min-width: 768px) 30vw, 100vw"
             alt={title}
             className="h-full w-full object-cover transition duration-300 hover:scale-105"
           />
@@ -1355,7 +1098,7 @@ function RoomCard({
           <div>
             <p className="text-xl sm:text-2xl font-black text-[var(--hk-navy)]">
               {from && "From "}
-              {money(price, currency)}{" "}
+              {checking ? <span aria-label="Checking room price" className="inline-block h-7 w-24 rounded bg-slate-100 animate-pulse motion-reduce:animate-none" /> : money(price, currency)}{" "}
               <span className="text-xs font-normal text-slate-400">
                 {priceLabel}
               </span>
@@ -1380,6 +1123,7 @@ function RoomCard({
           <button
             type="button"
             aria-pressed={selected}
+            disabled={disabled}
             onClick={(e) => {
               e.stopPropagation();
               onSelect();
@@ -1409,6 +1153,12 @@ function BookingCard({
   onChoiceChange,
   initialStay,
   onStayChange,
+  onModeChange,
+  checking,
+  expired,
+  failed,
+  invalid,
+  canReserve,
 }: {
   offersCurrent: boolean;
   onRefresh: () => void;
@@ -1419,26 +1169,26 @@ function BookingCard({
   selectedChoice: string;
   onChoiceChange: (value: string) => void;
   initialStay: StaySearch | null;
-  onStayChange: (value: StaySearch) => void;
+  onStayChange: (value: Partial<StaySearch>, debounce?: boolean) => void;
+  onModeChange: (mode: "overnight" | "hourly") => void;
+  checking: boolean;
+  expired: boolean;
+  failed: boolean;
+  invalid: boolean;
+  canReserve: () => boolean;
 }) {
   const queryClient = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [today] = useState(
-    () => localParts(Date.now(), property.timezone ?? "Asia/Kolkata").date,
-  );
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const today = localParts(currentTime, property.timezone ?? "Asia/Kolkata").date;
   const hourly = initialStay?.bookingMode === "hourly";
-  const [checkIn, setCheckIn] = useState(initialStay?.checkIn ?? "");
-  const [checkOut, setCheckOut] = useState(initialStay?.checkOut ?? "");
-  const [adults, setAdults] = useState(initialStay?.adults ?? 2);
-  const [children, setChildren] = useState(initialStay?.children ?? 0);
-  const [arrivalTime, setArrivalTime] = useState(
-    initialStay?.arrivalTime ?? "10:00",
-  );
-  const [durationMinutes, setDurationMinutes] = useState(
-    initialStay?.durationMinutes ?? 180,
-  );
-  const [infants, setInfants] = useState(initialStay?.infants ?? 0);
+  const checkIn = initialStay?.checkIn ?? "";
+  const checkOut = initialStay?.checkOut ?? "";
+  const adults = initialStay?.adults ?? 2;
+  const children = initialStay?.children ?? 0;
+  const infants = initialStay?.infants ?? 0;
+  const arrivalTime = initialStay?.arrivalTime ?? "10:00";
+  const durationMinutes = initialStay?.durationMinutes ?? 180;
   const [openPopover, setOpenPopover] = useState<
     "calendar" | "guests" | "rooms" | null
   >(null);
@@ -1558,93 +1308,13 @@ function BookingCard({
     return () => window.clearInterval(timer);
   }, []);
 
-  const hourlyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (hourlyTimer.current) clearTimeout(hourlyTimer.current);
-    },
-    [],
-  );
-  const persistStay = useCallback(
-    (next: Partial<StaySearch>, debounce = false) => {
-      const value = {
-        ...initialStay,
-        ...(hourly ? { arrivalTime, durationMinutes } : {}),
-        checkIn,
-        checkOut,
-        adults,
-        children,
-        infants,
-        ...next,
-      };
-      if (
-        (value.bookingMode === "hourly" && value.checkIn) ||
-        (value.checkIn && value.checkOut && value.checkOut > value.checkIn) ||
-        (!value.checkIn && !value.checkOut)
-      ) {
-        if (value.bookingMode === "hourly" || debounce) {
-          if (hourlyTimer.current) clearTimeout(hourlyTimer.current);
-          hourlyTimer.current = setTimeout(() => onStayChange(value), 350);
-        } else onStayChange(value);
-      }
-    },
-    [
-      adults,
-      arrivalTime,
-      checkIn,
-      checkOut,
-      children,
-      durationMinutes,
-      hourly,
-      infants,
-      initialStay,
-      onStayChange,
-    ],
-  );
-
   useEffect(() => {
-    if (!hourly || !arrivalTimeOptions.length) return;
-    if (arrivalTimeOptions.some((option) => option.value === arrivalTime))
-      return;
+    if (!hourly || checkIn !== today || !arrivalTimeOptions.length || arrivalTimeOptions.some(option => option.value === arrivalTime)) return;
+    onStayChange({ arrivalTime: arrivalTimeOptions[0].value }, true);
+  }, [hourly, checkIn, today, arrivalTimeOptions, arrivalTime, onStayChange]);
 
-    const nextArrivalTime = arrivalTimeOptions[0].value;
-    const timer = window.setTimeout(() => {
-      setArrivalTime(nextArrivalTime);
-      persistStay({ arrivalTime: nextArrivalTime, durationMinutes });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [arrivalTime, arrivalTimeOptions, durationMinutes, hourly, persistStay]);
-
-  const switchMode = (bookingMode: "overnight" | "hourly") => {
-    const date =
-      checkIn ||
-      new Date(Date.parse(`${today}T00:00Z`) + 86400000)
-        .toISOString()
-        .slice(0, 10);
-    onStayChange({
-      bookingMode,
-      checkIn: date,
-      adults,
-      children,
-      infants,
-      ...(bookingMode === "hourly"
-        ? {
-            checkOut: undefined,
-            arrivalTime: initialStay?.arrivalTime ?? "10:00",
-            durationMinutes: initialStay?.durationMinutes ?? 180,
-          }
-        : {
-            checkOut:
-              checkOut > date
-                ? checkOut
-                : new Date(Date.parse(`${date}T00:00Z`) + 86400000)
-                    .toISOString()
-                    .slice(0, 10),
-            arrivalTime: undefined,
-            durationMinutes: undefined,
-          }),
-    });
-  };
+  const persistStay = onStayChange;
+  const switchMode = onModeChange;
 
   return (
     <aside
@@ -1678,14 +1348,15 @@ function BookingCard({
         {/* Header Price & Rating */}
         <div className="flex items-end justify-between border-b border-slate-100 pb-5">
           <div>
-            <span className="text-3xl font-bold text-[#0F172A]">
+            <span aria-busy={checking} className="inline-flex min-h-10 items-center text-3xl font-bold text-[#0F172A]">
+              {checking ? <span aria-label="Checking price" className="text-sm font-medium text-slate-500">Checking price…</span> : invalid || failed ? "Price unavailable" : <>
               {initialStay?.checkIn && !selected
                 ? "Choose a room"
                 : selected
                   ? `${!initialStay?.checkIn ? "From " : ""}${money(selected.totalPaise ?? selected.basePricePaise, property.currency)}`
-                  : `${!initialStay?.checkIn ? "From " : ""}${money(property.minimumPricePaise, property.currency)}`}
+                  : `${!initialStay?.checkIn ? "From " : ""}${money(property.minimumPricePaise, property.currency)}`}</>}
             </span>
-            {(!initialStay?.checkIn || selected) && (
+            {!checking && (!initialStay?.checkIn || selected) && (
               <span className="text-sm font-normal text-slate-500">
                 {" "}
                 {hourly
@@ -1708,7 +1379,7 @@ function BookingCard({
           </p>
         )}
         {/* Custom Datepicker Fields */}
-        {hourly && !hourlyDurations.length && (
+        {hourly && !checking && !hourlyDurations.length && (
           <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm">
             Hourly prices are not configured for these guests yet. Try an
             overnight stay.
@@ -1724,11 +1395,10 @@ function BookingCard({
                 min={today}
                 value={checkIn}
                 onChange={(event) => {
-                  setCheckIn(event.target.value);
                   persistStay({
                     checkIn: event.target.value,
                     checkOut: undefined,
-                  });
+                  }, true);
                 }}
                 className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
               />
@@ -1740,11 +1410,10 @@ function BookingCard({
                   aria-label="Local arrival time"
                   value={displayedArrivalTime}
                   onChange={(event) => {
-                    setArrivalTime(event.target.value);
                     persistStay({
                       arrivalTime: event.target.value,
                       durationMinutes,
-                    });
+                    }, true);
                   }}
                   className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                   disabled={!arrivalTimeOptions.length}
@@ -1762,11 +1431,10 @@ function BookingCard({
                   aria-label="Guest duration"
                   value={durationMinutes}
                   onChange={(event) => {
-                    setDurationMinutes(Number(event.target.value));
                     persistStay({
                       durationMinutes: Number(event.target.value),
                       arrivalTime,
-                    });
+                    }, true);
                   }}
                   className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                 >
@@ -1779,8 +1447,7 @@ function BookingCard({
                   )}
                   {durationOptions.map((row) => (
                     <option key={row.hours} value={row.hours * 60}>
-                      {row.hours} {row.hours === 1 ? "hour" : "hours"} · from{" "}
-                      {money(row.pricePaise, property.currency)}
+                      {row.hours} {row.hours === 1 ? "hour" : "hours"}{!checking ? ` · from ${money(row.pricePaise, property.currency)}` : ""}
                     </option>
                   ))}
                 </select>
@@ -1863,17 +1530,13 @@ function BookingCard({
                 today={today}
                 onPick={(day) => {
                   if (!checkIn || checkOut || day <= checkIn) {
-                    setCheckIn(day);
-                    setCheckOut("");
+                    persistStay({ checkIn: day, checkOut: undefined });
                   } else {
-                    setCheckOut(day);
                     persistStay({ checkOut: day });
                     setOpenPopover(null);
                   }
                 }}
                 onClear={() => {
-                  setCheckIn("");
-                  setCheckOut("");
                   persistStay({ checkIn: undefined, checkOut: undefined });
                 }}
                 onClose={() => setOpenPopover(null)}
@@ -1922,7 +1585,6 @@ function BookingCard({
                 min={1}
                 max={12}
                 onChange={(value) => {
-                  setAdults(value);
                   persistStay({ adults: value }, true);
                 }}
               />
@@ -1933,7 +1595,6 @@ function BookingCard({
                 min={0}
                 max={10}
                 onChange={(value) => {
-                  setChildren(value);
                   persistStay({ children: value }, true);
                 }}
               />
@@ -1944,7 +1605,6 @@ function BookingCard({
                 min={0}
                 max={10}
                 onChange={(value) => {
-                  setInfants(value);
                   persistStay({ infants: value }, true);
                 }}
               />
@@ -1971,7 +1631,7 @@ function BookingCard({
             <span className="flex items-center justify-between text-xs md:text-sm font-semibold text-[var(--hk-navy)]">
               <span className="truncate">
                 {selected
-                  ? `${selectedRoom?.name} · ${selected.name} · ${money(selected.totalPaise ?? selected.basePricePaise, property.currency)}`
+                  ? `${selectedRoom?.name} · ${selected.name}${checking ? "" : ` · ${money(selected.totalPaise ?? selected.basePricePaise, property.currency)}`}`
                   : "Select a room & rate"}
               </span>
               <ChevronDown
@@ -1992,6 +1652,7 @@ function BookingCard({
                     <button
                       key={val}
                       type="button"
+                      disabled={checking || invalid || failed}
                       onClick={() => {
                         onChoiceChange(val);
                         setOpenPopover(null);
@@ -2011,7 +1672,7 @@ function BookingCard({
                         </p>
                       </div>
                       <span className="text-xs font-bold text-[var(--hk-navy)]">
-                        {money(
+                        {checking ? "Checking…" : money(
                           rate.totalPaise ?? rate.basePricePaise,
                           property.currency,
                         )}
@@ -2037,7 +1698,7 @@ function BookingCard({
           <Link
             href={`/booking/checkout?${query}`}
             onClick={(event) => {
-              if (!selected?.validUntil || selected.validUntil <= Date.now()) {
+              if (!selected?.validUntil || !canReserve()) {
                 event.preventDefault();
                 onRefresh();
                 return;
@@ -2062,15 +1723,17 @@ function BookingCard({
           </Link>
         ) : (
           <button
-            disabled
-            className="mt-5 w-full rounded-xl bg-slate-200 py-3.5 text-sm font-bold text-slate-400 cursor-not-allowed"
+            type="button"
+            disabled={checking || invalid || (!expired && !failed)}
+            onClick={onRefresh}
+            className="mt-5 w-full rounded-xl bg-slate-200 py-3.5 text-sm font-bold text-slate-600 disabled:cursor-not-allowed disabled:text-slate-400"
           >
-            Choose valid dates and a room
+            {checking ? "Checking availability…" : invalid ? "Choose valid dates" : failed ? "Retry availability" : expired ? "Refresh availability" : !checkIn ? "Choose dates" : !rooms.length ? "No matching rooms" : "Select a room"}
           </button>
         )}
 
         <div className="mt-5 border-t border-slate-100 text-xs text-slate-500 space-y-1.5">
-          {selected?.cancellationTerms &&
+          {!checking && !invalid && !failed && selected?.cancellationTerms &&
             cancellationLabel(
               selected.cancellationTerms,
               property.timezone ?? "Asia/Kolkata",
@@ -2082,10 +1745,10 @@ function BookingCard({
                 )}
               </p>
             )}
-          {selected?.breakfastIncluded && (
+          {!checking && !invalid && !failed && selected?.breakfastIncluded && (
             <p className="text-emerald-700 font-medium">Breakfast included</p>
           )}
-          {selected?.cancellation && (
+          {!checking && !invalid && !failed && selected?.cancellation && (
             <p className="text-slate-600">
               {selected.cancellation.name}: {selected.cancellation.description}
             </p>
@@ -2093,54 +1756,6 @@ function BookingCard({
         </div>
       </div>
     </aside>
-  );
-}
-
-function GuestCounterRow({
-  label,
-  note,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  note: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-      <div>
-        <b className="block text-xs font-bold text-[var(--hk-navy)]">{label}</b>
-        <span className="text-[11px] text-slate-400">{note}</span>
-      </div>
-      <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          aria-label={`Decrease ${label}`}
-          disabled={value <= min}
-          onClick={() => onChange(value - 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition"
-        >
-          <Minus className="h-3 w-3" />
-        </button>
-        <span className="w-4 text-center font-bold text-xs text-[var(--hk-navy)]">
-          {value}
-        </span>
-        <button
-          type="button"
-          aria-label={`Increase ${label}`}
-          disabled={value >= max}
-          onClick={() => onChange(value + 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition"
-        >
-          <Plus className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
   );
 }
 

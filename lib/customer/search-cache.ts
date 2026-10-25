@@ -21,8 +21,6 @@ export async function cachedSearch<T>(queryHash: string, loader: () => Promise<S
       return result.expiresAt > Date.now() && Array.isArray(result.items) ? result : null;
     } catch { return null; }
   };
-  const hit = await read();
-  if (hit) { console.info(JSON.stringify({ event: "search.snapshot", cache: "hit", durationMs: Date.now() - startedAt, queryHash, results: hit.items.length })); return hit; }
   const existing = pending.get(key);
   if (existing) {
     const result = await existing as SearchSnapshot<T>;
@@ -30,12 +28,17 @@ export async function cachedSearch<T>(queryHash: string, loader: () => Promise<S
     return result;
   }
   const work = (async () => {
+    const hit = await read();
+    if (hit) {
+      console.info(JSON.stringify({ event: "search.snapshot", cache: "hit", durationMs: Date.now() - startedAt, queryHash, results: hit.items.length }));
+      return hit;
+    }
     const lockKey = `${key}:lock`, token = randomUUID();
     let acquired = generations ? await withRedis(redis => redis.set(lockKey, token, "PX", 15_000, "NX")) : null;
     if (generations && !acquired) {
       // A concurrent process may be evaluating this same search. Wait briefly,
       // then compute directly rather than holding an HTTP request indefinitely.
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 100));
         const value = await read();
         if (value) return value;

@@ -403,6 +403,7 @@ function TravelSearchContent({
 
   // Helpkey suggestions via react-query: shared caching, dedupe, and automatic
   // request cancellation replace the previous manual fetch + request-id guard.
+  const destinationOpen = open === "destination";
   const helpkeyQuery = useQuery({
     queryKey: queryKeys.suggestions(term),
     queryFn: ({ signal }) =>
@@ -410,17 +411,17 @@ function TravelSearchContent({
         `/api/search/suggestions?q=${encodeURIComponent(term)}`,
         { signal },
       ),
-    enabled: term.length >= 2,
+    enabled: destinationOpen && term.length >= 2,
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
   const helpkey =
-    term.length >= 2 ? (helpkeyQuery.data?.suggestions ?? []) : [];
+    destinationOpen && term.length >= 2 ? (helpkeyQuery.data?.suggestions ?? []) : [];
 
   useEffect(() => {
     // Google Places autocomplete stays on the Maps JS SDK (not our API), keyed on
     // the same debounced term. A monotonic id guards against out-of-order results.
-    if (!term) {
+    if (!destinationOpen || !term) {
       setGoogle([]);
       return;
     }
@@ -470,9 +471,9 @@ function TravelSearchContent({
     return () => {
       cancelled = true;
     };
-  }, [term]);
+  }, [destinationOpen, term]);
 
-  const loading = (helpkeyQuery.isFetching && term.length >= 2) || resolving;
+  const loading = (destinationOpen && helpkeyQuery.isFetching && term.length >= 2) || resolving;
 
   const chooseHelpkey = (item: HelpkeySuggestion) => {
     // A property suggestion is a specific hotel, not a destination string —

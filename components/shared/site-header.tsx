@@ -67,6 +67,7 @@ function SiteHeaderContent({
   showAudienceToggle = true,
   stayType,
   onStayTypeChange,
+  availableStayTypes,
 }: {
   variant?: "traveler" | "partner";
   activeHref?: string;
@@ -74,6 +75,7 @@ function SiteHeaderContent({
   showAudienceToggle?: boolean;
   stayType?: "overnight" | "dayuse";
   onStayTypeChange?: (mode: "overnight" | "dayuse") => void;
+  availableStayTypes?: Array<"overnight" | "dayuse">;
 }) {
   if (variant === "partner") {
     return <PartnerHeader />;
@@ -86,6 +88,7 @@ function SiteHeaderContent({
       showAudienceToggle={showAudienceToggle}
       stayType={stayType}
       onStayTypeChange={onStayTypeChange}
+      availableStayTypes={availableStayTypes}
     />
   );
 }
@@ -96,12 +99,14 @@ function TravelerHeader({
   showAudienceToggle,
   stayType,
   onStayTypeChange,
+  availableStayTypes,
 }: {
   activeHref?: string;
   onLoginClick?: () => void;
   showAudienceToggle: boolean;
   stayType?: "overnight" | "dayuse";
   onStayTypeChange?: (mode: "overnight" | "dayuse") => void;
+  availableStayTypes?: Array<"overnight" | "dayuse">;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -112,6 +117,7 @@ function TravelerHeader({
   const handleStayTypeChange = (mode: "overnight" | "dayuse") => {
     if (onStayTypeChange) {
       onStayTypeChange(mode);
+      return;
     }
     const previousParams = new URLSearchParams(searchParams?.toString() ?? "");
     const bookingMode = mode === "dayuse" ? "hourly" : "overnight";
@@ -202,9 +208,10 @@ function TravelerHeader({
             <div className="flex items-center rounded-full border border-[var(--hk-border-strong)] bg-[var(--hk-surface-soft)] p-1">
               <button
                 type="button"
+                disabled={availableStayTypes && !availableStayTypes.includes("overnight")}
                 onClick={() => handleStayTypeChange("overnight")}
                 aria-pressed={currentStayType === "overnight"}
-                className={`flex items-center gap-2 rounded-full px-4 py-2 text-[13px] ${
+                className={`flex items-center gap-2 rounded-full px-4 py-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed ${
                   currentStayType === "overnight"
                     ? "bg-[var(--hk-navy-strong)] text-white shadow-sm"
                     : "text-[var(--hk-ink)]"
@@ -215,9 +222,10 @@ function TravelerHeader({
               </button>
               <button
                 type="button"
+                disabled={availableStayTypes && !availableStayTypes.includes("dayuse")}
                 onClick={() => handleStayTypeChange("dayuse")}
                 aria-pressed={currentStayType === "dayuse"}
-                className={`flex items-center gap-2 rounded-full px-4 py-2 text-[13px] ${
+                className={`flex items-center gap-2 rounded-full px-4 py-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed ${
                   currentStayType === "dayuse"
                     ? "bg-[var(--hk-navy-strong)] text-white shadow-sm"
                     : "text-[var(--hk-ink)]"

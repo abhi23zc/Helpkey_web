@@ -41,6 +41,8 @@ export type CheckoutDisplay = {
   propertyRules: import("@/lib/partner/guest-policies").GuestPolicies;
   timezone: string;
   roomType: { id: string; name: string };
+  /** The room's guest limits, used to bound the checkout guest selector. */
+  capacity: { maxAdults: number; maxChildren: number; maxInfants: number; maxOccupancy: number };
   ratePlan: { id: string; name: string; paymentMode: "full" | "deposit" | "pay_at_property" };
   bookingMode: "overnight" | "hourly";
   checkIn: string;

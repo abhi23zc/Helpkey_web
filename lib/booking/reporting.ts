@@ -1,5 +1,5 @@
 import { canonicalStatus, localParts, resolveLocal } from "./domain";
-type Row = { bookingStatus: string; bookingMode?: string; checkIn: string; checkOut: string; startAt?: string; endAt?: string; specialRequest?: string; roomType?: { name?: string } };
+type Row = { bookingStatus: string; bookingMode?: string; checkIn: string; checkOut: string; startAt?: string; endAt?: string; specialRequest?: string; customizations?: { status: string }[]; roomType?: { name?: string } };
 export function reservationSummary(rows: Row[], timezone: string, now = Date.now()) {
   const today = localParts(now, timezone).date;
   const active = (row: Row) => ["pending_payment", "confirmed", "checked_in"].includes(row.bookingStatus);
@@ -10,7 +10,7 @@ export function reservationSummary(rows: Row[], timezone: string, now = Date.now
   return {
     today, matchesView,
     tabCounts: Object.fromEntries(tabs.map((tab) => [tab, rows.filter((row) => matchesView(row, tab)).length])),
-    metrics: { arrivals: rows.filter(arrival).length, departures: rows.filter((row) => row.checkOut === today && ["checked_in", "checked_out", "completed"].includes(row.bookingStatus)).length, staying: rows.filter((row) => row.bookingStatus === "checked_in").length, pendingRequests: rows.filter((row) => active(row) && row.specialRequest).length, noShowRisk: rows.filter(noShow).length },
+    metrics: { arrivals: rows.filter(arrival).length, departures: rows.filter((row) => row.checkOut === today && ["checked_in", "checked_out", "completed"].includes(row.bookingStatus)).length, staying: rows.filter((row) => row.bookingStatus === "checked_in").length, pendingRequests: rows.filter((row) => active(row) && (row.specialRequest || row.customizations?.some(r => r.status === "requested"))).length, noShowRisk: rows.filter(noShow).length },
     roomNames: [...new Set(rows.map((row) => row.roomType?.name).filter(Boolean))].sort(),
   };
 }

@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -19,7 +18,7 @@
   --hk-rating: #d6b36a;
   --hk-success: #2f7d5c;
   --hk-favorite: #ef4444;
-  --hk-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --hk-font-sans: var(--hk-font-jakarta, "Plus Jakarta Sans"), ui-sans-serif, system-ui, sans-serif;
   --hk-shadow-soft: 0 4px 20px rgba(11, 31, 58, 0.04);
   --hk-shadow-card: 0 12px 32px rgba(11, 31, 58, 0.08);
   --hk-hero-overlay-solid: rgba(11, 31, 58, 0.6);
@@ -297,4 +296,36 @@ input {
   .hk-drawer-panel {
     animation: hkDrawerIn 0.2s ease-out;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Checkout extras share the public hotel palette. */
+.hk-extra-chip {
+  display: inline-flex;
+  flex-shrink: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--hk-border);
+  border-radius: 999px;
+  background: white;
+  padding: 0.5rem 0.875rem;
+  color: var(--hk-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background-color 150ms, border-color 150ms;
+}
+.hk-extra-chip:hover { border-color: var(--hk-navy); color: var(--hk-navy); }
+.hk-extra-chip-active { background: var(--hk-navy); color: white; border-color: var(--hk-navy); }
+.hk-extra-chip-active:hover { color: white; }
+.hk-checkout :is(button, summary, input, textarea, a):focus-visible {
+  outline: 2px solid var(--hk-gold);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hk-checkout *, .hk-extra-chip { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
