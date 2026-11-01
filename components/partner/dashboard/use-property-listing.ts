@@ -22,6 +22,12 @@ export type ListingMedia = {
 };
 
 export type ListingRatePlan = {
+  minimumDurationMinutes?: number | null;
+  maximumDurationMinutes?: number | null;
+  minimumAdvanceMinutes?: number | null;
+  maximumAdvanceDays?: number | null;
+  eligibleWeekdays?: number[];
+  datePricingEnabled?: boolean;
   breakfastIncluded?: boolean;
   bookingMode?: "overnight" | "hourly";
   pricingModel?: "nightly" | "duration";
@@ -64,6 +70,7 @@ export type ListingRoomType = {
 };
 
 export type ListingProperty = GuestPolicies & {
+  slug?: string;
   bookingModes?: ("overnight" | "hourly")[];
   cleaningBufferMinutes?: number;
   inventoryEngine?: string;
@@ -106,7 +113,7 @@ export type ListingResponse = {
   property: ListingProperty;
   roomTypes: ListingRoomType[];
   ratePlans: ListingRatePlan[];
-  policies: Array<{ id: string; name?: string }>;
+  policies: Array<{ id: string; name?: string; description?: string; refundableUntilHours?: number; cancellationFeePercent?: number }>;
   media: ListingMedia[];
   documents: Array<{ id: string; documentType?: string; status?: string }>;
 };

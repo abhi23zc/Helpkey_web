@@ -1,16 +1,24 @@
 "use client";
+import { ResponseControls } from "./response-controls";
+import { resolveResponse, responseLimit, replaceSelection, requiredResponseError } from "@/lib/stay/response";
+/* eslint-disable @next/next/no-img-element */
+import { includedOffering } from "@/lib/stay/inclusions";
+import { GuestInputFields } from "./guest-input-fields";
+import { recommendedOfferings } from "@/lib/stay/recommendations";
 
 import { useEffect, useState } from "react";
 import {
   BedDouble,
   Plug,
   Coffee,
-  Sparkles,
+  Bath,
+  Shirt,
+  Compass,
+  PartyPopper,
   DoorOpen,
   Gift,
   Search,
   Plus,
-  Minus,
   Check,
   ChevronDown,
   Clock,
@@ -29,15 +37,29 @@ import {
   matchesExtrasPrice,
   type ExtrasFilter,
 } from "@/lib/stay/browsing";
-import { offeringPriceLabel, variantPrice } from "@/lib/stay/pricing";
+import {
+  offeringPriceLabel,
+  variantPrice,
+  pricingUnitLabel,
+} from "@/lib/stay/pricing";
 import { formatMoney } from "@/lib/customer/offer";
-import { TravelerChips } from "./personalization-picker";
 
-const categoryIcons = {
+const categoryIcons: Record<string, typeof Gift> = {
+  comfort: BedDouble,
+  bathroom: Bath,
+  technology: Plug,
+  family: Gift,
+  business: Coffee,
+  housekeeping: Shirt,
+  transport: Gift,
+  wellness: Gift,
+  experiences: Compass,
+  groups: Gift,
+  pets: Gift,
   room_essentials: BedDouble,
   devices: Plug,
   food_drinks: Coffee,
-  celebrations: Sparkles,
+  celebrations: PartyPopper,
   room_preferences: DoorOpen,
   other: Gift,
 };
@@ -55,14 +77,15 @@ export function CheckoutExtrasCatalog({
   selections,
   onChange,
   preferences,
-  onPreferences,
   startAt,
   timezone,
   currency,
   disabled,
   roomTypeId,
   bookingMode,
+  includedCodes = [],
 }: {
+  includedCodes?: string[];
   offerings: Offering[];
   selections: Selection[];
   onChange: (value: Selection[]) => void;
@@ -75,9 +98,17 @@ export function CheckoutExtrasCatalog({
   roomTypeId: string;
   bookingMode: string;
 }) {
+  const [browse, setBrowse] = useState(false);
+  const [inputDrafts, setInputDrafts] = useState<
+    Record<string, Selection["inputs"]>
+  >({});
+  const [inputError, setInputError] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState<ExtrasFilter>("all");
+  const [variantFocus, setVariantFocus] = useState<
+    Record<string, string | null>
+  >({});
   const [expanded, setExpanded] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -89,31 +120,97 @@ export function CheckoutExtrasCatalog({
     .filter((o) => o.status === "active")
     .sort((a, b) => a.name.localeCompare(b.name));
   const unavailableMessage = (o: Offering) =>
-    unavailableExtraMessage(o, roomTypeId, bookingMode, startAt, timezone, now);
-  const visible = sorted.filter((o) =>
+    includedOffering(o, includedCodes)
+      ? "Already included in your room or rate · No need to add again."
+      : o.pricingUnit === "night" && bookingMode === "hourly"
+        ? "Available for overnight stays only (priced per night)."
+        : unavailableExtraMessage(
+            o,
+            roomTypeId,
+            bookingMode,
+            startAt,
+            timezone,
+            now,
+          );
+  const filtered = sorted.filter((o) =>
     matchesExtras(o, search, category, filter, selectedIds),
   );
+  const shortlist = recommendedOfferings(
+    sorted.filter((o) => !unavailableMessage(o)),
+    preferences,
+  );
+  const visible =
+    !browse && !search.trim() && category === "all" && filter === "all"
+      ? shortlist
+      : filtered;
   const available = visible.filter((o) => !unavailableMessage(o));
   const unavailable = visible.filter((o) => unavailableMessage(o));
-  const suggestions = sorted
-    .filter(
-      (o) =>
-        !unavailableMessage(o) &&
-        o.travelerCategories.some((t) => preferences.includes(t)),
-    )
-    .slice(0, 4);
   function change(o: Offering, variantId: string | null, quantity: number) {
-    const rest = selections.filter(
-      (s) => !(s.offeringId === o.id && s.variantId === variantId),
-    );
-    onChange(
-      quantity > 0
-        ? [...rest, { offeringId: o.id, variantId, quantity }]
-        : rest,
-    );
+    const key = JSON.stringify([o.id, variantId]);
+    const inputs =
+      inputDrafts[key] ??
+      selections.find((s) => s.offeringId === o.id && s.variantId === variantId)
+        ?.inputs ??
+      {};
+    const missing = requiredResponseError(o, inputs);
+    if (quantity > 0 && missing) { setInputError(missing); return; }
+    setInputError("");
+    onChange(replaceSelection(selections, o, variantId, quantity, inputs));
   }
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-[var(--hk-navy)]">
+            {!browse && !search && category === "all" && filter === "all"
+              ? "Recommended for your stay"
+              : "Browse stay extras"}
+          </h3>
+          <p className="mt-1 text-xs text-[var(--hk-muted)]">
+            Optional touches from your hotel. Choose any, or continue without
+            extras.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="hk-extra-chip"
+          onClick={() => {
+            setBrowse(!browse);
+            setSearch("");
+            setCategory("all");
+            setFilter("all");
+          }}
+        >
+          {browse ? "Recommendations" : "Browse all"}
+        </button>
+      </div>
+      {selectedIds.size > 0 && (
+        <div
+          aria-label="Selected extras"
+          className="flex flex-wrap gap-2 rounded-xl bg-white p-3"
+        >
+          {[...selectedIds].map((id) => (
+            <button
+              type="button"
+              key={id}
+              disabled={disabled}
+              onClick={() =>
+                onChange(selections.filter((s) => s.offeringId !== id))
+              }
+              className="hk-extra-chip"
+            >
+              {offerings.find((o) => o.id === id)?.name ?? "Selected extra"} ·
+              Remove ×
+            </button>
+          ))}
+        </div>
+      )}
+      {inputError && (
+        <p role="alert" className="text-sm text-red-700">
+          {inputError}
+        </p>
+      )}
+
       {selections.length >= 30 && (
         <p role="status" className="text-xs text-[var(--hk-muted)]">
           You can select up to 30 different choices per booking. Remove a choice
@@ -126,40 +223,34 @@ export function CheckoutExtrasCatalog({
           aria-label="Search stay options"
           placeholder="Search pillows, chargers, celebrations…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (e.target.value) setBrowse(true);
+          }}
           className="h-12 w-full rounded-xl border border-[var(--hk-border)] bg-white pl-12 pr-4 text-sm outline-none focus:border-[var(--hk-navy)] focus:ring-2 focus:ring-[var(--hk-navy)]/10"
         />
       </div>
-      <div
-        aria-label="Extra categories"
-        className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible"
-      >
-        <button
-          type="button"
-          aria-pressed={category === "all"}
-          onClick={() => setCategory("all")}
-          className={`hk-extra-chip ${category === "all" ? "hk-extra-chip-active" : ""}`}
+      <label className="flex items-center gap-3 text-xs font-semibold text-[var(--hk-muted)]">
+        Category
+        <select
+          aria-label="Extra categories"
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setBrowse(true);
+          }}
+          className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--hk-border)] bg-white px-3 text-sm text-[var(--hk-navy)]"
         >
-          All categories
-        </button>
-        {offeringCategories
-          .filter((c) => offerings.some((o) => offeringCategory(o) === c))
-          .map((c) => {
-            const Icon = categoryIcons[c];
-            return (
-              <button
-                key={c}
-                type="button"
-                aria-pressed={category === c}
-                onClick={() => setCategory(c)}
-                className={`hk-extra-chip ${category === c ? "hk-extra-chip-active" : ""}`}
-              >
-                <Icon className="h-4 w-4" />
+          <option value="all">All categories</option>
+          {offeringCategories
+            .filter((c) => offerings.some((o) => offeringCategory(o) === c))
+            .map((c) => (
+              <option key={c} value={c}>
                 {offeringCategoryLabels[c]}
-              </button>
-            );
-          })}
-      </div>
+              </option>
+            ))}
+        </select>
+      </label>
       <div
         className="flex flex-wrap items-center gap-1 border-b border-[var(--hk-border)] pb-3"
         aria-label="Extra price filters"
@@ -183,49 +274,6 @@ export function CheckoutExtrasCatalog({
           {unavailable.length > 0 ? ` · ${unavailable.length} unavailable` : ""}
         </span>
       </div>
-      <details className="rounded-xl border border-[var(--hk-border)] bg-white px-4 py-3">
-        <summary className="min-h-6 cursor-pointer text-sm font-semibold text-[var(--hk-navy)]">
-          Suggestions for your trip{" "}
-          <span className="font-normal text-[var(--hk-muted)]">· Optional</span>
-        </summary>
-        <div className="mt-4">
-          <TravelerChips
-            value={preferences}
-            onChange={onPreferences}
-            disabled={disabled}
-          />
-        </div>
-        {suggestions.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {suggestions.map((o) => (
-              <button
-                type="button"
-                key={o.id}
-                className="hk-extra-chip"
-                onClick={() => {
-                  setSearch("");
-                  setCategory("all");
-                  setFilter("all");
-                  setExpanded((old) => [...old, o.id]);
-                  requestAnimationFrame(() =>
-                    document.getElementById(`extra-${o.id}`)?.scrollIntoView({
-                      block: "center",
-                      behavior: window.matchMedia(
-                        "(prefers-reduced-motion: reduce)",
-                      ).matches
-                        ? "instant"
-                        : "smooth",
-                    }),
-                  );
-                }}
-              >
-                <Sparkles className="h-3.5 w-3.5 text-[var(--hk-gold)]" />
-                {o.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </details>
       {!visible.length && (
         <div className="rounded-2xl border border-dashed border-[var(--hk-border)] bg-white px-6 py-10 text-center">
           <Gift className="mx-auto mb-3 h-7 w-7 text-[var(--hk-muted)]" />
@@ -268,7 +316,17 @@ export function CheckoutExtrasCatalog({
           const deadline = Date.parse(startAt) - o.advanceNoticeMinutes * 60000;
           const expired = now >= deadline || o.status !== "active";
           const open = expanded.includes(o.id) || count > 0;
-          const Icon = categoryIcons[offeringCategory(o)];
+          const Icon = categoryIcons[offeringCategory(o)] ?? Gift;
+          const needsDetails = Boolean(
+            o.variants.length ||
+              o.formType === "scheduled" ||
+              resolveResponse(o).responseType === "text" ||
+              o.formType === "custom" ||
+              o.noteLabel ||
+              o.choiceGroups?.length ||
+              o.pricingUnit === "person" ||
+              o.pricingUnit === "hour",
+          );
           const variants = o.variants.length
             ? o.variants
             : [{ id: null, name: "Quantity" }];
@@ -293,18 +351,32 @@ export function CheckoutExtrasCatalog({
                 <div
                   className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${count ? "bg-[var(--hk-navy)] text-white" : "bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]"}`}
                 >
-                  <Icon className="h-5 w-5" />
+                  {o.imageId ? (
+                    <img
+                      src={`/api/stay-images/${encodeURIComponent(o.propertyId)}/${o.imageId}`}
+                      alt="Illustrative image; actual item may vary"
+                      className="h-10 w-10 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <Icon className="h-5 w-5" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-bold leading-5 text-[var(--hk-navy)]">
                     {o.name}
                   </h3>
                   <p className="mt-1 text-xs font-semibold text-[var(--hk-navy)]">
-                    {offeringPriceLabel(shownOffering, currency)}
+                    {o.formType === "custom"
+                      ? "Price after hotel review"
+                      : offeringPriceLabel(shownOffering, currency)}
                     <span className="font-normal text-[var(--hk-muted)]">
-                      {matchingVariants.some((v) => variantPrice(o, v.id) > 0)
-                        ? " / item / stay"
-                        : " · No extra charge"}
+                      {o.formType === "custom"
+                        ? " · Request only"
+                        : matchingVariants.some(
+                              (v) => variantPrice(o, v.id) > 0,
+                            )
+                          ? ` · ${pricingUnitLabel(o.pricingUnit)}`
+                          : " · No extra charge"}
                     </span>
                   </p>
                 </div>
@@ -318,12 +390,17 @@ export function CheckoutExtrasCatalog({
                   </span>
                 )}
               </div>
+              {o.imageId && (
+                <p className="mt-2 text-[10px] text-[var(--hk-muted)]">
+                  Illustrative image · Actual item may vary
+                </p>
+              )}
               <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--hk-muted)]">
                 {o.description}
               </p>
               {o.confirmation === "approval" && (
                 <p className="mt-2 text-xs text-[var(--hk-muted)]">
-                  Hotel approval required
+                  Hotel approval required · Not charged at checkout
                 </p>
               )}
               {expired && (
@@ -340,73 +417,115 @@ export function CheckoutExtrasCatalog({
                   type="button"
                   disabled={disabled || expired || selections.length >= 30}
                   onClick={() => {
-                    if (o.variants.length) setExpanded((old) => [...old, o.id]);
+                    if (needsDetails) setExpanded((old) => [...old, o.id]);
                     else change(o, null, 1);
                   }}
                   className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--hk-border)] text-sm font-semibold text-[var(--hk-navy)] transition hover:border-[var(--hk-navy)] hover:bg-[var(--hk-surface-soft)] disabled:opacity-50"
                 >
                   <Plus className="h-4 w-4" />
-                  {o.variants.length ? "Choose options" : "Add"}
+                  {needsDetails
+                    ? "Choose options"
+                    : o.confirmation === "approval"
+                      ? "Request"
+                      : "Add"}
                 </button>
               )}
               {open && (
                 <div className="mt-4 space-y-3 border-t border-[var(--hk-border)] pt-4">
                   <p className="text-xs text-[var(--hk-muted)]">
-                    Maximum {o.maxQuantity} per booking
+                    {!resolveResponse(o).quantityEnabled && resolveResponse(o).responseType !== "multiple"
+                      ? "One request per booking"
+                      : `Maximum ${o.maxQuantity} per booking`}
                     {o.variants.length ? " · Shared across choices" : ""}
                   </p>
                   {matchingVariants.map((v) => {
+                    const hasGuestInputs = Boolean(
+                      o.noteLabel ||
+                        o.noteRequired ||
+                        o.peopleRequired ||
+                        o.timeRequired ||
+                        o.formType === "scheduled" ||
+                        resolveResponse(o).responseType === "text" ||
+                        o.formType === "custom" ||
+                        o.pricingUnit === "person" ||
+                        o.pricingUnit === "hour" ||
+                        o.choiceGroups?.length,
+                    );
                     const quantity =
                       selections.find(
                         (s) => s.offeringId === o.id && s.variantId === v.id,
                       )?.quantity ?? 0;
+                    const showInputs =
+                      quantity > 0 ||
+                      (Object.hasOwn(variantFocus, o.id)
+                        ? variantFocus[o.id]
+                        : matchingVariants[0]?.id) === v.id;
                     return (
                       <div
                         key={v.id ?? "quantity"}
-                        className="flex flex-wrap items-center justify-between gap-2"
+                        className="space-y-3 rounded-xl border border-[var(--hk-border)] p-3"
                       >
-                        <div className="text-sm">
-                          <p className="font-medium text-[var(--hk-navy)]">
-                            {v.name}
-                          </p>
-                          <p className="text-xs text-[var(--hk-muted)]">
-                            {priceText(variantPrice(o, v.id), currency)}
-                          </p>
-                        </div>
-                        <div
-                          role="group"
-                          aria-label={`${o.name} ${v.name}`}
-                          className="flex items-center rounded-xl border border-[var(--hk-border)]"
-                        >
-                          <button
-                            type="button"
-                            aria-label={`Remove one ${o.name} ${v.name}`}
-                            disabled={disabled || quantity === 0}
-                            onClick={() => change(o, v.id, quantity - 1)}
-                            className="grid h-11 w-11 place-items-center rounded-l-xl hover:bg-[var(--hk-surface-soft)] disabled:opacity-30"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <output
-                            aria-label={`${o.name} ${v.name} quantity`}
-                            className="min-w-6 text-center text-sm font-semibold"
-                          >
-                            {quantity}
-                          </output>
-                          <button
-                            type="button"
-                            aria-label={`Add one ${o.name} ${v.name}`}
-                            disabled={
-                              disabled ||
-                              expired ||
-                              count >= o.maxQuantity ||
-                              (quantity === 0 && selections.length >= 30)
+                        {showInputs && (
+                          <GuestInputFields
+                            offering={o}
+                            timezone={timezone}
+                            disabled={disabled}
+                            value={
+                              inputDrafts[JSON.stringify([o.id, v.id])] ??
+                              selections.find(
+                                (s) =>
+                                  s.offeringId === o.id && s.variantId === v.id,
+                              )?.inputs
                             }
-                            onClick={() => change(o, v.id, quantity + 1)}
-                            className="grid h-11 w-11 place-items-center rounded-r-xl hover:bg-[var(--hk-surface-soft)] disabled:opacity-30"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
+                            onChange={(inputs) => {
+                              setInputDrafts((old) => ({
+                                ...old,
+                                [JSON.stringify([o.id, v.id])]: inputs,
+                              }));
+                              if (quantity)
+                                onChange(
+                                  selections.map((s) =>
+                                    s.offeringId === o.id &&
+                                    s.variantId === v.id
+                                      ? { ...s, inputs }
+                                      : s,
+                                  ),
+                                );
+                            }}
+                          />
+                        )}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm">
+                            <p className="font-medium text-[var(--hk-navy)]">
+                              {!o.variants.length
+                                ? "Request this"
+                                : v.name}
+                            </p>
+                            {"inclusions" in v && v.inclusions && (
+                              <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                                {v.inclusions}
+                              </p>
+                            )}
+                            <p className="text-xs text-[var(--hk-muted)]">
+                              {priceText(variantPrice(o, v.id), currency)}
+                            </p>
+                          </div>
+                          {hasGuestInputs && !showInputs ? (
+                            <button
+                              type="button"
+                              disabled={disabled || (resolveResponse(o).responseType !== "single" && count >= responseLimit(o))}
+                              onClick={() =>
+                                setVariantFocus((old) => ({
+                                  ...old,
+                                  [o.id]: v.id,
+                                }))
+                              }
+                              className="hk-extra-chip"
+                            >
+                              Choose {v.name}
+                            </button>
+                          ) : <ResponseControls offering={o} optionName={v.name} quantity={quantity} count={count} disabled={disabled} blockIncrease={expired || (selections.length >= 30 && quantity === 0 && !(resolveResponse(o).responseType === "single" && count > 0))} onChange={n => change(o, v.id, n)} />}
+
                         </div>
                       </div>
                     );

@@ -1,3 +1,4 @@
+import { datePriceId, priceDates } from "./date-prices";
 import "server-only";
 import type { Firestore, QueryDocumentSnapshot, DocumentReference } from "firebase-admin/firestore";
 import { allocateIntervals, evaluateStay, type StayRequest } from "./domain";
@@ -43,13 +44,15 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
   const rooms = options.preloaded?.rooms ?? await readDocuments(db, eligible.map(rate => db.collection("roomTypes").doc(rate.get("roomTypeId"))));
   const policyRefs = eligible.flatMap(rate => typeof rate.get("cancellationPolicyId") === "string" && rate.get("cancellationPolicyId") && !rate.get("cancellationPolicyId").includes("/") ? [db.collection("cancellationPolicies").doc(rate.get("cancellationPolicyId"))] : []);
   const policies = options.preloaded?.policies ?? await readDocuments(db, policyRefs);
+  const overrideDates = priceDates(input);
+  const datePrices = await readDocuments(db, eligible.filter(rate => rate.get("datePricingEnabled")).flatMap(rate => overrideDates.map(date => db.collection("rateDatePrices").doc(datePriceId(property.id, rate.id, date)))));
   const now = Date.now();
   const candidates = eligible.flatMap(rate => {
     const room = rooms.get(db.collection("roomTypes").doc(rate.get("roomTypeId")).path);
     const roomData = room?.data();
     if (!room?.exists || !roomData || roomData.propertyId !== property.id || roomData.status !== "active") return [];
     try {
-      const stay = evaluateStay(input, settings, roomData, rate.data(), now);
+      const stay = evaluateStay(input, settings, roomData, { ...rate.data(), datePrices: Object.fromEntries(overrideDates.flatMap(date => { const doc = datePrices.get(`rateDatePrices/${datePriceId(property.id, rate.id, date)}`); return doc?.exists ? [[date, doc.data()!]] : []; })) }, now);
       const policy = policies.get(`cancellationPolicies/${rate.get("cancellationPolicyId")}`)?.data();
       if (rate.get("cancellationPolicyId") && (!policy || policy.status !== "active" || policy.propertyId !== property.id)) return [];
       const terms = cancellationTerms(policy?.status === "active" && policy.propertyId === property.id ? policy : null, stay.startAt, now);

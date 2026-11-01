@@ -1359,3 +1359,64 @@ Database model implementation is complete only when:
 - Sensitive R2 media is delivered only through authorized short-lived signed URLs.
 
 Do not begin feature UI implementation until the relevant model, validation, authorization, transaction, and test contract is in place.
+
+## Partner reservations operational extension (2026-10-31)
+
+Reservations now explicitly extend the MVP with optional physical room allocation,
+immutable property collections, staff notes and pre-check-in amendments. Existing
+booking/payment statuses and room-type sellable capacity remain authoritative.
+
+- `physicalUnits/{id}`: propertyId, roomTypeId, label, status (`active`/`inactive`),
+  actor/timestamps. IDs are immutable. `physicalUnitLabels/{hash(property + normalized label)}`
+  claims enforce label uniqueness transactionally, including renames.
+  Room type is immutable; deactivation cannot remove an active assignment.
+- `physicalUnitCalendars/{unitId_date}`: propertyId, unitId, date, slots mapping
+  15-minute UTC slot keys to booking IDs (including cleaning buffer). Assignment
+  checks and old/new calendar writes are transactional. Historical calendars remain;
+  cancellation/no-show releases the allocation; checkout retains the scheduled buffer.
+- Bookings add optional `physicalUnitId`, `physicalUnitLabel`, `physicalAllocations`,
+  `reservationRevision`, `originalPropertyPaidAt`, `propertyRefundedPaise` and `propertyLedgerPaise` (net collections less reversals,
+  excluding refunds). No physical register is generated or inventory engine changed.
+- `propertyPayments/{id}`: immutable propertyId, bookingId, type (`collection`,
+  `reversal`, `refund`), amountPaise, method, reference, reason, receiptId, actor,
+  createdAt. Idempotency IDs hash actor + booking + request key. Property refunds
+  reference a collection; refunds and reversals cannot exceed its unspent funds.
+  `paymentAttempts` remains reserved for provider-verified captures.
+- `bookings/{id}/events` stores lifecycle/activity events, append-only private staff
+  notes (`type: staff_note`, text, actorId, createdAt), payment and amendment events.
+  Staff notes are available only through authorized partner operational endpoints.
+- Amendment previews are signed, expire after five minutes, and bind the request,
+  current booking revision/update timestamp and authoritative quote. Confirmation
+  rereads property/room/rate/policy/hold/calendars transactionally; dates, inventory,
+  totals, snapshots and revision update together. Only future confirmed interval_v1
+  bookings can be amended. Existing extras must be resolved before amendment.
+  Original booking and quote are retained in the amendment event. Currency and
+  guest identity do not change. Outstanding differences are collected at property;
+  refundable excess is tracked separately until returned against a receipt.
+- Existing historical property payments are not fabricated or assigned new capture
+  dates. Their amounts remain visible, but receipt-based reversal/refund requires
+  reconciliation where no identifiable receipt exists.
+- Collections, allocation and amendments have independent server feature flags:
+  `PARTNER_RESERVATIONS_PAYMENTS`, `PARTNER_RESERVATIONS_ALLOCATION`,
+  `PARTNER_RESERVATIONS_AMENDMENTS`. Local development/test defaults on; production
+  defaults off until indexes are ready. Read-only history remains available.
+
+Reservations list indexes cover the combinations of property, exact search token,
+booking status, room type, payment status and hourly mode, ordered by checkIn and
+checkOut descending with a document-ID tie breaker. Aggregate counts use the same
+constraints. Embedded request/balance predicates and legacy overnight-mode matching
+are evaluated over bounded indexed candidates (maximum 10,000); exports use that
+same explicit maximum and fail with a request to narrow the range rather than
+returning a truncated file. Physical assignment uses the same 15-minute UTC slots
+as inventory. Manual bookings recorded as paid create property-payment receipts in
+the booking transaction. Provider cancellation refunds exclude net property
+collections and property refunds, preventing mixed payment sources from inflating
+provider refund amounts.
+
+### Room calendar and housekeeping extension
+
+- `rateDatePrices/{sha256(propertyId + NUL + ratePlanId + NUL + date)}` stores an absolute nightly price or complete hourly duration table for a property-local date. `datePricingEnabled` on a rate enables reads; once enabled, consumers always respect saved overrides, even if editing is disabled. No existing booking snapshots are rewritten.
+- `roomBulkPreviews/{uuid}` binds the actor, property, cells, source revisions and five-minute expiration. Applying is transactional and idempotent. Expired previews can be removed with a TTL policy on `expiresAt`; enforcement does not depend on TTL cleanup.
+- `physicalUnits` gains optional `housekeepingStatus`, note, updater, timestamp and `revision`; missing status means unknown. Cleaning events are under the unit's `events` subcollection. Checkout records dirty status transactionally.
+- Numbered-room maintenance reuses `inventoryBlocks`, adding optional `unitId` and idempotency fingerprint. The same transaction reserves room-type blocked capacity and physical calendar slots identified as `maintenance:<blockId>`. Release removes only that block's slots/capacity.
+- Property `roomEvents` stores bulk edit audit records. New collections are server-only; existing default-deny client rules apply.

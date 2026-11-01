@@ -1,5 +1,6 @@
 "use client";
 
+import { supplementalFinancials } from "@/lib/stay/agreements";
 import { PreCheckinPanel } from "@/components/stay/pre-checkin";
 import type { StayBookingData } from "@/lib/stay/contracts";
 import Link from "next/link";
@@ -323,6 +324,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
   const booking = bookingQuery.data ?? initialBooking;
   const status = statusDetails(booking);
   const timing = getStayTiming(booking);
+  const supplemental = supplementalFinancials(booking.customizations,booking.stayPaymentReceipts);
   const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise);
   const isPaidInFull = (booking.netPaidPaise ?? booking.paidPaise) >= (booking.effectiveTotalPaise ?? booking.totalPaise);
   const bookedAmenities = booking.amenitySnapshot
@@ -1069,17 +1071,18 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
 
                 {!!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
                 {!!booking.customizationCreditPaise && <AmountRow label="Declined extras credit" value={formatMoney(booking.customizationCreditPaise, booking.currency)} />}
+                {supplemental.paidPaise>0 && <><AmountRow label="Original booking total" value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise,booking.currency)}/><AmountRow label="Separately agreed extras" value={formatMoney(supplemental.totalPaise,booking.currency)}/>{supplemental.refundDuePaise>0 && <AmountRow label="Quoted extras refund pending" value={formatMoney(supplemental.refundDuePaise,booking.currency)}/>} {supplemental.refundedPaise>0 && <AmountRow label="Quoted extras refunded" value={formatMoney(supplemental.refundedPaise,booking.currency)}/>}</>}
                 <div className="border-t border-stone-100 pt-2.5">
                   <AmountRow
                     label="Grand Total"
-                    value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise, booking.currency)}
+                    value={formatMoney((booking.effectiveTotalPaise ?? booking.totalPaise)+supplemental.totalPaise, booking.currency)}
                     isTotal
                   />
                 </div>
 
                 <AmountRow
                   label="Amount Paid"
-                  value={formatMoney(booking.paidPaise, booking.currency)}
+                  value={formatMoney(booking.paidPaise+supplemental.paidPaise, booking.currency)}
                   tone="text-[#183b2b]"
                 />
 

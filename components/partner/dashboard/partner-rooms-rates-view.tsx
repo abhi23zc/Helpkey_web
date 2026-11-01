@@ -1,20 +1,28 @@
 "use client";
 
-import { DurationPriceEditor } from "@/components/partner/duration-price-editor";
-import { eligiblePricing, validDurationPrices, type DurationPrice } from "@/lib/booking/duration-pricing";
+import { PriceOptionEditor } from "./price-option-editor";
+import {
+  eligiblePricing,
+  type DurationPrice,
+} from "@/lib/booking/duration-pricing";
 import { useEffect, useMemo, useState } from "react";
 import {
   BedDouble,
+  Check,
   CheckCircle2,
   Clock3,
   Edit3,
   Eye,
+  Image as ImageIcon,
   IndianRupee,
   KeyRound,
+  Layers,
   Loader2,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
+  ListChecks,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,6 +35,7 @@ import {
   type ListingResponse,
   usePropertyListing,
 } from "./use-property-listing";
+import { PhotosEditor } from "./listing-editors";
 import { CapacityControls } from "./capacity-controls";
 import { Drawer } from "./drawer";
 
@@ -40,16 +49,38 @@ type RoomRow = {
 };
 
 /** A room's assigned cover wins; legacy rooms gracefully fall back to a property image. */
-function roomImage(room: ListingRoomType, media: ListingMedia[]): string | null {
-  const photos = media.filter((asset) => asset.kind === "property_image" && asset.imageUrl);
+function roomImage(
+  room: ListingRoomType,
+  media: ListingMedia[],
+): string | null {
+  const photos = media.filter(
+    (asset) => asset.kind === "property_image" && asset.imageUrl,
+  );
   const preferredId = room.coverMediaId ?? room.mediaIds[0];
-  return photos.find((asset) => asset.id === preferredId)?.imageUrl ?? photos[0]?.imageUrl ?? null;
+  return photos.find((asset) => asset.id === preferredId)?.imageUrl ?? null;
 }
 
-function cheapestRate(rates: ListingRatePlan[], roomTypeId: string): ListingRatePlan | null {
+function cheapestRate(
+  rates: ListingRatePlan[],
+  roomTypeId: string,
+  mode?: string,
+): ListingRatePlan | null {
+  const price = (r: ListingRatePlan) =>
+    r.bookingMode === "hourly"
+      ? Math.min(...(r.durationPrices || []).map((p) => p.pricePaise))
+      : r.basePricePaise;
   return rates
-    .filter((rate) => rate.roomTypeId === roomTypeId && rate.status === "active" && eligiblePricing(rate) && rate.basePricePaise > 0)
-    .reduce<ListingRatePlan | null>((min, rate) => (!min || rate.basePricePaise < min.basePricePaise ? rate : min), null);
+    .filter(
+      (rate) =>
+        rate.roomTypeId === roomTypeId &&
+        rate.status === "active" &&
+        eligiblePricing(rate) &&
+        (!mode || (rate.bookingMode || "overnight") === mode),
+    )
+    .reduce<ListingRatePlan | null>(
+      (min, rate) => (!min || price(rate) < price(min) ? rate : min),
+      null,
+    );
 }
 
 function MetricCard({
@@ -71,18 +102,42 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-[#ffffffba] p-4 sm:p-5 shadow-xs flex items-center gap-4">
-      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconClass}`}>{icon}</div>
+      <div
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconClass}`}
+      >
+        {icon}
+      </div>
       <div className="min-w-0">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">{label}</span>
-        <span className={`text-xl font-extrabold mt-0.5 block ${valueClass}`}>{value}</span>
-        {hint && <p className={`text-[11px] font-medium ${hintClass}`}>{hint}</p>}
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+          {label}
+        </span>
+        <span className={`text-xl font-extrabold mt-0.5 block ${valueClass}`}>
+          {value}
+        </span>
+        {hint && (
+          <p className={`text-[11px] font-medium ${hintClass}`}>{hint}</p>
+        )}
       </div>
     </div>
   );
 }
 
-const ROOM_AMENITIES = ["Wi-Fi", "Air conditioning", "Hot water", "Room service", "TV", "Mini fridge", "Balcony", "Workspace", "Wardrobe", "Safe", "Hair dryer", "Bathtub"];
-const primaryButtonClass = "inline-flex w-full items-center justify-center rounded-xl bg-[#061224] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#0c1f3b] disabled:cursor-not-allowed disabled:opacity-50";
+const ROOM_AMENITIES = [
+  "Wi-Fi",
+  "Air conditioning",
+  "Hot water",
+  "Room service",
+  "TV",
+  "Mini fridge",
+  "Balcony",
+  "Workspace",
+  "Wardrobe",
+  "Safe",
+  "Hair dryer",
+  "Bathtub",
+];
+const primaryButtonClass =
+  "inline-flex w-full items-center justify-center rounded-xl bg-[#061224] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#0c1f3b] disabled:cursor-not-allowed disabled:opacity-50";
 type EditorTab = "details" | "amenities" | "photos" | "inventory" | "rates";
 
 function RoomEditor({
@@ -96,6 +151,7 @@ function RoomEditor({
   onRoomUpdated,
   onRateAdded,
   onRateUpdated,
+  onDirty,
 }: {
   propertyId: string;
   timezone: string;
@@ -107,86 +163,706 @@ function RoomEditor({
   onRoomUpdated: (room: ListingRoomType) => void;
   onRateAdded: (rate: ListingRatePlan) => void;
   onRateUpdated: (rate: ListingRatePlan) => void;
+  onDirty: (dirty: boolean) => void;
 }) {
   const [tab, setTab] = useState<EditorTab>(initialTab);
+  const [rateDirty, setRateDirty] = useState(false);
+  const [dirtyTabs, setDirtyTabs] = useState<string[]>([]);
+  const markDirty = () =>
+    { if (tab !== "rates") setDirtyTabs((t) => (t.includes(tab) ? t : [...t, tab])); }
+  const markSaved = () => setDirtyTabs((t) => t.filter((x) => x !== tab));
+  useEffect(() => {
+    onDirty(dirtyTabs.length > 0 || rateDirty);
+  }, [dirtyTabs, rateDirty, onDirty]);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description);
   const [adults, setAdults] = useState(String(room.maxAdults));
   const [children, setChildren] = useState(String(room.maxChildren));
   const [infants, setInfants] = useState(String(room.maxInfants));
-  const [bedType, setBedType] = useState(room.bedConfigurations[0]?.bedType ?? "double");
-  const [bedCount, setBedCount] = useState(String(room.bedConfigurations[0]?.count ?? 1));
-  const [size, setSize] = useState(room.roomSizeSqFt ? String(room.roomSizeSqFt) : "");
+  const [beds, setBeds] = useState(
+    room.bedConfigurations.length
+      ? room.bedConfigurations
+      : [{ bedType: "double", count: 1 }],
+  );
+  const [size, setSize] = useState(
+    room.roomSizeSqFt ? String(room.roomSizeSqFt) : "",
+  );
   const [bathroom, setBathroom] = useState(room.bathroomType);
   const [inventory, setInventory] = useState(String(room.inventory));
-  const [hourlyEnabled, setHourlyEnabled] = useState(room.bookingModes?.includes("hourly") ?? false);
-  const [cleaning, setCleaning] = useState(String(room.cleaningBufferMinutes ?? 30));
+  const [hourlyEnabled, setHourlyEnabled] = useState(
+    room.bookingModes?.includes("hourly") ?? false,
+  );
+  const [cleaning, setCleaning] = useState(
+    String(room.cleaningBufferMinutes ?? 30),
+  );
   const [status, setStatus] = useState<"active" | "paused">(room.status);
   const [amenities, setAmenities] = useState(room.amenityIds);
   const [mediaIds, setMediaIds] = useState(room.mediaIds);
-  const [coverMediaId, setCoverMediaId] = useState<string | null>(room.coverMediaId);
-  const [selectedRateId, setSelectedRateId] = useState(rates.find(rate => eligiblePricing(rate))?.id ?? "new");
+  const [coverMediaId, setCoverMediaId] = useState<string | null>(
+    room.coverMediaId,
+  );
+  const [selectedRateId, setSelectedRateId] = useState(
+    rates.find((rate) => eligiblePricing(rate))?.id ?? "new",
+  );
 
-  const availablePhotos = media.filter((asset) => asset.kind === "property_image");
+  const availablePhotos = media.filter(
+    (asset) => asset.kind === "property_image",
+  );
   const setNotice = (ok: boolean, text: string) => setMessage({ ok, text });
   const saveRoom = async (body: Record<string, unknown>, success: string) => {
-    setSaving(true); setMessage(null);
+    setSaving(true);
+    setMessage(null);
     try {
-      const response = await requestJson<{ roomType: ListingRoomType }>(`/api/partner/properties/${propertyId}/room-types/${room.id}`, body, "PATCH");
-      if (!response.roomType) throw new Error("The room update was not returned.");
-      onRoomUpdated(response.roomType); setNotice(true, success);
-    } catch (cause) { setNotice(false, cause instanceof Error ? cause.message : "Could not save room changes."); }
-    finally { setSaving(false); }
+      const response = await requestJson<{ roomType: ListingRoomType }>(
+        `/api/partner/properties/${propertyId}/room-types/${room.id}`,
+        body,
+        "PATCH",
+      );
+      if (!response.roomType)
+        throw new Error("The room update was not returned.");
+      onRoomUpdated(response.roomType);
+      markSaved();
+      setNotice(true, success);
+    } catch (cause) {
+      setNotice(
+        false,
+        cause instanceof Error ? cause.message : "Could not save room changes.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
   const integer = (value: string, label: string, min = 0) => {
     const number = Number(value);
-    if (!Number.isInteger(number) || number < min) throw new Error(`${label} must be a whole number of at least ${min}.`);
+    if (!Number.isInteger(number) || number < min)
+      throw new Error(`${label} must be a whole number of at least ${min}.`);
     return number;
   };
-  const toggleAmenity = (amenity: string) => setAmenities((current) => current.includes(amenity) ? current.filter((item) => item !== amenity) : [...current, amenity]);
-  const toggleMedia = (id: string) => setMediaIds((current) => {
-    const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
-    if (!next.includes(coverMediaId ?? "")) setCoverMediaId(next[0] ?? null);
-    return next;
-  });
+  const toggleAmenity = (amenity: string) => {
+    markDirty();
+    setAmenities((current) =>
+      current.includes(amenity)
+        ? current.filter((item) => item !== amenity)
+        : [...current, amenity],
+    );
+  };
+  const toggleMedia = (id: string) =>
+    setMediaIds((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id];
+      if (!next.includes(coverMediaId ?? "")) setCoverMediaId(next[0] ?? null);
+      return next;
+    });
 
-  const selectedRate = rates.find((rate) => rate.id === selectedRateId && eligiblePricing(rate)) ?? null;
+  const selectedRate =
+    rates.find((rate) => rate.id === selectedRateId && eligiblePricing(rate)) ??
+    null;
+  const editorTabs: { id: EditorTab; label: string; icon: React.ReactNode }[] =
+    [
+      {
+        id: "details",
+        label: "Details",
+        icon: <BedDouble className="h-3.5 w-3.5" />,
+      },
+      {
+        id: "amenities",
+        label: "Amenities",
+        icon: <ListChecks className="h-3.5 w-3.5" />,
+      },
+      {
+        id: "photos",
+        label: "Photos",
+        icon: <ImageIcon className="h-3.5 w-3.5" />,
+      },
+      {
+        id: "inventory",
+        label: "Availability",
+        icon: <Layers className="h-3.5 w-3.5" />,
+      },
+      {
+        id: "rates",
+        label: "Prices",
+        icon: <IndianRupee className="h-3.5 w-3.5" />,
+      },
+    ];
+
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-medium text-slate-500">Changes are saved directly to this room type.</p><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{status === "active" ? "Live" : "Paused"}</span></div>
-      <div className="mt-4 flex gap-1 overflow-x-auto border-b border-slate-100 pb-2">
-        {(["details", "amenities", "photos", "inventory", "rates"] as EditorTab[]).map((item) => <button key={item} type="button" onClick={() => { setTab(item); setMessage(null); }} className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold capitalize ${tab === item ? "bg-[#061224] text-white" : "text-slate-500 hover:bg-slate-50"}`}>{item}</button>)}
+    <div onChangeCapture={markDirty} className="space-y-4">
+      {/* Segmented Tab Navigation */}
+      <div aria-label="Room settings" className="sticky -top-5 z-10 grid grid-cols-5 gap-1 border-b border-slate-100 bg-white pb-3 pt-1">
+        {editorTabs.map((item) => {
+          const isActive = tab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                if (saving || (rateDirty && !window.confirm("Discard unsaved changes to this price option?"))) return;
+                setRateDirty(false);
+                setTab(item.id);
+                setMessage(null);
+              }}
+              aria-pressed={isActive}
+              aria-label={item.label}
+              className={`inline-flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl py-2.5 px-1 text-[10px] sm:flex-row sm:text-xs font-semibold transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
+                isActive
+                  ? "bg-[#edf3f8] text-[#092442]"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-4 space-y-3 text-xs">
-        {tab === "details" && <>
-          <label className="block font-bold text-slate-700">Room name<input value={name} onChange={(event) => setName(event.target.value)} minLength={2} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]" /></label>
-          <label className="block font-bold text-slate-700">Guest description<textarea value={description} onChange={(event) => setDescription(event.target.value)} minLength={10} rows={4} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]" /></label>
-          <div className="grid grid-cols-3 gap-2"><NumberField label="Adults" value={adults} setValue={setAdults} min={1} /><NumberField label="Children" value={children} setValue={setChildren} min={0} /><NumberField label="Infants" value={infants} setValue={setInfants} min={0} /></div>
-          <div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Bed type<select value={bedType} onChange={(event) => setBedType(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="single">Single</option><option value="double">Double</option><option value="queen">Queen</option><option value="king">King</option><option value="sofa_bed">Sofa bed</option></select></label><NumberField label="Beds" value={bedCount} setValue={setBedCount} min={1} /></div>
-          <div className="grid grid-cols-2 gap-2"><NumberField label="Room size (sq ft)" value={size} setValue={setSize} min={1} optional /><label className="font-bold text-slate-700">Bathroom<select value={bathroom} onChange={(event) => setBathroom(event.target.value as "private" | "shared")} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="private">Private</option><option value="shared">Shared</option></select></label></div>
-          <button type="button" disabled={saving} onClick={() => { try { void saveRoom({ name: name.trim(), description: description.trim(), maxAdults: integer(adults, "Adults", 1), maxChildren: integer(children, "Children"), maxInfants: integer(infants, "Infants"), bedConfigurations: [{ bedType, count: integer(bedCount, "Beds", 1) }], roomSizeSqFt: size ? integer(size, "Room size", 1) : null, bathroomType: bathroom }, "Room details saved."); } catch (error) { setNotice(false, error instanceof Error ? error.message : "Check room details."); } }} className={primaryButtonClass}>Save details</button>
-        </>}
-        {tab === "amenities" && <><p className="text-slate-500">Select amenities available specifically in this room.</p><div className="flex flex-wrap gap-2">{ROOM_AMENITIES.map((amenity) => <button key={amenity} type="button" onClick={() => toggleAmenity(amenity)} className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ${amenities.includes(amenity) ? "bg-[#061224] text-white" : "border border-slate-200 text-slate-600"}`}>{amenity}</button>)}</div><button type="button" disabled={saving} onClick={() => void saveRoom({ amenityIds: amenities }, "Room amenities saved.")} className={primaryButtonClass}>Save amenities</button></>}
-        {tab === "photos" && <><p className="text-slate-500">Assign property photos to this room. The selected cover appears on the guest-facing room card.</p>{availablePhotos.length ? <div className="grid grid-cols-3 gap-2">{availablePhotos.map((photo) => <label key={photo.id} className={`relative cursor-pointer overflow-hidden rounded-xl border-2 ${mediaIds.includes(photo.id) ? "border-[#c89b3c]" : "border-transparent"}`}>{photo.imageUrl ? <img src={photo.imageUrl} alt={photo.altText || "Room photo"} className="h-20 w-full object-cover" /> : <div className="grid h-20 place-items-center bg-slate-100 text-slate-400">Photo</div>}<input type="checkbox" checked={mediaIds.includes(photo.id)} onChange={() => toggleMedia(photo.id)} className="absolute left-1 top-1" />{mediaIds.includes(photo.id) && <button type="button" onClick={(event) => { event.preventDefault(); setCoverMediaId(photo.id); }} className={`absolute bottom-1 right-1 rounded px-1.5 py-1 text-[9px] font-bold ${coverMediaId === photo.id ? "bg-[#061224] text-white" : "bg-white text-slate-600"}`}>{coverMediaId === photo.id ? "Cover" : "Set cover"}</button>}</label>)}</div> : <p className="rounded-xl bg-amber-50 p-3 font-medium text-amber-700">Upload property photos in the Listing page first, then assign them here.</p>}<button type="button" disabled={saving || mediaIds.length === 0} onClick={() => void saveRoom({ mediaIds, coverMediaId }, "Room photos saved.")} className={primaryButtonClass}>Save photos</button></>}
-        {tab === "inventory" && <><CapacityControls propertyId={propertyId} roomTypeId={room.id} timezone={timezone} /><label className="block"><input type="checkbox" checked={hourlyEnabled} onChange={(e) => setHourlyEnabled(e.target.checked)} /> Enable hourly stays for this room type</label><NumberField label="Cleaning buffer (minutes, in 15-minute steps)" value={cleaning} setValue={setCleaning} min={0} /><button type="button" disabled={saving} onClick={() => void saveRoom({ bookingModes: hourlyEnabled ? ["overnight", "hourly"] : ["overnight"], cleaningBufferMinutes: Number(cleaning) }, "Booking settings saved.")} className={primaryButtonClass}>Save booking settings</button><p className="text-slate-500">Pausing a room prevents it from being offered for sale; its data and rate plans stay intact.</p><NumberField label="Rooms available to sell" value={inventory} setValue={setInventory} min={1} /><label className="block font-bold text-slate-700">Selling status<select value={status} onChange={(event) => setStatus(event.target.value as "active" | "paused")} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="active">Active and sellable</option><option value="paused">Paused / closed to sale</option></select></label><button type="button" disabled={saving} onClick={() => { try { void saveRoom({ totalInventory: integer(inventory, "Rooms available", 1), status }, "Inventory saved."); } catch (error) { setNotice(false, error instanceof Error ? error.message : "Check inventory."); } }} className={primaryButtonClass}>Save availability</button></>}
-        {tab === "rates" && <RateEditor key={selectedRate?.id ?? "new"} propertyId={propertyId} roomTypeId={room.id} policies={policies} rates={rates} selectedRate={selectedRate} selectRate={setSelectedRateId} saving={saving} setSaving={setSaving} onMessage={setNotice} onRateAdded={onRateAdded} onRateUpdated={onRateUpdated} />}
-        {message && <p className={`rounded-lg px-3 py-2 font-semibold ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{message.text}</p>}
+
+      <div className="space-y-4 pt-1">
+        {tab === "details" && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700">
+                Room name
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  minLength={2}
+                  aria-label="Room name"
+                  placeholder="e.g. Deluxe Room"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold outline-none transition-colors focus:border-[#c89b3c]"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700">
+                Guest description
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  minLength={10}
+                  rows={3}
+                  aria-label="Guest description"
+                  placeholder="Describe comfort, views, and room experience..."
+                  className="mt-1.5 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-medium outline-none transition-colors focus:border-[#c89b3c]"
+                />
+              </label>
+            </div>
+
+            {/* Occupancy Grid */}
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 space-y-2.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Max Guest Occupancy
+              </span>
+              <div className="grid grid-cols-3 gap-2.5">
+                <NumberField
+                  label="Adults"
+                  value={adults}
+                  setValue={setAdults}
+                  min={1}
+                />
+                <NumberField
+                  label="Children"
+                  value={children}
+                  setValue={setChildren}
+                  min={0}
+                />
+                <NumberField
+                  label="Infants"
+                  value={infants}
+                  setValue={setInfants}
+                  min={0}
+                />
+              </div>
+            </div>
+
+            {/* Bed Configurations */}
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Bed configurations
+                </span>
+                <span className="text-[11px] font-medium text-slate-500">
+                  {beds.length} {beds.length === 1 ? "type" : "types"}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {beds.map((bed, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs"
+                  >
+                    <label className="flex-1 min-w-0 text-[10px] font-semibold text-slate-400">
+                      Bed type
+                      <select
+                        aria-label={`Bed type ${i + 1}`}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#061224] outline-none focus:border-[#c89b3c]"
+                        value={bed.bedType}
+                        onChange={(e) =>
+                          setBeds(
+                            beds.map((b, j) =>
+                              j === i ? { ...b, bedType: e.target.value } : b,
+                            ),
+                          )
+                        }
+                      >
+                        {[
+                          "single",
+                          "double",
+                          "queen",
+                          "king",
+                          "sofa_bed",
+                          ...(beds.some(
+                            (b) =>
+                              ![
+                                "single",
+                                "double",
+                                "queen",
+                                "king",
+                                "sofa_bed",
+                              ].includes(b.bedType),
+                          )
+                            ? beds
+                                .map((b) => b.bedType)
+                                .filter(
+                                  (t) =>
+                                    ![
+                                      "single",
+                                      "double",
+                                      "queen",
+                                      "king",
+                                      "sofa_bed",
+                                    ].includes(t),
+                                )
+                            : []),
+                        ].map((t) => (
+                          <option key={t}>{t}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="w-20 text-[10px] font-semibold text-slate-400">
+                      Count
+                      <input
+                        aria-label={`Bed count ${i + 1}`}
+                        type="number"
+                        min={1}
+                        max={20}
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-center text-[#061224] outline-none focus:border-[#c89b3c]"
+                        value={bed.count}
+                        onChange={(e) =>
+                          setBeds(
+                            beds.map((b, j) =>
+                              j === i
+                                ? { ...b, count: Number(e.target.value) }
+                                : b,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={beds.length === 1}
+                      onClick={() => {
+                        setBeds(beds.filter((_, j) => j !== i));
+                        markDirty();
+                      }}
+                      className="self-end mb-1 p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 transition-colors"
+                      title="Remove bed type"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Remove</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={beds.length >= 10}
+                onClick={() => {
+                  setBeds([...beds, { bedType: "single", count: 1 }]);
+                  markDirty();
+                }}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-600 hover:border-[#c89b3c] hover:text-[#061224] transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add bed type
+              </button>
+            </div>
+
+            {/* Room size & Bathroom */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <NumberField
+                label="Room size (sq ft)"
+                value={size}
+                setValue={setSize}
+                min={1}
+                optional
+              />
+              <label className="block text-xs font-bold text-slate-700">
+                Bathroom
+                <select
+                  value={bathroom}
+                  onChange={(event) =>
+                    setBathroom(event.target.value as "private" | "shared")
+                  }
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm font-semibold outline-none focus:border-[#c89b3c]"
+                >
+                  <option value="private">Private</option>
+                  <option value="shared">Shared</option>
+                </select>
+              </label>
+            </div>
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                try {
+                  void saveRoom(
+                    {
+                      name: name.trim(),
+                      description: description.trim(),
+                      maxAdults: integer(adults, "Adults", 1),
+                      maxChildren: integer(children, "Children"),
+                      maxInfants: integer(infants, "Infants"),
+                      bedConfigurations: beds,
+                      roomSizeSqFt: size ? integer(size, "Room size", 1) : null,
+                      bathroomType: bathroom,
+                    },
+                    "Room details saved.",
+                  );
+                } catch (error) {
+                  setNotice(
+                    false,
+                    error instanceof Error
+                      ? error.message
+                      : "Check room details.",
+                  );
+                }
+              }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Save details
+            </button>
+          </div>
+        )}
+
+        {tab === "amenities" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-500 font-medium">
+                Select amenities available specifically in this room.
+              </p>
+              <span className="text-[11px] font-bold text-[#b78929]">
+                {amenities.length} selected
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {ROOM_AMENITIES.map((amenity) => {
+                const isSelected = amenities.includes(amenity);
+                return (
+                  <button
+                    key={amenity}
+                    type="button"
+                    onClick={() => toggleAmenity(amenity)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+                      isSelected
+                        ? "bg-[#061224] text-white shadow-xs"
+                        : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    {isSelected && <Check className="h-3 w-3 text-[#c89b3c]" />}
+                    <span>{amenity}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                void saveRoom(
+                  { amenityIds: amenities },
+                  "Room amenities saved.",
+                )
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Save amenities
+            </button>
+          </div>
+        )}
+
+        {tab === "photos" && (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500 font-medium">
+              Assign property photos to this room. The selected cover appears on
+              the guest-facing room card.
+            </p>
+            {availablePhotos.length ? (
+              <div className="grid grid-cols-3 gap-2.5">
+                {availablePhotos.map((photo) => {
+                  const isAssigned = mediaIds.includes(photo.id);
+                  const isCover = coverMediaId === photo.id;
+                  return (
+                    <label
+                      key={photo.id}
+                      className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-all ${
+                        isAssigned
+                          ? "border-[#c89b3c] shadow-xs"
+                          : "border-slate-200 opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      {photo.imageUrl ? (
+                        <img
+                          src={photo.imageUrl}
+                          alt={photo.altText || "Room photo"}
+                          className="h-24 w-full object-cover transition-transform group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="grid h-24 place-items-center bg-slate-100 text-slate-400">
+                          Photo
+                        </div>
+                      )}
+                      <input
+                        type="checkbox"
+                        checked={isAssigned}
+                        onChange={() => toggleMedia(photo.id)}
+                        className="absolute left-1.5 top-1.5 h-4 w-4 rounded border-slate-300 text-[#061224] focus:ring-[#c89b3c]"
+                      />
+                      {isAssigned && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setCoverMediaId(photo.id);
+                            markDirty();
+                          }}
+                          className={`absolute bottom-1.5 right-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-bold shadow-xs transition-all ${
+                            isCover
+                              ? "bg-[#061224] text-white"
+                              : "bg-white/95 text-slate-700 hover:bg-white"
+                          }`}
+                        >
+                          {isCover ? "★ Cover" : "Set cover"}
+                        </button>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs font-semibold text-amber-700">
+                Upload property photos in the Listing page first, then assign
+                them here.
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                void saveRoom({ mediaIds, coverMediaId }, "Room photos saved.")
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Save photos
+            </button>
+          </div>
+        )}
+
+        {tab === "inventory" && (
+          <div className="space-y-4">
+            <CapacityControls
+              propertyId={propertyId}
+              roomTypeId={room.id}
+              timezone={timezone}
+            />
+
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 space-y-3">
+              <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
+                <div>
+                  <span className="text-xs font-bold text-[#061224] block">
+                    Hourly Stays
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Enable daytime hourly bookings for this room
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hourlyEnabled}
+                  onChange={(e) => setHourlyEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-[#061224] focus:ring-[#c89b3c]"
+                />
+              </label>
+              <NumberField
+                label="Cleaning buffer (minutes, in 15-minute steps)"
+                value={cleaning}
+                setValue={setCleaning}
+                min={0}
+              />
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  void saveRoom(
+                    {
+                      bookingModes: hourlyEnabled
+                        ? ["overnight", "hourly"]
+                        : ["overnight"],
+                      cleaningBufferMinutes: Number(cleaning),
+                    },
+                    "Booking settings saved.",
+                  )
+                }
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-50"
+              >
+                Save booking settings
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 space-y-3">
+              <NumberField
+                label="Rooms available to sell"
+                value={inventory}
+                setValue={setInventory}
+                min={1}
+              />
+              <label className="block text-xs font-bold text-slate-700">
+                Selling status
+                <select
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(event.target.value as "active" | "paused")
+                  }
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm font-semibold outline-none focus:border-[#c89b3c]"
+                >
+                  <option value="active">Active and sellable</option>
+                  <option value="paused">Paused / closed to sale</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  try {
+                    void saveRoom(
+                      {
+                        totalInventory: integer(
+                          inventory,
+                          "Rooms available",
+                          1,
+                        ),
+                        status,
+                      },
+                      "Inventory saved.",
+                    );
+                  } catch (error) {
+                    setNotice(
+                      false,
+                      error instanceof Error
+                        ? error.message
+                        : "Check inventory.",
+                    );
+                  }
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-50"
+              >
+                Save availability
+              </button>
+            </div>
+          </div>
+        )}
+        {tab === "rates" && (
+          <PriceOptionEditor
+            key={selectedRate?.id ?? "new"}
+            propertyId={propertyId}
+            roomTypeId={room.id}
+            policies={policies}
+            rates={rates}
+            selectedRate={selectedRate}
+            selectRate={setSelectedRateId}
+            onDirty={setRateDirty}
+            saving={saving}
+            setSaving={setSaving}
+            onMessage={setNotice}
+            onRateAdded={(r) => {
+              onRateAdded(r);
+              markSaved();
+            }}
+            onRateUpdated={(r) => {
+              onRateUpdated(r);
+              markSaved();
+            }}
+          />
+        )}
+        {message && (
+          <p
+            className={`rounded-lg px-3 py-2 font-semibold ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+          >
+            {message.text}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-function NumberField({ label, value, setValue, min, optional = false }: { label: string; value: string; setValue: (value: string) => void; min: number; optional?: boolean }) {
-  return <label className="block min-w-0 text-xs font-bold text-slate-700">{label}<input type="number" value={value} min={min} required={!optional} onChange={(event) => setValue(event.target.value)} className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium outline-none focus:border-[#c89b3c]" /></label>;
+function NumberField({
+  label,
+  value,
+  setValue,
+  min,
+  optional = false,
+}: {
+  label: string;
+  value: string;
+  setValue: (value: string) => void;
+  min: number;
+  optional?: boolean;
+}) {
+  return (
+    <label className="block min-w-0 text-[10px] sm:text-xs font-semibold text-slate-500">
+      <span className="block mb-1">{label}</span>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        required={!optional}
+        onChange={(event) => setValue(event.target.value)}
+        className="block w-full min-w-0 rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs sm:text-sm font-bold text-[#061224] outline-none transition-colors focus:border-[#c89b3c]"
+      />
+    </label>
+  );
 }
 
-function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="block min-w-0 text-[11px] font-semibold leading-4 text-slate-600">{label}<input type="time" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1.5 block w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-900 outline-none focus:border-[#c89b3c]" /></label>;
-}
-
-function NewRoomEditor({ propertyId, onCreated }: { propertyId: string; onCreated: (room: ListingRoomType) => void }) {
+function NewRoomEditor({
+  propertyId,
+  onCreated,
+}: {
+  propertyId: string;
+  onCreated: (room: ListingRoomType) => void;
+}) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [inventory, setInventory] = useState("1");
@@ -200,7 +876,8 @@ function NewRoomEditor({ propertyId, onCreated }: { propertyId: string; onCreate
 
   const integer = (value: string, label: string, min = 0) => {
     const number = Number(value);
-    if (!Number.isInteger(number) || number < min) throw new Error(`${label} must be a whole number of at least ${min}.`);
+    if (!Number.isInteger(number) || number < min)
+      throw new Error(`${label} must be a whole number of at least ${min}.`);
     return number;
   };
   const createRoom = async () => {
@@ -208,180 +885,122 @@ function NewRoomEditor({ propertyId, onCreated }: { propertyId: string; onCreate
     try {
       const roomName = name.trim();
       const roomDescription = description.trim();
-      if (roomName.length < 2) throw new Error("Enter a room name with at least 2 characters.");
-      if (roomDescription.length < 10) throw new Error("Add a guest description with at least 10 characters.");
+      if (roomName.length < 2)
+        throw new Error("Enter a room name with at least 2 characters.");
+      if (roomDescription.length < 10)
+        throw new Error("Add a guest description with at least 10 characters.");
       setSaving(true);
-      const result = await requestJson<{ roomType: ListingRoomType }>(`/api/partner/properties/${propertyId}/room-types`, {
-        name: roomName,
-        description: roomDescription,
-        totalInventory: integer(inventory, "Rooms available", 1),
-        maxAdults: integer(adults, "Adults", 1),
-        maxChildren: integer(children, "Children"),
-        maxInfants: integer(infants, "Infants"),
-        bedConfigurations: [{ bedType, count: integer(bedCount, "Beds", 1) }],
-      }, "POST");
+      const result = await requestJson<{ roomType: ListingRoomType }>(
+        `/api/partner/properties/${propertyId}/room-types`,
+        {
+          name: roomName,
+          description: roomDescription,
+          totalInventory: integer(inventory, "Rooms available", 1),
+          maxAdults: integer(adults, "Adults", 1),
+          maxChildren: integer(children, "Children"),
+          maxInfants: integer(infants, "Infants"),
+          bedConfigurations: [{ bedType, count: integer(bedCount, "Beds", 1) }],
+        },
+        "POST",
+      );
       if (!result.roomType) throw new Error("The new room was not returned.");
       onCreated(result.roomType);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Could not add the room type.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return <div className="space-y-4 text-xs"><p className="rounded-xl bg-amber-50 px-3 py-2.5 font-medium text-amber-800">Start with the essentials. You can add room photos, amenities, availability, and rates immediately after creating it.</p><label className="block font-bold text-slate-700">Room name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Deluxe Double" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]" autoFocus /></label><label className="block font-bold text-slate-700">Guest description<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe this room for guests…" rows={4} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]" /></label><div className="grid grid-cols-3 gap-2"><NumberField label="Adults" value={adults} setValue={setAdults} min={1} /><NumberField label="Children" value={children} setValue={setChildren} min={0} /><NumberField label="Infants" value={infants} setValue={setInfants} min={0} /></div><div className="grid grid-cols-2 gap-2"><label className="font-bold text-slate-700">Bed type<select value={bedType} onChange={(event) => setBedType(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="single">Single</option><option value="double">Double</option><option value="queen">Queen</option><option value="king">King</option><option value="sofa_bed">Sofa bed</option></select></label><NumberField label="Beds" value={bedCount} setValue={setBedCount} min={1} /></div><NumberField label="Rooms available to sell" value={inventory} setValue={setInventory} min={1} />{message && <p className="rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-700">{message}</p>}<button type="button" disabled={saving} onClick={() => void createRoom()} className={primaryButtonClass}>{saving ? "Adding room…" : "Create room type"}</button></div>;
-}
-
-function RateEditor({ propertyId, roomTypeId, policies, rates, selectedRate, selectRate, saving, setSaving, onMessage, onRateAdded, onRateUpdated }: { propertyId: string; roomTypeId: string; policies: ListingResponse["policies"]; rates: ListingRatePlan[]; selectedRate: ListingRatePlan | null; selectRate: (id: string) => void; saving: boolean; setSaving: (saving: boolean) => void; onMessage: (ok: boolean, text: string) => void; onRateAdded: (rate: ListingRatePlan) => void; onRateUpdated: (rate: ListingRatePlan) => void }) {
-  const [breakfastIncluded, setBreakfastIncluded] = useState(false);
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [price, setPrice] = useState("");
-  const [policy, setPolicy] = useState("");
-  const [paymentMode, setPaymentMode] = useState("full");
-  const [status, setStatus] = useState<"active" | "paused">("active");
-  const [taxPercent, setTaxPercent] = useState("0");
-  const [fee, setFee] = useState("0");
-  const [depositPercent, setDepositPercent] = useState("25");
-  const [minNights, setMinNights] = useState("1");
-  const [maxNights, setMaxNights] = useState("");
-  const [pricingModel, setPricingModel] = useState<"nightly" | "duration">("nightly");
-  const [durationPrices, setDurationPrices] = useState<DurationPrice[]>([]);
-  const [windowStart, setWindowStart] = useState("00:00");
-  const [windowEnd, setWindowEnd] = useState("23:59");
-  const [operatingStart, setOperatingStart] = useState("00:00");
-  const [operatingEnd, setOperatingEnd] = useState("00:00");
-  const [crossMidnight, setCrossMidnight] = useState(false);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      setPricingModel(selectedRate?.bookingMode === "hourly" ? "duration" : "nightly");
-      setDurationPrices(selectedRate?.durationPrices ?? []);
-      setWindowStart(selectedRate?.arrivalWindow?.start ?? "00:00");
-      setWindowEnd(selectedRate?.arrivalWindow?.end ?? "23:59");
-      setOperatingStart(selectedRate?.operatingWindow?.start ?? "00:00");
-      setOperatingEnd(selectedRate?.operatingWindow?.end ?? "00:00");
-      setCrossMidnight(selectedRate?.allowMidnightCrossing ?? false);
-      setName(selectedRate?.name ?? "");
-      setCode(selectedRate?.code ?? "");
-      setPrice(selectedRate ? String(Math.round(selectedRate.basePricePaise / 100)) : "");
-      setBreakfastIncluded(selectedRate?.breakfastIncluded === true);
-      setPolicy(selectedRate?.cancellationPolicyId ?? policies[0]?.id ?? "");
-      setPaymentMode(selectedRate?.paymentMode ?? "full");
-      setStatus(selectedRate?.status ?? "active");
-      setTaxPercent(String(Math.round((selectedRate?.taxBasisPoints ?? 0) / 100)));
-      setFee(String(Math.round((selectedRate?.customerFeePaise ?? 0) / 100)));
-      setDepositPercent(String(Math.round((selectedRate?.depositBasisPoints ?? 2500) / 100)));
-      setMinNights(String(selectedRate?.minimumNights ?? 1));
-      setMaxNights(selectedRate?.maximumNights ? String(selectedRate.maximumNights) : "");
-    });
-  }, [policies, selectedRate]);
-
-  const submit = async () => {
-    const nightly = pricingModel === "duration" ? Math.min(...durationPrices.map(row => row.pricePaise)) / 100 : Number(price);
-    if (pricingModel === "duration" && !validDurationPrices(durationPrices)) { onMessage(false, "Add a unique total price for each duration."); return; }
-    const tax = Number(taxPercent);
-    const customerFee = Number(fee);
-    const deposit = Number(depositPercent);
-    const minimumNights = Number(minNights);
-    const maximumNights = maxNights.trim() ? Number(maxNights) : null;
-    if (!/^[A-Z0-9_-]{2,32}$/.test(code) || !Number.isFinite(nightly) || nightly <= 0 || !policy || !Number.isInteger(tax) || tax < 0 || tax > 100 || !Number.isInteger(customerFee) || customerFee < 0 || !Number.isInteger(deposit) || deposit < 0 || deposit > 100 || !Number.isInteger(minimumNights) || minimumNights < 1 || (maximumNights !== null && (!Number.isInteger(maximumNights) || maximumNights < minimumNights))) {
-      onMessage(false, "Provide valid rate, payment, tax, deposit, and stay rule details.");
-      return;
-    }
-    const payload = {
-      name: name.trim() || "Standard rate",
-      code,
-      bookingMode: pricingModel === "nightly" ? "overnight" : "hourly",
-      pricingModel,
-      ...(pricingModel === "duration" ? { durationPrices } : {}),
-      ...(pricingModel !== "nightly" ? { arrivalWindow: { start: windowStart, end: windowEnd }, operatingWindow: { start: operatingStart, end: operatingEnd }, allowMidnightCrossing: crossMidnight } : {}),
-      basePricePaise: Math.round(nightly * 100),
-      cancellationPolicyId: policy,
-      breakfastIncluded,
-      paymentMode,
-      taxBasisPoints: tax * 100,
-      customerFeePaise: customerFee * 100,
-      depositBasisPoints: deposit * 100,
-      minimumNights,
-      maximumNights,
-    };
-    setSaving(true);
-    try {
-      if (selectedRate) {
-        const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans/${selectedRate.id}`, { ...payload, status }, "PATCH");
-        if (!result.ratePlan) throw new Error("The rate update was not returned.");
-        onRateUpdated(result.ratePlan);
-        onMessage(true, "Rate plan saved.");
-      } else {
-        const result = await requestJson<{ ratePlan: ListingRatePlan }>(`/api/partner/properties/${propertyId}/rate-plans`, { roomTypeId, ...payload }, "POST");
-        if (!result.ratePlan) throw new Error("The rate plan was not returned.");
-        onRateAdded(result.ratePlan);
-        selectRate(result.ratePlan.id);
-        onMessage(true, "Rate plan added.");
-      }
-    } catch (cause) {
-      onMessage(false, cause instanceof Error ? cause.message : "Could not save rate plan.");
+      setMessage(
+        cause instanceof Error ? cause.message : "Could not add the room type.",
+      );
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
-        {rates.filter(rate => eligiblePricing(rate)).map((rate) => <button key={rate.id} type="button" onClick={() => selectRate(rate.id)} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${selectedRate?.id === rate.id ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>{rate.name}</button>)}
-        <button type="button" onClick={() => selectRate("new")} className={`shrink-0 rounded-lg border px-2 py-1 text-[10px] font-bold ${!selectedRate ? "border-[#c89b3c] bg-amber-50 text-[#8a5c0e]" : "border-slate-200 text-slate-600"}`}>+ New</button>
-      </div>
-      {rates.some(rate => !eligiblePricing(rate)) && <p className="rounded-lg bg-amber-50 p-3 text-sm">Old hourly rates are unavailable for new bookings. Add a new hourly rate with duration prices.</p>}
-      {!policies.length && <p className="rounded-lg bg-amber-50 p-2 font-semibold text-amber-700">Add a cancellation policy in Listing before creating a rate.</p>}
-      <label className="block text-xs font-bold text-slate-700">Pricing
-        <select value={pricingModel} onChange={(event) => setPricingModel(event.target.value as typeof pricingModel)} className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium">
-          <option value="nightly">Overnight per night</option><option value="duration">Hourly stays</option>
-        </select>
+    <div className="space-y-4 text-xs">
+      <p className="rounded-xl bg-amber-50 px-3 py-2.5 font-medium text-amber-800">
+        Start with the essentials. You can add room photos, amenities,
+        availability, and rates immediately after creating it.
+      </p>
+      <label className="block font-bold text-slate-700">
+        Room name
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Deluxe Double"
+          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]"
+          autoFocus
+        />
       </label>
-      {pricingModel !== "nightly" && (
-        <section aria-label="Hourly stay settings" className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-          <DurationPriceEditor key={selectedRate?.id ?? "new"} initialPrices={selectedRate?.durationPrices} onChange={setDurationPrices} />
-          <div>
-            <h3 className="text-xs font-bold text-slate-800">Arrival window</h3>
-            <div className="mt-2 grid min-w-0 grid-cols-2 gap-3">
-              <TimeField label="Earliest arrival" value={windowStart} onChange={setWindowStart} />
-              <TimeField label="Latest arrival" value={windowEnd} onChange={setWindowEnd} />
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-800">Guest operating hours</h3>
-            <div className="mt-2 grid min-w-0 grid-cols-2 gap-3">
-              <TimeField label="Opens" value={operatingStart} onChange={setOperatingStart} />
-              <TimeField label="Closes" value={operatingEnd} onChange={setOperatingEnd} />
-            </div>
-          </div>
-          <label className="flex min-w-0 items-start gap-2 text-xs font-semibold leading-5 text-slate-700">
-            <input type="checkbox" checked={crossMidnight} onChange={(event) => setCrossMidnight(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#092442]" />
-            <span>Allow guest occupancy across midnight</span>
-          </label>
-          <p className="text-xs leading-5 text-slate-500">Equal opening and closing times mean a 24-hour window. Cleaning may finish after operating hours.</p>
-        </section>
+      <label className="block font-bold text-slate-700">
+        Guest description
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Describe this room for guests…"
+          rows={4}
+          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c89b3c]"
+        />
+      </label>
+      <div className="grid grid-cols-3 gap-2">
+        <NumberField
+          label="Adults"
+          value={adults}
+          setValue={setAdults}
+          min={1}
+        />
+        <NumberField
+          label="Children"
+          value={children}
+          setValue={setChildren}
+          min={0}
+        />
+        <NumberField
+          label="Infants"
+          value={infants}
+          setValue={setInfants}
+          min={0}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="font-bold text-slate-700">
+          Bed type
+          <select
+            value={bedType}
+            onChange={(event) => setBedType(event.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"
+          >
+            <option value="single">Single</option>
+            <option value="double">Double</option>
+            <option value="queen">Queen</option>
+            <option value="king">King</option>
+            <option value="sofa_bed">Sofa bed</option>
+          </select>
+        </label>
+        <NumberField
+          label="Beds"
+          value={bedCount}
+          setValue={setBedCount}
+          min={1}
+        />
+      </div>
+      <NumberField
+        label="Rooms available to sell"
+        value={inventory}
+        setValue={setInventory}
+        min={1}
+      />
+      {message && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 font-semibold text-rose-700">
+          {message}
+        </p>
       )}
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={breakfastIncluded} onChange={event => setBreakfastIncluded(event.target.checked)} />Breakfast included in this rate</label>
-      <label className="block text-xs font-bold text-slate-700">Rate name <span className="font-medium text-slate-400">(optional)</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Standard rate" className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium" /></label>
-      <div className="grid min-w-0 grid-cols-2 gap-3">
-        <label className="block min-w-0 text-xs font-bold text-slate-700">Code<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="FLEX" className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium" /></label>
-        {pricingModel === "nightly" && <NumberField label="Price / night (₹)" value={price} setValue={setPrice} min={1} />}
-      </div>
-      <label className="block text-xs font-bold text-slate-700">Cancellation policy<select value={policy} onChange={(event) => setPolicy(event.target.value)} className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium"><option value="">Select a policy</option>{policies.map((item) => <option key={item.id} value={item.id}>{item.name ?? "Policy"}</option>)}</select></label>
-      <div className="grid min-w-0 grid-cols-2 gap-3">
-        <label className="block min-w-0 text-xs font-bold text-slate-700">Payment<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium"><option value="full">Pay in full</option><option value="deposit">Deposit</option><option value="pay_at_property">Pay at property</option></select></label>
-        {selectedRate && <label className="block min-w-0 text-xs font-bold text-slate-700">Status<select value={status} onChange={(event) => setStatus(event.target.value as "active" | "paused")} className="mt-1.5 block w-full min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium"><option value="active">Active</option><option value="paused">Paused</option></select></label>}
-      </div>
-      <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-2">
-        <NumberField label="Tax (%)" value={taxPercent} setValue={setTaxPercent} min={0} />
-        <NumberField label="Guest fee (₹)" value={fee} setValue={setFee} min={0} />
-        <NumberField label="Deposit (%)" value={depositPercent} setValue={setDepositPercent} min={0} />
-      </div>
-      {pricingModel === "nightly" && <div className="grid min-w-0 grid-cols-2 gap-3"><NumberField label="Minimum nights" value={minNights} setValue={setMinNights} min={1} /><NumberField label="Maximum nights" value={maxNights} setValue={setMaxNights} min={1} optional /></div>}
-      <button type="button" disabled={saving || !policies.length} onClick={() => void submit()} className={primaryButtonClass}>{selectedRate ? "Save rate plan" : "Add rate plan"}</button>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => void createRoom()}
+        className={primaryButtonClass}
+      >
+        {saving ? "Adding room…" : "Create room type"}
+      </button>
     </div>
   );
 }
@@ -393,6 +1012,18 @@ export function PartnerRoomsRatesView({
   propertyId?: string;
   propertyName?: string;
 }) {
+  const [editorDirty, setEditorDirty] = useState(false);
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (editorDirty) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editorDirty]);
+  const [photoEditor, setPhotoEditor] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [settingsError, setSettingsError] = useState("");
   const listing = usePropertyListing(propertyId, "rooms");
   const { data, property } = listing;
@@ -409,16 +1040,29 @@ export function PartnerRoomsRatesView({
   }, [data]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editorTab, setEditorTab] = useState<EditorTab>("details");
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTab, setEditorTab] = useState<EditorTab>(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("tab") === "inventory"
+      ? "inventory"
+      : "details",
+  );
+  const [editorOpen, setEditorOpen] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("tab") === "inventory",
+  );
   const [createOpen, setCreateOpen] = useState(false);
-  const selected = rows.find((row) => row.room.id === selectedId) ?? null;
+  const selected =
+    rows.find((row) => row.room.id === selectedId) ??
+    (editorOpen && editorTab === "inventory" ? rows[0] : null);
   const openEditor = (roomId: string, tab: EditorTab) => {
     setSelectedId(roomId);
     setEditorTab(tab);
     setEditorOpen(true);
   };
   const closeEditor = () => {
+    if (editorDirty && !window.confirm("Discard unsaved room changes?")) return;
+    setEditorDirty(false);
     setEditorOpen(false);
     setSelectedId(null);
   };
@@ -439,33 +1083,57 @@ export function PartnerRoomsRatesView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteRoom = async (roomId: string, roomName: string) => {
     if (deletingId) return;
-    const relatedRates = data?.ratePlans.filter((rate) => rate.roomTypeId === roomId).length ?? 0;
-    const rateNote = relatedRates > 0 ? ` This will also remove ${relatedRates} rate plan${relatedRates === 1 ? "" : "s"}.` : "";
-    if (!window.confirm(`Delete "${roomName}"?${rateNote} This cannot be undone.`)) return;
+    const relatedRates =
+      data?.ratePlans.filter((rate) => rate.roomTypeId === roomId).length ?? 0;
+    const rateNote =
+      relatedRates > 0
+        ? ` Its ${relatedRates} rate plan(s) will also be archived.`
+        : "";
+    if (
+      !window.confirm(
+        `Archive "${roomName}"?${rateNote} Booking history is preserved. Pause this type instead if it has active reservations.`,
+      )
+    )
+      return;
     setDeletingId(roomId);
     setDeleteError(null);
     try {
-      await requestJson(`/api/partner/properties/${propertyId}/room-types/${roomId}`, undefined, "DELETE");
+      await requestJson(
+        `/api/partner/properties/${propertyId}/room-types/${roomId}`,
+        undefined,
+        "DELETE",
+      );
       // Close the drawer if the deleted room was open, then drop it locally.
       if (selectedId === roomId) closeEditor();
       listing.removeRoomType(roomId);
     } catch (cause) {
-      setDeleteError(cause instanceof Error ? cause.message : "Could not delete this room type.");
+      setDeleteError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not archive this room type.",
+      );
     } finally {
       setDeletingId(null);
     }
   };
 
   /* ---------- derived metrics (real data only) ---------- */
-  const totalRooms = rows.reduce((sum, row) => sum + (row.room.inventory || 0), 0);
-  const activeCategories = rows.length;
+  const totalRooms = rows.reduce(
+    (sum, row) => sum + (row.room.inventory || 0),
+    0,
+  );
+  const activeCategories = rows.filter(
+    (r) => r.room.status === "active",
+  ).length;
   const startingPaise = listing.startingPricePaise;
 
   /* ---------- loading / empty states ---------- */
   if (!propertyId) {
     return (
       <div className="grid min-h-[50vh] place-items-center text-slate-400">
-        <p className="text-sm font-semibold">Select a property from the top bar to manage its rooms.</p>
+        <p className="text-sm font-semibold">
+          Select a property from the top bar to manage its rooms.
+        </p>
       </div>
     );
   }
@@ -486,73 +1154,140 @@ export function PartnerRoomsRatesView({
   return (
     <div className="space-y-6 text-[#061224] pb-16">
       {backgroundRefreshing && (
-        <div className="fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-[#c89b3c]/15" role="status" aria-label="Refreshing">
+        <div
+          className="fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-[#c89b3c]/15"
+          role="status"
+          aria-label="Refreshing"
+        >
           <div className="hk-loading-bar h-full w-1/4 rounded-full bg-[#c89b3c]" />
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={property?.bookingModes?.includes("hourly") ?? false} onChange={async (e) => { const bookingModes: ("overnight" | "hourly")[] = e.target.checked ? ["overnight", "hourly"] : ["overnight"]; setSettingsError(""); try { await requestJson(`/api/partner/properties/${propertyId}`, { bookingModes }, "PATCH"); listing.patchProperty({ bookingModes }); } catch (error) { setSettingsError(error instanceof Error ? error.message : "Unable to save booking modes"); } }} /> Offer hourly stays at this property</label>
-        {property?.inventoryEngine !== "interval_v1" ? (
-          <p role="status" className="mt-2 text-xs text-amber-700">Hourly settings can be saved, but guests cannot book hourly stays until Helpkey completes this property&apos;s availability setup.</p>
-        ) : property?.bookingModes?.includes("hourly") && !(data?.ratePlans ?? []).some(rate => rate.status === "active" && rate.bookingMode === "hourly" && eligiblePricing(rate)) ? (
-          <p role="status" className="mt-2 text-xs text-amber-700">Add hourly duration prices to start receiving hourly bookings. Open a room&apos;s Manage rates, choose Hourly stays, and enter the total price for each duration.</p>
-        ) : property?.bookingModes?.includes("hourly") ? (
-          <p role="status" className="mt-2 text-xs text-emerald-700">Hourly stays are enabled. Guests can find room types with hourly booking enabled and an active rate matching their arrival time and duration.</p>
-        ) : null}
-        {settingsError && <p className="mt-2 text-red-600">{settingsError}</p>}
-      </div>
-      {/* Header */}
+      {/* Sub-header / Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#061224]">Rooms</h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">
-            Manage room availability, prices and guest-ready status for {property?.name ?? propertyName}.
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#061224]">
+            Room types
+          </h1>
+          <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
+            Manage room configurations, pricing plans, and guest-facing details
+            for {property?.name ?? propertyName}.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={openNewRoom}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all"
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Integrated Hourly Stays Switch Chip */}
+          <label
+            title="Toggle flexible hourly stays (3h, 6h, 12h) for this property"
+            className={`inline-flex items-center gap-2.5 rounded-xl border px-3 py-2 text-xs font-semibold shadow-xs transition-all cursor-pointer select-none ${
+              property?.bookingModes?.includes("hourly")
+                ? "border-amber-200/90 bg-amber-50/70 text-[#061224] hover:bg-amber-100/60"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
           >
-            <Plus className="h-4 w-4" />
-            Add Room Type
-          </button>
+            <Clock3
+              className={`h-4 w-4 ${
+                property?.bookingModes?.includes("hourly")
+                  ? "text-[#b78929]"
+                  : "text-slate-400"
+              }`}
+            />
+            <span>Hourly stays</span>
+            <input
+              type="checkbox"
+              checked={property?.bookingModes?.includes("hourly") ?? false}
+              onChange={async (e) => {
+                const bookingModes: ("overnight" | "hourly")[] = e.target
+                  .checked
+                  ? ["overnight", "hourly"]
+                  : ["overnight"];
+                setSettingsError("");
+                try {
+                  await requestJson(
+                    `/api/partner/properties/${propertyId}`,
+                    { bookingModes },
+                    "PATCH",
+                  );
+                  listing.patchProperty({ bookingModes });
+                } catch (error) {
+                  setSettingsError(
+                    error instanceof Error
+                      ? error.message
+                      : "Unable to save booking modes",
+                  );
+                }
+              }}
+              className="sr-only peer"
+              aria-label="Offer hourly stays at this property"
+            />
+            <div className="relative h-4 w-7 rounded-full bg-slate-300 transition-colors peer-checked:bg-[#061224] peer-focus:outline-none after:absolute after:start-[2px] after:top-[2px] after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-3" />
+          </label>
+
           <Link
-            href="/partner/listing"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#061224] shadow-xs hover:bg-slate-50 transition-all"
+            href={`/hotels/${property?.slug || property?.id || ""}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-all"
           >
             <Eye className="h-4 w-4 text-slate-500" />
             Preview Guest View
           </Link>
+
+          <button
+            type="button"
+            onClick={openNewRoom}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all"
+          >
+            <Plus className="h-4 w-4" />
+            Add Room Type
+          </button>
         </div>
       </div>
+
+      {settingsError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700">
+          {settingsError}
+        </div>
+      )}
+      {property?.inventoryEngine !== "interval_v1" &&
+        property?.bookingModes?.includes("hourly") && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700">
+            Hourly settings are saved, but hourly stays require Helpkey
+            availability verification.
+          </div>
+        )}
 
       {/* Metrics (real data) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           icon={<BedDouble className="h-6 w-6" />}
           iconClass="bg-amber-50 text-[#c89b3c]"
-          label="Active Categories"
+          label="Active room types"
           value={`${activeCategories} ${activeCategories === 1 ? "Type" : "Types"}`}
-          hint={`Total ${totalRooms} sellable room${totalRooms === 1 ? "" : "s"}`}
+          hint="Room types currently enabled"
         />
         <MetricCard
           icon={<CheckCircle2 className="h-6 w-6" />}
           iconClass="bg-emerald-50 text-emerald-600"
-          label="Sellable Rooms"
+          label="Configured capacity"
           value={`${totalRooms} ${totalRooms === 1 ? "Room" : "Rooms"}`}
           valueClass="text-emerald-700"
-          hint={`${rows.filter((r) => r.rate).length} of ${activeCategories} priced`}
+          hint="Total capacity, not current availability"
           hintClass="text-[#c89b3c]"
         />
         <MetricCard
           icon={<IndianRupee className="h-6 w-6" />}
           iconClass="bg-blue-50 text-blue-600"
-          label="Starting Rate"
-          value={startingPaise !== null ? formatPaise(startingPaise, { currency }) : "Not set"}
-          hint={startingPaise !== null ? "Lowest active rate plan" : "Add a rate plan"}
+          label="Base price from"
+          value={
+            startingPaise !== null
+              ? formatPaise(startingPaise, { currency })
+              : "Not set"
+          }
+          hint={
+            startingPaise !== null
+              ? "Before date overrides, taxes and fees"
+              : "Add a rate plan"
+          }
         />
         <MetricCard
           icon={<KeyRound className="h-6 w-6" />}
@@ -563,14 +1298,54 @@ export function PartnerRoomsRatesView({
         />
       </div>
 
-      {/* Room Types */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-bold text-[#061224]">Room Types</h2>
+      {/* Room Types Toolbar */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-1 flex-wrap items-center gap-2.5">
+            <div className="relative min-w-[220px] max-w-sm flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                aria-label="Search room types"
+                placeholder="Search room types..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs sm:text-sm font-medium outline-none transition-colors focus:border-[#c89b3c]"
+              />
+            </div>
+            <select
+              aria-label="Room type status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 outline-none focus:border-[#c89b3c]"
+            >
+              <option value="all">All room types</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+            onClick={() => setPhotoEditor(true)}
+          >
+            <ImageIcon className="h-4 w-4 text-slate-500" />
+            Upload & manage photos
+          </button>
+        </div>
 
         {deleteError && (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700" role="alert">
+          <div
+            className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700"
+            role="alert"
+          >
             <span>{deleteError}</span>
-            <button type="button" onClick={() => setDeleteError(null)} className="shrink-0 rounded-md px-2 py-1 text-rose-600 hover:bg-rose-100">Dismiss</button>
+            <button
+              type="button"
+              onClick={() => setDeleteError(null)}
+              className="shrink-0 rounded-md px-2 py-1 text-rose-600 hover:bg-rose-100"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -580,14 +1355,17 @@ export function PartnerRoomsRatesView({
               <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
                 <BedDouble className="h-5 w-5" />
               </span>
-              <h3 className="mt-3 text-base font-bold">No room types yet</h3>
-              <p className="mt-1 max-w-sm text-sm font-medium text-slate-500">
-                Add rooms and rate plans from the Listing editor to manage them here.
+              <h3 className="mt-3 text-base font-bold text-[#061224]">
+                No room types yet
+              </h3>
+              <p className="mt-1 max-w-sm text-xs sm:text-sm font-medium text-slate-500">
+                Add rooms and rate plans from the Listing editor to manage them
+                here.
               </p>
               <button
                 type="button"
                 onClick={openNewRoom}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0c1f3b]"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0c1f3b] transition-colors"
               >
                 <Plus className="h-4 w-4" /> Add Room Type
               </button>
@@ -595,18 +1373,29 @@ export function PartnerRoomsRatesView({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {rows.map(({ room, rate, image }) => {
-                  return (
-                    <div
-                      key={room.id}
-                      onClick={() => openEditor(room.id, "details")}
-                      className="group relative cursor-pointer rounded-2xl border border-slate-200/80 bg-white p-4 transition-all duration-200 hover:border-[#c89b3c] hover:shadow-sm"
-                    >
+            {rows
+              .filter(
+                ({ room }) =>
+                  room.name.toLowerCase().includes(search.toLowerCase()) &&
+                  (statusFilter === "all" || room.status === statusFilter),
+              )
+              .map(({ room, rate, image }) => {
+                return (
+                  <div
+                    key={room.id}
+                    onClick={() => openEditor(room.id, "details")}
+                    className="group relative cursor-pointer rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 transition-all duration-200 hover:border-[#c89b3c]/80 hover:shadow-md flex flex-col justify-between"
+                  >
+                    <div>
                       <div className="flex gap-4">
-                        <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-slate-100 border border-slate-200">
+                        <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-slate-100 border border-slate-200/80">
                           {image ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={image} alt={room.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            <img
+                              src={image}
+                              alt={room.name}
+                              className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
                           ) : (
                             <div className="grid h-full place-items-center text-slate-300">
                               <BedDouble className="h-6 w-6" />
@@ -616,79 +1405,146 @@ export function PartnerRoomsRatesView({
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
-                            <h3 className="text-sm font-bold text-[#061224] truncate">{room.name}</h3>
+                            <h3 className="text-sm font-bold text-[#061224] truncate">
+                              {room.name}
+                            </h3>
                             <span
-                              className={`rounded-md px-2 py-0.5 text-[10px] font-bold border ${
-                                rate
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              className={`rounded-md px-2 py-0.5 text-[10px] font-bold border shrink-0 ${
+                                room.status === "paused"
+                                  ? "bg-slate-100 text-slate-600 border-slate-200"
+                                  : rate
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
                               }`}
                             >
-                              {room.status === "paused" ? "Paused" : rate ? "Sellable" : "No rate"}
+                              {room.status === "paused"
+                                ? "Paused"
+                                : rate
+                                  ? "Rate configured"
+                                  : "No rate"}
                             </span>
                           </div>
 
-                          <div className="mt-1">
-                            {rate ? (
-                              <>
-                                <span className="text-base font-bold text-[#c89b3c]">{formatPaise(rate.basePricePaise, { currency })}</span>
-                                <span className="text-xs text-slate-500 font-medium"> / {rate.bookingMode === "hourly" ? "stay (from)" : "night"}</span>
-                              </>
-                            ) : (
-                              <span className="text-xs font-semibold text-slate-400">No rate plan set</span>
+                          <div className="mt-1 space-y-0.5">
+                            {["overnight", "hourly"].map((mode) => {
+                              const r = cheapestRate(
+                                data?.ratePlans || [],
+                                room.id,
+                                mode,
+                              );
+                              if (!r) return null;
+                              const duration =
+                                mode === "hourly"
+                                  ? (
+                                      r.durationPrices ?? []
+                                    ).reduce<DurationPrice | null>(
+                                      (min, p) =>
+                                        !min || p.pricePaise < min.pricePaise
+                                          ? p
+                                          : min,
+                                      null,
+                                    )
+                                  : null;
+                              return (
+                                <p key={mode} className="text-xs">
+                                  <strong className="text-[#b78929]">
+                                    {formatPaise(
+                                      mode === "hourly"
+                                        ? duration?.pricePaise || 0
+                                        : r.basePricePaise,
+                                      { currency },
+                                    )}
+                                  </strong>{" "}
+                                  <span className="text-slate-500 font-medium">
+                                    {mode === "hourly"
+                                      ? `/ ${duration?.hours}h (from)`
+                                      : "/ night (from)"}
+                                  </span>
+                                </p>
+                              );
+                            })}
+                            {!rate && (
+                              <span className="text-xs text-amber-600 font-medium block">
+                                No active rate
+                              </span>
                             )}
                           </div>
 
                           <div className="grid grid-cols-2 gap-1 text-center mt-2.5 pt-2 border-t border-slate-100 text-[10px]">
                             <div>
-                              <span className="font-bold text-[#061224] text-xs block">{room.inventory}</span>
-                              <span className="text-slate-400 font-medium">Sellable rooms</span>
+                              <span className="font-bold text-[#061224] text-xs block">
+                                {room.inventory}
+                              </span>
+                              <span className="text-slate-400 font-medium">
+                                Configured rooms
+                              </span>
                             </div>
                             <div>
-                              <span className="font-bold text-[#061224] text-xs block">{room.maxAdults}</span>
-                              <span className="text-slate-400 font-medium">Max guests</span>
+                              <span className="font-bold text-[#061224] text-xs block">
+                                {room.maxAdults}
+                              </span>
+                              <span className="text-slate-400 font-medium">
+                                Max guests
+                              </span>
                             </div>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditor(room.id, "details");
-                          }}
-                          className="flex-1 rounded-xl bg-[#061224] py-2 text-center text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all flex items-center justify-center gap-1"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          Edit room
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEditor(room.id, "inventory");
-                          }}
-                          className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-semibold text-[#061224] hover:bg-slate-50 transition-all"
-                        >
-                          Availability
-                        </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); openEditor(room.id, "rates"); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all">Manage rates</button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); void deleteRoom(room.id, room.name); }}
-                          disabled={deletingId === room.id}
-                          aria-label={`Delete ${room.name}`}
-                          title="Delete room type"
-                          className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-                        >
-                          {deletingId === room.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                        </button>
-                      </div>
                     </div>
-                  );
-                })}
+
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditor(room.id, "details");
+                        }}
+                        className="flex-1 rounded-xl bg-[#061224] py-2 text-center text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Edit room
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditor(room.id, "inventory");
+                        }}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-semibold text-[#061224] hover:bg-slate-50 transition-all"
+                      >
+                        Availability
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditor(room.id, "rates");
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+                      >
+                        Manage prices
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void deleteRoom(room.id, room.name);
+                        }}
+                        disabled={deletingId === room.id}
+                        aria-label={`Archive ${room.name}`}
+                        title="Archive room type"
+                        className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+                      >
+                        {deletingId === room.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
@@ -698,16 +1554,62 @@ export function PartnerRoomsRatesView({
           open={editorOpen}
           onClose={closeEditor}
           title={`Edit ${selected.room.name}`}
-          description="Update guest-facing details, availability, photos, and rates."
+          description="Room details, availability and guest prices"
+          badge={<span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${selected.room.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{selected.room.status === "active" ? "Live" : "Paused"}</span>}
         >
-          <RoomEditor key={`${selected.room.id}-${editorTab}`} propertyId={propertyId} timezone={property?.timezone ?? "Asia/Kolkata"} room={selected.room} initialTab={editorTab} media={data?.media ?? []} policies={data?.policies ?? []} rates={(data?.ratePlans ?? []).filter((rate) => rate.roomTypeId === selected.room.id)} onRoomUpdated={(room) => listing.updateRoomType(room.id, room)} onRateAdded={listing.addRatePlan} onRateUpdated={(rate) => listing.updateRatePlan(rate.id, rate)} />
+          <RoomEditor
+            key={`${selected.room.id}-${editorTab}`}
+            propertyId={propertyId}
+            timezone={property?.timezone ?? "Asia/Kolkata"}
+            room={selected.room}
+            initialTab={editorTab}
+            media={data?.media ?? []}
+            policies={data?.policies ?? []}
+            rates={(data?.ratePlans ?? []).filter(
+              (rate) => rate.roomTypeId === selected.room.id,
+            )}
+            onDirty={setEditorDirty}
+            onRoomUpdated={(room) => listing.updateRoomType(room.id, room)}
+            onRateAdded={listing.addRatePlan}
+            onRateUpdated={(rate) => listing.updateRatePlan(rate.id, rate)}
+          />
         </Drawer>
       )}
 
-      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Add room type" description="Create a new room without leaving this page.">
+      <Drawer
+        open={createOpen}
+        onClose={() => {
+          if (
+            window.confirm(
+              "Close this room setup? Unsaved details will be discarded.",
+            )
+          )
+            setCreateOpen(false);
+        }}
+        title="Add room type"
+        description="Create a new room without leaving this page."
+      >
         <NewRoomEditor propertyId={propertyId} onCreated={onRoomCreated} />
       </Drawer>
 
+      <Drawer
+        open={photoEditor}
+        onClose={() => {
+          if (!photoBusy) setPhotoEditor(false);
+        }}
+        title="Room photos"
+        description="Upload photos and assign them to room types."
+      >
+        {data && propertyId && (
+          <PhotosEditor
+            propertyId={propertyId}
+            listing={data}
+            mutations={listing}
+            onSaved={listing.reload}
+            onBusyChange={setPhotoBusy}
+          />
+        )}
+      </Drawer>
       {/* Sync footer */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 pt-4 text-xs font-medium text-slate-500">
         <button
@@ -715,7 +1617,9 @@ export function PartnerRoomsRatesView({
           onClick={() => listing.reload()}
           className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50"
         >
-          <RefreshCw className={`h-3.5 w-3.5 text-slate-400 ${backgroundRefreshing ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 text-slate-400 ${backgroundRefreshing ? "animate-spin" : ""}`}
+          />
           <span>Refresh</span>
         </button>
 
@@ -723,7 +1627,10 @@ export function PartnerRoomsRatesView({
           {property?.approvalStatus === "approved" ? (
             <>
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              <span>Your rates and availability are live on Helpkey.</span>
+              <span>
+                Approved listing. Guest availability depends on active rates and
+                remaining capacity.
+              </span>
             </>
           ) : (
             <>

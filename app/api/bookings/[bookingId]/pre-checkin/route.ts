@@ -1,6 +1,6 @@
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { withApiHandler } from "@/lib/api/handler";
-import { guestStayOptions, savePreCheckin } from "@/lib/stay/service";
+import { guestStayOptions, savePreCheckin, patchArrival } from "@/lib/stay/service";
 import { bookingForGuest } from "@/lib/bookings";
 import { stayError } from "@/lib/stay/api";
 type Context = { params: Promise<{ bookingId: string }> };
@@ -20,7 +20,7 @@ async function save(request: Request, { params }: Context) {
   if (!u) return Response.json({ error: "Unauthenticated" }, { status: 401 });
   try {
     const { bookingId } = await params;
-    await savePreCheckin(u.uid, bookingId, await request.json());
+    await (request.method === "PATCH" ? patchArrival : savePreCheckin)(u.uid, bookingId, await request.json());
     return Response.json({ booking: await bookingForGuest(u.uid, bookingId) });
   } catch (e) {
     return stayError(e);
@@ -38,3 +38,5 @@ export const POST = withApiHandler(save, {
   requireAuth: true,
   cache: "private",
 });
+
+export const PATCH = withApiHandler(save, { route: "/api/bookings/[bookingId]/pre-checkin", auth: "strict", requireAuth: true, cache: "private" });

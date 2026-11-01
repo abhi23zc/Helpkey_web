@@ -45,6 +45,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           await db.recursiveDelete(row.ref);
         }
         for (const c of [
+          "stayQuoteOrders",
           "refunds",
           "paymentAttempts",
           "bookingReferences",
@@ -153,6 +154,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
         .set({
           ...free,
           name: "Room decoration",
+          confirmation: "immediate",
           kind: "service",
           unitPricePaise: mixed ? 99999 : 20000,
           variants: mixed
@@ -208,6 +210,21 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           source: "test",
         });
       }
+      // Legacy accounting regression: retain the saved upfront-paid approval agreement.
+      const saved = (await ref.get()).data()!;
+      await ref.update({
+        customizations: saved.customizations.map(
+          (r: import("@/lib/stay/contracts").StayRequest) => {
+            const {
+              agreementVersion: _version,
+              settlement: _settlement,
+              source: _source,
+              ...legacy
+            } = r;
+            return { ...legacy, confirmation: "approval", status: "requested" };
+          },
+        ),
+      });
       const body = {
         revision: 0,
         expectedArrivalLocal: `${checkIn}T15:00`,
@@ -700,6 +717,502 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
         offering: { ...offering, category: "devices" },
       });
       expect((await catalog.get()).get("category")).toBe("devices");
+    }, 30000);
+
+    async function upgradedFixture() {
+      const f = await fixture();
+      const b = (await f.ref.get()).data()!;
+      await f.ref.update({
+        totalPaise: 100000,
+        extrasTotalPaise: 0,
+        payableNowPaise: 0,
+        customizations: b.customizations.map(
+          (r: import("@/lib/stay/contracts").StayRequest) => ({
+            ...r,
+            agreementVersion: 2,
+            source: "catalog",
+            settlement: "pending_hotel",
+          }),
+        ),
+      });
+      const requests = await import("@/lib/stay/requests"),
+        payments = await import("@/lib/stay/payments");
+      const target = (
+        (await f.ref.get()).get(
+          "customizations",
+        ) as import("@/lib/stay/contracts").StayRequest[]
+      ).find((r) => r.offeringId === "decoration")!;
+      return { ...f, requests, payments, target };
+    }
+    it("keeps new paid approvals outside checkout and snapshots pending commitments", async () => {
+      const f = await fixture();
+      const input = {
+        ...f.input,
+        customizationSelections: [
+          { offeringId: "decoration", variantId: null, quantity: 1 },
+        ],
+      };
+      await db
+        .collection("properties")
+        .doc(f.id)
+        .collection("stayCustomizations")
+        .doc("decoration")
+        .update({ confirmation: "approval" });
+      const quote = await bookings.quote({
+        ...input,
+        travelerPreferences: ["Family"],
+      });
+      expect(quote).toMatchObject({
+        extrasTotalPaise: 0,
+        totalPaise: 100000,
+        payableNowPaise: 0,
+      });
+      expect(quote.customizations[0]).toMatchObject({
+        agreementVersion: 2,
+        settlement: "pending_hotel",
+        totalPaise: 20000,
+        status: "requested",
+      });
+      const withRequest = {
+        ...input,
+        travelerPreferences: ["Family" as const],
+        unlistedRequests: [
+          {
+            name: "Airport assistance",
+            note: "Meet at reception",
+            neededAt: quote.startAt,
+          },
+        ],
+      };
+      const requestQuote = await bookings.quote(withRequest);
+      expect(
+        requestQuote.customizations.find((r) => r.source === "unlisted"),
+      ).toMatchObject({
+        settlement: "pending_hotel",
+        status: "requested",
+        name: "Airport assistance",
+        inputs: { serviceAt: quote.startAt },
+      });
+      expect(requestQuote.totalPaise).toBe(100000);
+      const created = await bookings.createBooking(
+        "guest",
+        { ...withRequest, quoteFingerprint: requestQuote.fingerprint },
+        `unlisted_${f.id}`,
+      );
+      expect(
+        (await db.collection("bookings").doc(created.bookingId).get())
+          .get("customizations")
+          .some(
+            (r: import("@/lib/stay/contracts").StayRequest) =>
+              r.source === "unlisted",
+          ),
+      ).toBe(true);
+    }, 30000);
+    it("connects hotel quote, exact-version acceptance, one payment, and cancellation refunds", async () => {
+      const f = await upgradedFixture();
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        { revision: 0, requestId: f.target.id, action: "approve_price" },
+        true,
+      );
+      let b = (await f.ref.get()).data()!;
+      expect(
+        b.customizations.find(
+          (r: import("@/lib/stay/contracts").StayRequest) =>
+            r.id === f.target.id,
+        ),
+      ).toMatchObject({
+        status: "requested",
+        settlement: "awaiting_customer",
+        quote: { amountPaise: 20000, status: "offered", version: 1 },
+      });
+      await expect(
+        f.requests.decideRequest(
+          "stranger",
+          f.ref.id,
+          {
+            revision: 1,
+            requestId: f.target.id,
+            action: "accept",
+            quoteVersion: 1,
+          },
+          false,
+        ),
+      ).rejects.toThrow("NOT_FOUND");
+      await expect(
+        f.payments.quotePaymentSession("guest", f.ref.id, f.target.id, 1),
+      ).rejects.toThrow("Accept");
+      await f.requests.decideRequest(
+        "guest",
+        f.ref.id,
+        {
+          revision: 1,
+          requestId: f.target.id,
+          action: "accept",
+          quoteVersion: 1,
+        },
+        false,
+      );
+      provider.mockResolvedValueOnce(Response.json({ id: "sq_order" }));
+      const session = await f.payments.quotePaymentSession(
+        "guest",
+        f.ref.id,
+        f.target.id,
+        1,
+      );
+      expect(session.amount).toBe(20000);
+      expect(
+        (
+          await f.payments.quotePaymentSession(
+            "guest",
+            f.ref.id,
+            f.target.id,
+            1,
+          )
+        ).orderId,
+      ).toBe("sq_order");
+      const payment = {
+        id: "sq_payment",
+        order_id: "sq_order",
+        amount: 20000,
+        currency: "INR",
+        status: "captured",
+        captured: true,
+      };
+      provider.mockImplementation(async () => Response.json(payment));
+      const captures = await Promise.all([
+        f.payments.captureQuotePayment(
+          session.stayQuoteOrderId,
+          "sq_order",
+          "sq_payment",
+        ),
+        f.payments.captureQuotePayment(
+          session.stayQuoteOrderId,
+          "sq_order",
+          "sq_payment",
+        ),
+      ]);
+      expect(captures).toEqual([{ refunded: false }, { refunded: false }]);
+      b = (await f.ref.get()).data()!;
+      expect(
+        b.customizations.find(
+          (r: import("@/lib/stay/contracts").StayRequest) =>
+            r.id === f.target.id,
+        ),
+      ).toMatchObject({
+        status: "confirmed",
+        settlement: "paid",
+        quote: { paymentStatus: "paid", paymentId: "sq_payment" },
+      });
+      expect(b.stayPaymentReceipts).toHaveLength(1);
+      expect(b.paidPaise).toBe(0);
+      await bookings.cancelBookingForUser("guest", f.ref.id);
+      b = (await f.ref.get()).data()!;
+      expect(
+        b.customizations.find(
+          (r: import("@/lib/stay/contracts").StayRequest) =>
+            r.id === f.target.id,
+        ).quote.paymentStatus,
+      ).toBe("refund_pending");
+      const refund = await db
+        .collection("refunds")
+        .doc(f.requests.quoteRefundId("sq_payment"))
+        .get();
+      expect(refund.data()).toMatchObject({
+        amountPaise: 20000,
+        paymentId: "sq_payment",
+        stayQuote: true,
+      });
+      await expect(
+        bookings.cancelBookingForUser("guest", f.ref.id),
+      ).resolves.toBeUndefined();
+      expect(
+        (
+          await db
+            .collection("refunds")
+            .where("paymentId", "==", "sq_payment")
+            .get()
+        ).size,
+      ).toBe(1);
+    }, 30000);
+    it("rejects changed and expired quotes and refunds late capture without confirming", async () => {
+      const f = await upgradedFixture();
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        {
+          revision: 0,
+          requestId: f.target.id,
+          action: "quote",
+          amountPaise: 22000,
+          scope: "Exact package",
+        },
+        true,
+      );
+      await f.requests.decideRequest(
+        "guest",
+        f.ref.id,
+        {
+          revision: 1,
+          requestId: f.target.id,
+          action: "accept",
+          quoteVersion: 1,
+        },
+        false,
+      );
+      provider.mockResolvedValueOnce(Response.json({ id: "old_quote_order" }));
+      const session = await f.payments.quotePaymentSession(
+        "guest",
+        f.ref.id,
+        f.target.id,
+        1,
+      );
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        {
+          revision: 2,
+          requestId: f.target.id,
+          action: "quote",
+          amountPaise: 24000,
+          scope: "Updated package",
+        },
+        true,
+      );
+      await expect(
+        f.requests.decideRequest(
+          "guest",
+          f.ref.id,
+          {
+            revision: 3,
+            requestId: f.target.id,
+            action: "accept",
+            quoteVersion: 1,
+          },
+          false,
+        ),
+      ).rejects.toThrow("changed");
+      provider.mockResolvedValueOnce(
+        Response.json({
+          id: "old_quote_payment",
+          order_id: "old_quote_order",
+          amount: 22000,
+          currency: "INR",
+          status: "captured",
+          captured: true,
+        }),
+      );
+      expect(
+        await f.payments.captureQuotePayment(
+          session.stayQuoteOrderId,
+          "old_quote_order",
+          "old_quote_payment",
+        ),
+      ).toEqual({ refunded: true });
+      const b = (await f.ref.get()).data()!;
+      expect(
+        b.customizations.find(
+          (r: import("@/lib/stay/contracts").StayRequest) =>
+            r.id === f.target.id,
+        ),
+      ).toMatchObject({
+        status: "requested",
+        quote: { version: 2, amountPaise: 24000, status: "offered" },
+      });
+      expect(
+        (
+          await db
+            .collection("refunds")
+            .doc(f.requests.quoteRefundId("old_quote_payment"))
+            .get()
+        ).get("amountPaise"),
+      ).toBe(22000);
+      await f.ref.update({
+        customizations: b.customizations.map(
+          (r: import("@/lib/stay/contracts").StayRequest) =>
+            r.id === f.target.id
+              ? {
+                  ...r,
+                  quote: {
+                    ...r.quote,
+                    expiresAt: new Date(Date.now() - 1000).toISOString(),
+                  },
+                }
+              : r,
+        ),
+      });
+      await expect(
+        f.requests.decideRequest(
+          "guest",
+          f.ref.id,
+          {
+            revision: 4,
+            requestId: f.target.id,
+            action: "accept",
+            quoteVersion: 2,
+          },
+          false,
+        ),
+      ).rejects.toThrow("expired");
+    }, 30000);
+    it("keeps unlisted requests distinct, supports free approval and decline, preserves them in precheckin", async () => {
+      const f = await upgradedFixture(),
+        b = (await f.ref.get()).data()!;
+      await f.requests.addUnlistedRequest("guest", f.ref.id, {
+        action: "create",
+        revision: 0,
+        request: {
+          name: "Wheelchair assistance",
+          note: "At arrival",
+          neededAt: b.startAt,
+        },
+      });
+      let saved = (await f.ref.get()).data()!;
+      const r = saved.customizations.at(-1);
+      expect(r).toMatchObject({
+        source: "unlisted",
+        status: "requested",
+        settlement: "pending_hotel",
+      });
+      await stay.savePreCheckin("guest", f.ref.id, { ...f.body, revision: 1 });
+      saved = (await f.ref.get()).data()!;
+      expect(
+        saved.customizations.find(
+          (x: import("@/lib/stay/contracts").StayRequest) => x.id === r.id,
+        ).status,
+      ).toBe("requested");
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        { revision: 2, requestId: r.id, action: "approve_free" },
+        true,
+      );
+      saved = (await f.ref.get()).data()!;
+      expect(
+        saved.customizations.find(
+          (x: import("@/lib/stay/contracts").StayRequest) => x.id === r.id,
+        ),
+      ).toMatchObject({
+        status: "confirmed",
+        settlement: "included",
+        totalPaise: 0,
+      });
+      await expect(
+        f.requests.decideRequest(
+          owner,
+          f.ref.id,
+          {
+            revision: 2,
+            requestId: f.target.id,
+            action: "decline",
+            response: "Unavailable",
+          },
+          true,
+        ),
+      ).rejects.toThrow("CONFLICT");
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        {
+          revision: 3,
+          requestId: f.target.id,
+          action: "decline",
+          response: "Unavailable",
+        },
+        true,
+      );
+      expect(
+        (
+          await db
+            .collection("refunds")
+            .where("bookingId", "==", f.ref.id)
+            .get()
+        ).size,
+      ).toBe(0);
+    }, 30000);
+
+    it("reconciles interrupted quote orders through the existing payment worker and preserves separate refund accounting", async () => {
+      const f = await upgradedFixture();
+      await f.requests.decideRequest(
+        owner,
+        f.ref.id,
+        { revision: 0, requestId: f.target.id, action: "approve_price" },
+        true,
+      );
+      await f.requests.decideRequest(
+        "guest",
+        f.ref.id,
+        {
+          revision: 1,
+          requestId: f.target.id,
+          action: "accept",
+          quoteVersion: 1,
+        },
+        false,
+      );
+      provider.mockRejectedValueOnce(new Error("network interrupted"));
+      await expect(
+        f.payments.quotePaymentSession("guest", f.ref.id, f.target.id, 1),
+      ).rejects.toThrow("interrupted");
+      await expect(
+        f.payments.quotePaymentSession("guest", f.ref.id, f.target.id, 1),
+      ).rejects.toThrow("reconciled");
+      const orders = await db
+        .collection("stayQuoteOrders")
+        .where("bookingId", "==", f.ref.id)
+        .get();
+      const order = orders.docs[0];
+      expect(order.get("amountPaise")).toBe(20000);
+      provider.mockImplementation(async (_provider: string, url: string) => {
+        if (url.includes("orders?receipt="))
+          return Response.json({
+            items: [
+              {
+                id: "recovered_quote_order",
+                receipt: `sq_${order.id.slice(0, 32)}`,
+                amount: 20000,
+                currency: "INR",
+                notes: { stayQuoteOrderId: order.id },
+              },
+            ],
+          });
+        if (url.includes("orders/recovered_quote_order/payments"))
+          return Response.json({
+            items: [{ id: "recovered_quote_payment", status: "captured" }],
+          });
+        return Response.json({
+          id: "recovered_quote_payment",
+          order_id: "recovered_quote_order",
+          amount: 20000,
+          currency: "INR",
+          captured: true,
+          status: "captured",
+        });
+      });
+      const processing = await import("@/lib/booking/processing");
+      await processing.reconcileBookingPayment(f.ref.id);
+      expect((await f.ref.get()).get("stayPaymentReceipts")[0]).toMatchObject({
+        paymentId: "recovered_quote_payment",
+        status: "paid",
+        amountPaise: 20000,
+      });
+      await bookings.cancelBookingForUser("guest", f.ref.id);
+      provider.mockResolvedValue(
+        Response.json({
+          id: "quote_refund",
+          payment_id: "recovered_quote_payment",
+          amount: 20000,
+          status: "processed",
+        }),
+      );
+      await processing.processRefund(
+        f.requests.quoteRefundId("recovered_quote_payment"),
+      );
+      const saved = (await f.ref.get()).data()!;
+      expect(saved.stayPaymentReceipts[0].status).toBe("refunded");
+      expect(saved.refundedPaise ?? 0).toBe(0);
+      expect(saved.paidPaise).toBe(0);
     }, 30000);
   },
 );

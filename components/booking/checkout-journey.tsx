@@ -1,4 +1,5 @@
 "use client";
+import { requestPriceBreakdown } from "@/lib/stay/pricing";
 import { Check, Pencil, ShieldCheck, BedDouble } from "lucide-react";
 import type { StayRequest } from "@/lib/stay/contracts";
 import { formatMoney } from "@/lib/customer/offer";
@@ -178,13 +179,51 @@ export function CheckoutReview({
                   {r.variantName ? ` · ${r.variantName}` : ""} × {r.quantity}
                 </p>
                 <p className="mt-1 text-xs text-[var(--hk-muted)]">
-                  {r.confirmation === "approval"
-                    ? "Hotel approval required"
-                    : "Confirmed with booking"}
+                  {r.agreementVersion === 2 && r.settlement === "pending_hotel"
+                    ? "Pending hotel approval · Excluded from checkout payment"
+                    : r.confirmation === "approval"
+                      ? "Hotel approval required"
+                      : "Confirmed with booking"}
                 </p>
+                {r.variantInclusions && (
+                  <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                    Includes: {r.variantInclusions}
+                  </p>
+                )}
+                {r.billableQuantity && r.unitPricePaise > 0 ? (
+                  <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                    {requestPriceBreakdown(r, currency)} · per{" "}
+                    {r.pricingUnit ?? "item"}
+                  </p>
+                ) : null}
+                {r.inputs?.note && (
+                  <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                    {r.inputs.note}
+                  </p>
+                )}
+                {r.inputs?.serviceAt && (
+                  <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                    Needed{" "}
+                    {new Date(r.inputs.serviceAt).toLocaleString("en-IN")}
+                  </p>
+                )}
+                {Object.values(r.inputs?.choices ?? {}).length > 0 && (
+                  <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                    {Object.entries(r.inputs!.choices!)
+                      .map(
+                        ([key, value]) =>
+                          `${r.choiceLabels?.[key] ? `${r.choiceLabels[key]}: ` : ""}${value}`,
+                      )
+                      .join(" · ")}
+                  </p>
+                )}
               </div>
               <span className="shrink-0 font-semibold text-[var(--hk-navy)]">
-                {r.totalPaise ? formatMoney(r.totalPaise, currency) : "Free"}
+                {r.source === "unlisted" || r.priceOnRequest
+                  ? "Awaiting quote"
+                  : r.totalPaise
+                    ? formatMoney(r.totalPaise, currency)
+                    : "Free"}
               </span>
             </div>
           ))}
@@ -201,15 +240,6 @@ export function CheckoutReview({
               Requests are subject to availability.
             </p>
           </div>
-        )}
-        {requests.some((r) => r.unitPricePaise > 0) && (
-          <p className="mt-4 rounded-xl bg-[var(--hk-surface-soft)] p-3 text-xs leading-5 text-[var(--hk-muted)]">
-            Prices include all charges. Paid extras are collected in full with
-            online payment, including deposit bookings. If the hotel declines a
-            paid request, its full price is refunded. New paid extras cannot be
-            added after booking. Extra charges follow the room’s cancellation
-            policy.
-          </p>
         )}
       </section>
       <section className="rounded-2xl border border-[var(--hk-border)] bg-white p-5 sm:p-6">

@@ -15,13 +15,13 @@ import {
   Minimize2,
   Plus,
   Minus,
-  Sparkles,
+  TrendingUp,
   Star,
   X,
 } from "lucide-react";
 import type { CatalogProperty } from "@/lib/customer/catalog";
 import { mapsLibrary, markerLibrary } from "@/lib/google/maps-loader";
-import { cancellationLabel, formatMoney, guestScoreLabel } from "@/lib/customer/offer";
+import { formatMoney } from "@/lib/customer/offer";
 import { amenityLabel, canonicalAmenityKey } from "@/lib/customer/amenities";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { hotelHref } from "./stay-card";
@@ -44,7 +44,6 @@ const MARKER_ACTIVE_CLASS =
 
 export default function SearchMap({
   properties,
-  total,
   query,
   savedIds,
   onSave,
@@ -60,7 +59,6 @@ export default function SearchMap({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isMapReady, setIsMapReady] = useState(false);
 
   const destination = destinationProp || new URLSearchParams(query).get("destination") || "this area";
   const mapped = properties.filter(
@@ -76,8 +74,8 @@ export default function SearchMap({
   // Initialize Google Maps and markers
   useEffect(() => {
     let disposed = false;
-    markersRef.current.clear();
-    setIsMapReady(false);
+    const markers = markersRef.current;
+    markers.clear();
 
     void (async () => {
       try {
@@ -154,7 +152,6 @@ export default function SearchMap({
           map.fitBounds(bounds, 56);
         }
 
-        setIsMapReady(true);
       } catch {
         if (!disposed) {
           setError("The map could not load. You can still browse and book from the hotel list.");
@@ -164,11 +161,11 @@ export default function SearchMap({
 
     return () => {
       disposed = true;
-      markersRef.current.forEach(({ marker }) => {
+      markers.forEach(({ marker }) => {
         google.maps.event.clearInstanceListeners(marker);
         marker.map = null;
       });
-      markersRef.current.clear();
+      markers.clear();
       if (mapInstanceRef.current) {
         google.maps.event.clearInstanceListeners(mapInstanceRef.current);
         mapInstanceRef.current = null;
@@ -312,9 +309,6 @@ export default function SearchMap({
   }
 
   const selectedOffer = selected?.offer;
-  const selectedCancellation = selectedOffer
-    ? cancellationLabel(selectedOffer.cancellation, selectedOffer.timezone)
-    : null;
 
   const mapContent = (
     <div className="relative h-full w-full overflow-hidden bg-slate-100">
@@ -507,7 +501,7 @@ export default function SearchMap({
                   </span>
                 ) : (
                   <span className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--hk-surface-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--hk-navy)]">
-                    <Sparkles className="h-2.5 w-2.5 text-[var(--hk-gold-strong)]" />
+                    <TrendingUp className="h-2.5 w-2.5 text-[var(--hk-gold-strong)]" />
                     <span>Popular stay</span>
                   </span>
                 )}

@@ -1,3 +1,4 @@
+import { rateOwnerError } from "@/lib/partner/rate-owner-error";
 import { eligiblePricing, startingPrice } from "@/lib/booking/duration-pricing";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
@@ -25,6 +26,7 @@ const rawPATCH = async function PATCH(
 
     if (data?.status === "archived") throw new Error("RATE_PLAN_ARCHIVED");
     if (!eligiblePricing(data)) throw new Error("Archive this old hourly rate and create a new rate with duration prices.");
+    if (input.bookingMode && input.bookingMode !== (data.bookingMode ?? "overnight")) throw new Error("STAY_TYPE_FIXED");
     const merged = { ...data, ...input };
     if (!eligiblePricing(merged)) throw new Error("Enter hourly duration prices before saving this rate.");
     if (input.cancellationPolicyId) {
@@ -42,7 +44,7 @@ const rawPATCH = async function PATCH(
     const minimumDuration = Number(stayRules.minimumDurationMinutes ?? 15), maximumDuration = Number(stayRules.maximumDurationMinutes ?? 1440);
     if (minimumDuration > maximumDuration) throw new Error("MAXIMUM_DURATION_TOO_LOW");
     if (merged.arrivalWindow && merged.arrivalWindow.start > merged.arrivalWindow.end) throw new Error("INVALID_ARRIVAL_WINDOW");
-    const patch = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "minimumNights" && key !== "maximumNights"));
+    const patch = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "code" && key !== "minimumNights" && key !== "maximumNights"));
     const batch = adminDb.batch();
     batch.update(ref, { ...patch, basePricePaise: startingPrice(merged), stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
     enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing"] });
@@ -56,7 +58,7 @@ const rawPATCH = async function PATCH(
         ...data,
         ...patch,
         name: input.name ?? data?.name,
-        code: input.code ?? data?.code,
+        code: data?.code,
         basePricePaise: startingPrice(merged),
         roomTypeId: data?.roomTypeId,
         cancellationPolicyId: input.cancellationPolicyId ?? data?.cancellationPolicyId,
@@ -70,7 +72,7 @@ const rawPATCH = async function PATCH(
       },
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to update rate plan." }, { status: 422 });
+    return Response.json({ error: rateOwnerError(error) }, { status: 422 });
   }
 }
 

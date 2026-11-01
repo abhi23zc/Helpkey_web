@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, CalendarDays, Check, ChevronDown, CircleHelp, Loader2, LogOut, Menu, Search, UserRound } from "lucide-react";
+import { Building2, Check, ChevronDown, CircleHelp, Loader2, LogOut, Menu, UserRound } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ReservationSearch } from "./reservation-search";
+import { PropertyImage } from "./property-image";
 import { PartnerSidebar } from "./partner-sidebar";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { PartnerWorkspaceSkeleton } from "@/app/partner/loading";
@@ -77,15 +79,10 @@ function PropertyDropdown({
           ) : (
             <>
               <div className="relative h-7 w-8 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={selectedCover}
-                  alt={selectedProperty?.name ?? "Property"}
-                  className="h-full w-full object-cover"
-                />
+                <PropertyImage src={selectedCover} name={selectedProperty?.name || "Property"} />
               </div>
               <span className="truncate text-sm font-bold text-[#061224]">
-                {selectedProperty?.name ?? "The Balmoral Hotel"}
+                {selectedProperty?.name ?? "Select a property"}
               </span>
             </>
           )}
@@ -131,21 +128,8 @@ function PropertyDropdown({
                   </button>
                 );
               })
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="flex w-full items-center justify-between rounded-xl bg-[#fbf5e8] px-3 py-2.5 text-xs font-bold text-[#061224]"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-100 text-[#061224]">
-                    <Building2 className="h-3.5 w-3.5 text-slate-500" />
-                  </div>
-                  <span>The Balmoral Hotel</span>
-                </div>
-                <Check className="h-4 w-4 text-[#c89b3c]" />
-              </button>
-            )}
+            ) : <Link href="/partner/onboarding" className="block p-3 text-xs font-semibold">Add your first property</Link>
+            }
           </div>
         </div>
       )}
@@ -195,7 +179,8 @@ export function PartnerShell({
 
   const displayName = data.user?.fullName?.trim() || "Partner";
   const initials = useMemo(() => toInitials(displayName), [displayName]);
-  const coverImage = data.selectedProperty?.coverImageUrl || "/balmoral_hotel.png";
+  const coverImage = data.selectedProperty?.coverImageUrl || "";
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
 
   const signOut = async () => {
     setSigningOut(true);
@@ -219,7 +204,7 @@ export function PartnerShell({
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-[248px]"
       }`}
     >
-      <PartnerSidebar
+      <PartnerSidebar propertyId={data.selectedPropertyId} date={data.reportingDate}
         open={menuOpen}
         collapsed={sidebarCollapsed}
         onClose={() => setMenuOpen(false)}
@@ -227,7 +212,7 @@ export function PartnerShell({
       />
 
       <section className="mx-auto max-w-[1680px] space-y-4 px-3 py-4 sm:px-5 lg:px-6 2xl:px-8">
-        <header className="grid gap-3 xl:grid-cols-[minmax(260px,320px)_minmax(220px,260px)_minmax(260px,1fr)_auto] xl:items-center">
+        <header className="grid gap-3 xl:grid-cols-[minmax(260px,320px)_minmax(260px,1fr)_auto] xl:items-center">
           <div className="flex items-center gap-3 lg:hidden">
             <button
               type="button"
@@ -250,31 +235,10 @@ export function PartnerShell({
             loading={data.loading}
           />
 
-          <div className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-xs">
-            <CalendarDays className="h-4 w-4 shrink-0 text-slate-400" />
-            <label className="min-w-0 flex-1">
-              <span className="sr-only">Dashboard reporting date</span>
-              <input
-                type="date"
-                value={data.reportingDate}
-                onChange={(event) => data.setReportingDate(event.target.value)}
-                className="w-full bg-transparent text-sm font-semibold text-[#061224] outline-none [color-scheme:light]"
-              />
-            </label>
-          </div>
-
-          <div className="hidden h-12 items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-xs md:flex xl:min-w-0">
-            <Search className="mr-2.5 h-4 w-4 shrink-0 text-slate-400" />
-            <span className="truncate text-sm font-medium text-slate-400">
-              Search reservations, guests, booking ID...
-            </span>
-            <span className="ml-auto rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-              ⌘K
-            </span>
-          </div>
+          <ReservationSearch key={data.selectedPropertyId} propertyId={data.selectedPropertyId} date={data.reportingDate} />
 
           <div className="flex items-center justify-end gap-3 md:justify-self-end">
-            <NotificationBell />
+            <NotificationBell partner />
             <div ref={accountMenuRef} className="relative">
               <button
                 type="button"
@@ -284,9 +248,9 @@ export function PartnerShell({
                 aria-label={`Open account menu for ${displayName}`}
                 className="flex items-center gap-3 rounded-2xl px-1 py-1 text-left transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
               >
-                {data.user?.photoURL ? (
+                {data.user?.photoURL && failedAvatar !== data.user.photoURL ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={data.user.photoURL} alt="" className="h-11 w-11 rounded-full object-cover shadow-xs ring-2 ring-[#c89b3c]/30" />
+                  <img onError={() => setFailedAvatar(data.user!.photoURL)} src={data.user.photoURL} alt="" className="h-11 w-11 rounded-full object-cover shadow-xs ring-2 ring-[#c89b3c]/30" />
                 ) : (
                   <div className="grid h-11 w-11 place-items-center rounded-full bg-[#061224] text-xs font-bold text-white shadow-xs ring-2 ring-[#c89b3c]/30">{initials}</div>
                 )}

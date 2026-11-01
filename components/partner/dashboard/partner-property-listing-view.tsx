@@ -18,6 +18,7 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { formatPaise } from "@/lib/currency";
 import { DashboardCard } from "./shared";
 import {
@@ -160,7 +161,8 @@ export function PartnerPropertyListingView({
   const listing = usePropertyListing(propertyId);
   const { property, photos, checklist, roomsWithPricing, startingPricePaise } = listing;
 
-  const [activeSection, setActiveSection] = useState<SectionKey>("basicInfo");
+  const searchParams = useSearchParams();
+  const [activeSection, setActiveSection] = useState<SectionKey>(searchParams.get("section") === "policies" ? "policies" : "basicInfo");
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [previewHighlighted, setPreviewHighlighted] = useState(false);

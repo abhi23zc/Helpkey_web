@@ -7,6 +7,8 @@ import {
   type CheckoutStep,
 } from "./checkout-journey";
 import { eligibleOffering } from "@/lib/stay/domain";
+import { UnlistedRequestForm, type UnlistedDraft } from "@/components/stay/unlisted-request";
+import { TravelerChips } from "@/components/stay/personalization-picker";
 import { CheckoutPersonalization } from "@/components/stay/checkout-personalization";
 import type {
   Selection,
@@ -45,7 +47,7 @@ import {
   Lock,
   Mail,
   ShieldCheck,
-  Sparkles,
+  Info,
   User,
   UserCheck,
   Users,
@@ -199,6 +201,7 @@ export function BookingCheckout({
   const [committedSelections, setCommittedSelections] = useState<Selection[]>(
     [],
   );
+  const [unlistedRequests, setUnlistedRequests] = useState<UnlistedDraft[]>([]);
   const [preferences, setPreferences] = useState<TravelerCategory[]>([]);
   useEffect(() => {
     const timer = setTimeout(() => setCommittedSelections(selections), 300);
@@ -212,9 +215,10 @@ export function BookingCheckout({
             ...initialInput,
             ...committedGuests,
             customizationSelections: committedSelections,
+            unlistedRequests,
           }
         : null,
-    [initialInput, committedGuests, committedSelections],
+    [initialInput, committedGuests, committedSelections, unlistedRequests],
   );
   const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
   const [holdSeconds, setHoldSeconds] = useState<number | null>(null);
@@ -861,7 +865,7 @@ export function BookingCheckout({
       {quoteChanged && (
         <div className="bg-amber-50 border-b border-amber-200/80 px-4 py-3">
           <div className="mx-auto max-w-[1280px] flex items-center gap-2 text-xs font-semibold text-amber-900">
-            <Sparkles className="h-4 w-4 shrink-0 text-amber-600" />
+            <Info className="h-4 w-4 shrink-0 text-amber-600" />
             <span>
               The price or stay rules were updated. Please review the refreshed
               stay details and accept terms before confirming.
@@ -961,6 +965,7 @@ export function BookingCheckout({
           <section className="min-w-0 space-y-5 lg:col-span-8">
             {step === "details" && (
               <>
+                <div className="rounded-2xl border border-[var(--hk-border)] bg-white p-5"><TravelerChips value={preferences} onChange={setPreferences} single disabled={guestsLocked}/></div>
                 {/* Sign-In Prompt Banner */}
                 {!loading && !appUser && (
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 rounded-2xl border border-amber-200/50 bg-gradient-to-r from-amber-50/40 via-white to-blue-50/30 p-6 sm:p-7 shadow-xs">
@@ -1628,6 +1633,8 @@ export function BookingCheckout({
                   priceError={quoteQuery.isError}
                   retry={() => void optionsQuery.refetch()}
                 />
+                {unlistedRequests.map((r,i)=><div key={i} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--hk-border)] bg-white p-4 text-sm"><div><p className="font-semibold">{r.name}</p><p className="mt-1 text-xs text-[var(--hk-muted)]">Awaiting hotel review / quote · Not included in payment</p></div><button type="button" disabled={guestsLocked} className="min-h-11 text-xs underline" onClick={()=>setUnlistedRequests(old=>old.filter((_,j)=>i!==j))}>Remove</button></div>)}
+                <UnlistedRequestForm timezone={quote?.timezone ?? "Asia/Kolkata"} disabled={guestsLocked || unlistedRequests.length>=5} onAdd={v=>setUnlistedRequests(old=>[...old,v])}/>
                 {/* Special Requests */}
                 <details className="rounded-2xl border border-[var(--hk-border)] bg-white p-5">
                   <summary className="min-h-6 cursor-pointer text-sm font-semibold text-[var(--hk-navy)]">
@@ -1854,9 +1861,10 @@ function PriceBreakdown({ quote }: { quote: Quote }) {
         <span>
           {quote.extrasTotalPaise
             ? money(quote.extrasTotalPaise, quote.currency)
-            : "Free"}
+            : quote.customizations.some(r=>r.settlement==="pending_hotel") ? "Pending requests" : "Free"}
         </span>
       </div>
+      {quote.customizations.some(r=>r.settlement==="pending_hotel") && <p className="text-xs">Pending requests are excluded from the total and need hotel approval. You will review any final quote before paying.</p>}
       <div className="flex items-center justify-between gap-3 border-t border-[var(--hk-border)] pt-4 font-bold text-[var(--hk-navy)]">
         <span>Booking total</span>
         <span className="text-xl">
@@ -2008,9 +2016,8 @@ function BookingSummary({
                         {r.quantity}
                       </span>
                       <span className="shrink-0">
-                        {r.totalPaise
-                          ? money(r.totalPaise, quote.currency)
-                          : "Free"}
+                        {r.source==="unlisted" || r.priceOnRequest ? "Awaiting quote" : r.totalPaise ? money(r.totalPaise,quote.currency) : "Free"}
+                        {r.settlement==="pending_hotel" && <span className="mt-1 block text-[10px]">Pending · Not charged</span>}
                       </span>
                     </div>
                   ))}

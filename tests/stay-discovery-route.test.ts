@@ -79,6 +79,7 @@ describe("checkout catalog discovery", () => {
           adults: 1,
         }),
       }),
+      { params: Promise.resolve({}) },
     );
     expect(response.status).toBe(200);
     const data = await response.json();

@@ -1,28 +1,12 @@
 import { eligiblePricing, startingPrice } from "@/lib/booking/duration-pricing";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
-import { ZodError } from "zod";
+import { rateOwnerError } from "@/lib/partner/rate-owner-error";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
 import { propertyOwner, ratePlanSchema } from "@/lib/partner/service";
 import { enqueueProjection } from "@/lib/projections";
 import { invalidatePublic } from "@/lib/api/cache";
-
-function customerError(error: unknown) {
-  if (error instanceof ZodError) {
-    const field = String(error.issues[0]?.path[0] ?? "");
-    if (field === "name") return "Enter a rate name with at least 2 characters.";
-    if (field === "basePricePaise") return "Enter a rate price greater than ₹0.";
-    if (field === "durationPrices") return "Add unique durations from 1–24 hours, each with a total price greater than ₹0.";
-    if (field === "durationMinutes" || field === "minimumDurationMinutes" || field === "maximumDurationMinutes") return "Use a stay duration from 15 to 1,440 minutes in 15-minute steps.";
-    if (field === "arrivalWindow" || field === "operatingWindow") return "Choose valid arrival and operating times.";
-    if (field === "cancellationPolicyId") return "Choose a cancellation policy for this rate.";
-    if (field === "roomTypeId") return "Choose the room type this rate applies to.";
-    return "Check the rate name, room type, cancellation policy, price, and stay settings.";
-  }
-  if (error instanceof Error && error.message === "INVALID_ROOM_TYPE") return "Choose a valid room type and try again.";
-  return error instanceof Error ? error.message : "Unable to create rate plan.";
-}
 
 const rawPOST = async function POST(request: Request, { params }: RouteContext<"/api/partner/properties/[propertyId]/rate-plans">) {
   const user = await getAuthenticatedUser();
@@ -39,7 +23,8 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     if (input.arrivalWindow && input.arrivalWindow.start > input.arrivalWindow.end) throw new Error("INVALID_ARRIVAL_WINDOW");
     if (!eligiblePricing(input)) throw new Error("Enter hourly duration prices before saving this rate.");
     const ref = adminDb.collection("ratePlans").doc();
-    const { minimumNights, maximumNights, minimumDurationMinutes, maximumDurationMinutes, minimumAdvanceMinutes, maximumAdvanceDays, ...rate } = input;
+    const { minimumNights, maximumNights, minimumDurationMinutes, maximumDurationMinutes, minimumAdvanceMinutes, maximumAdvanceDays, ...fields } = input;
+    const rate = { ...fields, code: fields.code ?? `RATE_${ref.id.toUpperCase()}` };
     const batch = adminDb.batch();
     batch.set(ref, {
       propertyId,
@@ -68,7 +53,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     await invalidatePublic("home", "search:*", "property:*", "bookable:*");
     return Response.json({ ratePlanId: ref.id, ratePlan: { id: ref.id, propertyId, ...rate, basePricePaise: startingPrice(rate), roomTypeId: input.roomTypeId, cancellationPolicyId: input.cancellationPolicyId, minimumNights, maximumNights, status: "active" } }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: customerError(error) }, { status: 422 });
+    return Response.json({ error: rateOwnerError(error) }, { status: 422 });
   }
 }
 

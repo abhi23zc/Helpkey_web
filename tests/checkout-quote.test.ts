@@ -122,7 +122,7 @@ describe("checkout quote and booking comparison", () => {
 
   it("prices selected extras, preserves the room deposit and ignores traveler suggestions in pricing", async () => {
     fixture.records.get("ratePlans/rate")!.paymentMode = "deposit";
-    fixture.records.set("properties/hotel/stayCustomizations/decoration", { propertyId: "hotel", version: 1, name: "Decoration", description: "A prepared celebration", kind: "service", travelerCategories: ["Couple"], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 2, advanceNoticeMinutes: 60, confirmation: "approval", variants: [], status: "active" });
+    fixture.records.set("properties/hotel/stayCustomizations/decoration", { propertyId: "hotel", version: 1, name: "Decoration", description: "A prepared celebration", kind: "service", travelerCategories: ["Couple"], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 2, advanceNoticeMinutes: 60, confirmation: "immediate", variants: [], status: "active" });
     const input = { ...stay, customizationSelections: [{ offeringId: "decoration", variantId: null, quantity: 1 }] };
     const initial = await quote(input);
     expect(initial).toMatchObject({ roomTotalPaise: 140000, extrasTotalPaise: 20000, totalPaise: 160000, payableNowPaise: 55000, balanceDuePaise: 105000 });
@@ -135,7 +135,7 @@ describe("checkout quote and booking comparison", () => {
   });
 
   it("rejects changes to selected variant prices or offering versions", async () => {
-    const offering = { propertyId: "hotel", version: 1, name: "Aroma", description: "Choose your aroma", kind: "service", travelerCategories: [], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 3, advanceNoticeMinutes: 0, confirmation: "approval", variants: [{ id: "rose", name: "Rose", unitPricePaise: 0 }, { id: "lavender", name: "Lavender", unitPricePaise: 15000 }], status: "active" };
+    const offering = { propertyId: "hotel", version: 1, name: "Aroma", description: "Choose your aroma", kind: "service", travelerCategories: [], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 3, advanceNoticeMinutes: 0, confirmation: "immediate", variants: [{ id: "rose", name: "Rose", unitPricePaise: 0 }, { id: "lavender", name: "Lavender", unitPricePaise: 15000 }], status: "active" };
     fixture.records.set("properties/hotel/stayCustomizations/aroma", offering);
     const input = { ...stay, customizationSelections: [{ offeringId: "aroma", variantId: "rose", quantity: 1 }, { offeringId: "aroma", variantId: "lavender", quantity: 2 }] };
     const initial = await quote(input);

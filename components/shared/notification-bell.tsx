@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Bell, CheckCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "./use-notifications";
@@ -20,7 +21,8 @@ function relativeTime(iso: string | null): string {
  * Notification bell with unread badge and a dropdown of recent notifications.
  * Shared by the partner and admin shells.
  */
-export function NotificationBell() {
+export function NotificationBell({ partner = false }: { partner?: boolean }) {
+  const router = useRouter();
   const { items, unreadCount, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -79,7 +81,7 @@ export function NotificationBell() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => item.readAt == null && void markRead([item.id])}
+                  onClick={() => { if (item.readAt == null) void markRead([item.id]); if (partner && item.data.bookingId && item.data.propertyId) { setOpen(false); router.push(`/partner/dashboard?${new URLSearchParams({ propertyId: item.data.propertyId, bookingId: item.data.bookingId })}`); } }}
                   className={`block w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 ${item.readAt == null ? "bg-[#fbf5e8]" : ""}`}
                 >
                   <div className="flex items-start gap-2">

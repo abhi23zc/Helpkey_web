@@ -33,7 +33,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Tag,
   Trash2,
   Trees,
@@ -396,7 +395,7 @@ export function PropertySetup({ propertyId }: { propertyId: string }) {
             >
               {saving ? (
                 <>
-                  <Sparkles className="h-3.5 w-3.5 animate-pulse text-amber-500" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
                   <span className="font-medium text-amber-700">
                     Saving changes...
                   </span>

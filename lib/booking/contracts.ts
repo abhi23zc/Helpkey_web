@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { selectionsSchema, travelerPreferencesSchema } from "@/lib/stay/contracts";
+import { selectionsSchema, travelerPreferencesSchema, unlistedRequestSchema } from "@/lib/stay/contracts";
 import { validDate } from "./domain";
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 export const bookingInput = z.object({
+  unlistedRequests: z.array(unlistedRequestSchema).max(5).optional().default([]),
   customizationSelections: selectionsSchema.optional().default([]),
   travelerPreferences: travelerPreferencesSchema.optional().default([]),
   propertySlug: z.string().min(1).max(180),

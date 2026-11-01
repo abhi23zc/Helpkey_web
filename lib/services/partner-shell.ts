@@ -30,7 +30,7 @@ export async function loadPartnerShell(user: AppUser) {
     user: { uid: user.uid, fullName: user.fullName, email: user.email, photoURL: user.photoURL },
     properties: properties.docs.map((doc) => {
       const data = doc.data();
-      return { id: doc.id, slug: typeof data.slug === "string" ? data.slug : undefined, name: data.name, propertyType: data.propertyType ?? "hotel", status: data.status, approvalStatus: data.approvalStatus, rejectionReason: data.rejectionReason ?? null, address: data.address ?? {}, onboarding: data.onboarding ?? { currentStep: 1, completedSteps: [] }, totalPhysicalRooms: data.totalPhysicalRooms ?? 1, currency: typeof data.currency === "string" ? data.currency : DEFAULT_CURRENCY, coverImageUrl: coverUrls.get(data.coverMediaId) ?? null, updatedAt: serializeDate(data.updatedAt) };
+      return { id: doc.id, timezone: data.timezone ?? "Asia/Kolkata", isBookable: data.isBookable === true, slug: typeof data.slug === "string" ? data.slug : undefined, name: data.name, propertyType: data.propertyType ?? "hotel", status: data.status, approvalStatus: data.approvalStatus, rejectionReason: data.rejectionReason ?? null, address: data.address ?? {}, onboarding: data.onboarding ?? { currentStep: 1, completedSteps: [] }, totalPhysicalRooms: data.totalPhysicalRooms ?? 1, currency: typeof data.currency === "string" ? data.currency : DEFAULT_CURRENCY, coverImageUrl: coverUrls.get(data.coverMediaId) ?? null, updatedAt: serializeDate(data.updatedAt) };
     }),
   });
 }

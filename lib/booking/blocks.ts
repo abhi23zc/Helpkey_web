@@ -1,3 +1,4 @@
+import { unitCalendar } from "@/lib/partner/reservations/physical";
 import "server-only";
 import { invalidatePublic } from "@/lib/api/cache";
 import { FieldValue } from "firebase-admin/firestore";
@@ -27,7 +28,7 @@ export async function createCapacityBlock(actorId: string, propertyId: string, r
     for (const allocation of allocations) tx.set(calendarRef(propertyId, room.id, allocation.date), { propertyId, roomTypeId: room.id, date: allocation.date, blocked: Object.fromEntries(allocation.intervals.map((key) => [key, FieldValue.increment(input.quantity)])), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.create(ref, { ...input, propertyId, allocations, status: "active", createdBy: actorId, createdAt: FieldValue.serverTimestamp() });
   });
-  await invalidatePublic("search:*");
+  await invalidatePublic("search:*", "property:*", "bookable:*");
   return { blockId: ref.id };
 }
 export async function releaseCapacityBlock(actorId: string, propertyId: string, blockId: string) {
@@ -39,11 +40,17 @@ export async function releaseCapacityBlock(actorId: string, propertyId: string, 
     if (data.status === "released") return;
     const allocations = data.allocations as Allocation[];
     const calendars = await Promise.all(allocations.map((allocation) => tx.get(calendarRef(propertyId, data.roomTypeId, allocation.date))));
+    const physical = data.unitId ? await tx.getAll(...allocations.map(a => unitCalendar(data.unitId, a.date))) : [];
     if (allocations.some((allocation, index) => allocation.intervals.some((key) => (calendars[index].data()?.blocked?.[key] ?? 0) < data.quantity))) throw new Error("INVENTORY_DRIFT");
     for (const allocation of data.allocations as Allocation[]) tx.set(calendarRef(propertyId, data.roomTypeId, allocation.date), { blocked: Object.fromEntries(allocation.intervals.map((key) => [key, FieldValue.increment(-data.quantity)])), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    physical.forEach((d, i) => {
+      const slots = { ...(d.data()?.slots || {}) };
+      for (const key of allocations[i].intervals) if (slots[key] === `maintenance:${blockId}`) delete slots[key];
+      tx.set(d.ref, { propertyId, unitId: data.unitId, slots });
+    });
     tx.update(ref, { status: "released", releasedBy: actorId, releasedAt: FieldValue.serverTimestamp() });
   });
-  await invalidatePublic("search:*");
+  await invalidatePublic("search:*", "property:*", "bookable:*");
 }
 
 export async function setStopSell(actorId: string, propertyId: string, roomTypeId: string, date: string, enabled: boolean) {
@@ -54,5 +61,5 @@ export async function setStopSell(actorId: string, propertyId: string, roomTypeI
     if (property.data()?.inventoryEngine !== "interval_v1") throw new Error("INVENTORY_CUTOVER_REQUIRED");
     tx.set(calendarRef(propertyId, roomTypeId, date), { propertyId, roomTypeId, date, stopSell: enabled, updatedAt: FieldValue.serverTimestamp(), updatedBy: actorId }, { merge: true });
   });
-  await invalidatePublic("search:*");
+  await invalidatePublic("search:*", "property:*", "bookable:*");
 }

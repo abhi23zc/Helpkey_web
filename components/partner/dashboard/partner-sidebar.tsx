@@ -19,7 +19,6 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { useState } from "react";
 
 const navItems = [
   { label: "Overview", href: "/partner/dashboard", icon: Grid2X2 },
@@ -36,19 +35,22 @@ const navItems = [
 ] as const;
 
 export function PartnerSidebar({
+  propertyId,
+  date,
   open,
   collapsed,
   onClose,
   onToggleCollapse,
 }: {
+  propertyId?: string;
+  date?: string;
   open: boolean;
   collapsed: boolean;
   onClose: () => void;
   onToggleCollapse: () => void;
 }) {
   const pathname = usePathname();
-  const [isHovered, setIsHovered] = useState(false);
-  const isExpanded = !collapsed || isHovered;
+  const isExpanded = !collapsed;
 
   return (
     <>
@@ -61,8 +63,6 @@ export function PartnerSidebar({
         />
       )}
       <aside
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-[#061224] text-white shadow-2xl transition-[transform,width] duration-300 lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         } ${isExpanded ? "w-[248px]" : "w-[248px] lg:w-20"}`}
@@ -73,7 +73,7 @@ export function PartnerSidebar({
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <KeyRound className="h-7 w-7 shrink-0 text-[#c89b3c]" />
+            <KeyRound className={`h-7 w-7 shrink-0 text-[#c89b3c] ${!isExpanded ? "lg:hidden" : ""}`} />
             <div
               className={`transition-opacity duration-300 ${
                 !isExpanded ? "hidden" : "block"
@@ -90,14 +90,10 @@ export function PartnerSidebar({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className={`hidden shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${isExpanded ? "lg:block" : ""}`}
+            className={`hidden shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] lg:block`}
             aria-label={collapsed ? "Pin sidebar open" : "Collapse sidebar"}
             title={
-              collapsed
-                ? isHovered
-                  ? "Pin expanded sidebar"
-                  : "Expand sidebar"
-                : "Collapse sidebar"
+              collapsed ? "Expand sidebar" : "Collapse sidebar"
             }
           >
             {collapsed ? (
@@ -151,7 +147,7 @@ export function PartnerSidebar({
             return href ? (
               <Link
                 key={label}
-                href={href}
+                href={`${href}?${new URLSearchParams({ ...(propertyId ? { propertyId } : {}), ...(date ? { date } : {}) })}`}
                 onClick={onClose}
                 className={baseClass}
                 title={!isExpanded ? label : undefined}
@@ -180,14 +176,14 @@ export function PartnerSidebar({
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                 </span>
-                <span className="text-[10px] font-bold text-white/80">Synced 2m ago</span>
+                <span className="text-[10px] font-bold text-white/80">Helpkey Partner</span>
               </div>
               <ShieldCheck className="h-3.5 w-3.5 text-[#c89b3c]" />
             </div>
 
             <div className="mt-2.5 border-t border-white/10 pt-2.5">
               <p className="text-[11px] font-bold text-white">Need Support?</p>
-              <p className="text-[10px] text-white/60">Partner team is 24/7 active</p>
+              <p className="text-[10px] text-white/60">Find answers and contact Helpkey</p>
               <Link
                 href="/help"
                 className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c]/60 bg-[#c89b3c]/10 py-1.5 text-xs font-bold text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"

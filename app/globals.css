@@ -140,11 +140,16 @@ body {
 @media print {
   @page { size: A4; margin: 12mm; }
   body { background: #fff !important; }
-  body * { visibility: hidden; }
+  body:has(.booking-receipt-overlay) { height: auto !important; overflow: visible !important; }
+  body:has(.booking-receipt-overlay) > :not(.booking-receipt-overlay) { display: none !important; }
   .booking-receipt-overlay, .booking-receipt-overlay * { visibility: visible; }
-  .booking-receipt-overlay { position: absolute !important; inset: 0 !important; display: block !important; padding: 0 !important; background: #fff !important; backdrop-filter: none !important; }
-  .booking-receipt-print { width: 100% !important; max-width: none !important; max-height: none !important; overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; }
+  .booking-receipt-overlay { position: static !important; inset: 0 !important; display: block !important; padding: 0 !important; background: #fff !important; backdrop-filter: none !important; }
+  .booking-receipt-print { display: block !important; width: 100% !important; max-width: none !important; max-height: none !important; overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; }
   .booking-receipt-controls { display: none !important; }
+  .booking-receipt-body { max-height: none !important; overflow: visible !important; }
+  .booking-receipt-print article { padding: 0 !important; }
+  .booking-receipt-print h2 { break-after: avoid; }
+  .receipt-keep-together, .receipt-line-item { break-inside: avoid; }
 }
 
 a,
@@ -329,3 +334,9 @@ input {
 @media (prefers-reduced-motion: reduce) {
   .hk-checkout *, .hk-extra-chip { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+.partner-calendar .rdp-root { --rdp-accent-color: #b78929; --rdp-accent-background-color: #fbf5e8; --rdp-range_middle-background-color: #fbf5e8; --rdp-range_start-color: white; --rdp-range_end-color: white; --rdp-day_button-border-radius: 12px; --rdp-day-height: 40px; --rdp-day-width: 40px; --rdp-day_button-height: 38px; --rdp-day_button-width: 38px; --rdp-months-gap: 28px; font-size: 14px; }
+.partner-calendar .rdp-month_caption { font-size: 15px; font-weight: 700; }
+.partner-calendar .rdp-weekday { font-size: 11px; color: #64748b; font-weight: 600; }
+.partner-calendar .rdp-selected .rdp-day_button { font-weight: 700; }
+@media (max-width: 360px) { .partner-calendar .rdp-root { --rdp-day-width: 35px; --rdp-day_button-width: 33px; } }

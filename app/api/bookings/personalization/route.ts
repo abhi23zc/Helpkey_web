@@ -1,8 +1,10 @@
+import { withDatePrices } from "@/lib/booking/date-prices";
 import { withApiHandler } from "@/lib/api/handler";
 import { bookingInput } from "@/lib/booking/contracts";
 import { evaluateStay } from "@/lib/booking/domain";
 import { adminDb } from "@/lib/firebase/admin";
 import { offeringsFor } from "@/lib/stay/catalog";
+import { propertyAllowsPets } from "@/lib/stay/recommendations";
 import { stayError } from "@/lib/stay/api";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
 import { clientIp, privateFingerprint } from "@/lib/api/request";
@@ -41,11 +43,11 @@ async function post(request: Request) {
       t?.status !== "active"
     )
       throw new Error("Options are unavailable for this stay.");
-    const stay = evaluateStay(input, p, r, t);
+    const stay = evaluateStay(input, p, r, await withDatePrices(property.id, rate.id, t, input));
     return Response.json({
       // Discovery includes unavailable active options; quote/creation still enforce eligibility.
       offerings: (await offeringsFor(property.id)).filter(
-        (o) => o.status === "active",
+        (o) => o.status === "active" && (o.category !== "pets" || propertyAllowsPets(p)),
       ),
       startAt: stay.startAt,
       timezone: stay.timezone,

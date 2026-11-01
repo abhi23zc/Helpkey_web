@@ -29,7 +29,6 @@ import {
   Palmtree,
   Plus,
   Search,
-  Sparkles,
   Trees,
   Users,
   X,

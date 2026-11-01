@@ -47,6 +47,8 @@ const rawPATCH = async function PATCH(
       const property = (await tx.get(adminDb.collection("properties").doc(propertyId))).data();
       if (!current || current.propertyId !== propertyId) throw new Error("ROOM_TYPE_NOT_FOUND");
       if (input.totalInventory !== undefined && input.totalInventory < current.totalInventory) {
+        const units = await tx.get(adminDb.collection("physicalUnits").where("propertyId", "==", propertyId));
+        if (units.docs.filter(d => d.get("roomTypeId") === roomTypeId && d.get("status") === "active").length > input.totalInventory) throw new Error("DEACTIVATE_EXTRA_ROOM_NUMBERS_FIRST");
         const calendars = await tx.get(adminDb.collection("inventoryCalendars").where("propertyId", "==", propertyId).where("roomTypeId", "==", roomTypeId));
         const legacy = property?.inventoryEngine === "interval_v1" ? null : await tx.get(adminDb.collection("roomNightInventory").where("propertyId", "==", propertyId).where("roomTypeId", "==", roomTypeId));
         const firstInterval = Math.floor(Date.now() / (15 * 60000));
@@ -102,25 +104,21 @@ const rawDELETE = async function DELETE(
     await propertyOwner(user.uid, propertyId);
 
     const ref = adminDb.collection("roomTypes").doc(roomTypeId);
-    const snap = await ref.get();
-    if (!snap.exists || snap.data()?.propertyId !== propertyId) throw new Error("ROOM_TYPE_NOT_FOUND");
-
-    // Cascade: a room type cannot be sold without rate plans, and orphaned rate
-    // plans would break search projections, so delete them in the same batch.
-    const rates = await adminDb
-      .collection("ratePlans")
-      .where("propertyId", "==", propertyId)
-      .where("roomTypeId", "==", roomTypeId)
-      .get();
-
-    const batch = adminDb.batch();
-    rates.docs.forEach((doc) => batch.update(doc.ref, { status: "archived", updatedAt: FieldValue.serverTimestamp() }));
-    batch.update(ref, { status: "archived", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
-    enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing", "amenities"] });
-    await batch.commit();
+    let removedRatePlans = 0;
+    await adminDb.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.get("propertyId") !== propertyId) throw new Error("ROOM_TYPE_NOT_FOUND");
+      const bookings = await tx.get(adminDb.collection("bookings").where("propertyId", "==", propertyId).where("roomType.id", "==", roomTypeId));
+      if (bookings.docs.some(d => ["pending_payment", "confirmed", "checked_in"].includes(d.get("bookingStatus")))) throw new Error("ROOM_HAS_ACTIVE_RESERVATIONS_PAUSE_INSTEAD");
+      const rates = await tx.get(adminDb.collection("ratePlans").where("propertyId", "==", propertyId).where("roomTypeId", "==", roomTypeId));
+      removedRatePlans = rates.size;
+      rates.docs.forEach(d => tx.update(d.ref, { status: "archived", updatedAt: FieldValue.serverTimestamp() }));
+      tx.update(ref, { status: "archived", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+      enqueueProjection(tx, "property_search", propertyId, 1, { components: ["pricing", "amenities"] });
+    });
     await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
-    return Response.json({ ok: true, roomTypeId, removedRatePlans: rates.size });
+    return Response.json({ ok: true, roomTypeId, removedRatePlans });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to delete room type." }, { status: 422 });
   }

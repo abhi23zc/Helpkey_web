@@ -28,7 +28,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
       const rows = await db.collection("bookings").where("propertyId", "==", propertyId).get();
       for (const row of rows.docs) {
         for (const collection of ["events"]) { const events = await row.ref.collection(collection).get(); for (const event of events.docs) await event.ref.delete(); }
-        for (const collection of ["refunds", "paymentAttempts"]) { const related = await db.collection(collection).where("bookingId", "==", row.id).get(); for (const doc of related.docs) await doc.ref.delete(); }
+        for (const collection of ["refunds", "paymentAttempts", "propertyPayments"]) { const related = await db.collection(collection).where("bookingId", "==", row.id).get(); for (const doc of related.docs) await doc.ref.delete(); }
         await row.ref.delete();
       }
       for (const collection of ["roomTypes", "ratePlans", "inventoryCalendars", "inventoryHolds", "bookingNotificationOutbox", "roomNightInventory", "propertyMemberships", "inventoryBlocks"]) {

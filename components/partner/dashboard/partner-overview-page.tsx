@@ -13,7 +13,7 @@ export function PartnerOverviewPage() {
         <PartnerOverviewView
           key={selectedProperty?.id ?? "pending-property"}
           selectedProperty={selectedProperty}
-          propertyName={selectedProperty?.name ?? "The Balmoral Hotel"}
+          propertyName={selectedProperty?.name ?? "Selected property"}
           businessName={businessName ?? "Partner"}
           isLive={counts.isLive}
           health={counts.health}

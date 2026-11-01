@@ -49,7 +49,7 @@ function requests(o = offering, quantity = 1) {
   );
 }
 describe("stay personalization contracts and eligibility", () => {
-  it("accepts free room preferences only with hotel approval", () => {
+  it("accepts free or paid room preferences independently of confirmation", () => {
     const input = Object.fromEntries(
       Object.entries(offering).filter(
         ([key]) => !["id", "propertyId", "version"].includes(key),
@@ -57,7 +57,7 @@ describe("stay personalization contracts and eligibility", () => {
     );
     expect(
       offeringSchema.safeParse({ ...input, kind: "preference" }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       offeringSchema.safeParse({
         ...input,
@@ -215,7 +215,7 @@ describe("extra payment and refund accounting", () => {
   ])(
     "%s payments preserve the room split and collect extras upfront",
     (mode, roomDue, due) => {
-      expect(extraTotals(100000, roomDue, mode, requests())).toMatchObject({
+      expect(extraTotals(100000, roomDue, mode, requests().map(r => ({...r, agreementVersion: undefined})))).toMatchObject({
         totalPaise: 120000,
         payableNowPaise: due,
         balanceDuePaise: 120000 - due,
@@ -330,21 +330,21 @@ describe("variant final prices", () => {
     expect(offeringPriceLabel(custom)).toBe("Free – ₹150");
     const saved = selectedRequests([custom], [{ offeringId: custom.id, variantId: "usb-c", quantity: 1 }, { offeringId: custom.id, variantId: "lightning", quantity: 1 }], "room", "overnight", start, null, now);
     expect(saved.map((r) => r.unitPricePaise).sort((a,b) => a-b)).toEqual([0, 15000]);
-    expect(extraTotals(100000, 25000, "deposit", saved).payableNowPaise).toBe(40000);
+    expect(extraTotals(100000, 25000, "deposit", saved).payableNowPaise).toBe(25000);
     custom.variants[0].unitPricePaise = 99999;
     expect(saved.find((r) => r.variantId === "usb-c")?.totalPaise).toBe(15000);
   });
-  it("preserves omitted overrides, clears null, and clears prices on preference conversion", async () => {
+  it("preserves omitted overrides, clears null, and preserves prices on preference conversion", async () => {
     const { mergeVariantPrices } = await import("@/lib/stay/pricing");
     const previous = { ...input, variants: [{ id: "usb-c", name: "USB-C", unitPricePaise: 12345 }] };
     expect(mergeVariantPrices(input, previous).variants[0].unitPricePaise).toBe(12345);
     expect(mergeVariantPrices({ ...input, variants: [{ id: "usb-c", name: "USB-C", unitPricePaise: null }] }, previous).variants[0].unitPricePaise).toBeNull();
-    expect(mergeVariantPrices({ ...input, kind: "preference", unitPricePaise: 0 }, previous).variants.every((v) => v.unitPricePaise === null)).toBe(true);
+    expect(mergeVariantPrices({ ...input, kind: "preference", unitPricePaise: 0 }, previous).variants[0].unitPricePaise).toBe(12345);
   });
   it.each([-1, 0.5, 100000001, NaN, Infinity])("rejects invalid variant price %s", (price) => {
     expect(offeringSchema.safeParse({ ...input, variants: [{ id: "x", name: "Choice", unitPricePaise: price }] }).success).toBe(false);
   });
-  it("rejects paid variants on room preferences", () => {
-    expect(offeringSchema.safeParse({ ...input, kind: "preference", unitPricePaise: 0, variants: [{ id: "x", name: "Choice", unitPricePaise: 1 }] }).success).toBe(false);
+  it("accepts paid variants on room preferences", () => {
+    expect(offeringSchema.safeParse({ ...input, kind: "preference", unitPricePaise: 0, variants: [{ id: "x", name: "Choice", unitPricePaise: 1 }] }).success).toBe(true);
   });
 });

@@ -741,7 +741,6 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
         {
           roomTypeId: form.get("roomTypeId"),
           name: String(form.get("rateName") ?? "").trim() || "Standard rate",
-          code: String(form.get("code")).toUpperCase(),
           bookingMode: pricingModel === "duration" ? "hourly" : "overnight",
           pricingModel,
           ...(pricingModel === "duration" ? { durationPrices } : {}),
@@ -781,7 +780,7 @@ export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyCha
           </label>
           <div className="grid grid-cols-2 gap-3">
             <Field name="rateName" label="Rate name" placeholder="Standard rate" required={false} />
-            <Field name="code" label="Rate code" placeholder="STD" />
+
           </div>
           <label className="block text-xs font-semibold text-slate-700">Pricing<select value={pricingModel} onChange={e => setPricingModel(e.target.value as typeof pricingModel)} className={inputClass}><option value="nightly">Overnight per night</option><option value="duration">Hourly stays</option></select></label>
           {pricingModel === "nightly" ? <Field name="price" label="Price per night (₹)" type="number" /> : <><DurationPriceEditor /><p className="text-xs text-slate-600">Arrival and operating times can be configured under Rooms → Manage rates.</p></>}

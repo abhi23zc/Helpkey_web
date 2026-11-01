@@ -1,4 +1,6 @@
 export type Property = {
+  timezone?: string;
+  isBookable?: boolean;
   id: string;
   slug?: string;
   name: string;

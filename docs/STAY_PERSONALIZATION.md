@@ -1,116 +1,107 @@
-# Stay personalization and pre check-in
+# Personalize Your Stay — connected first version
 
-Customer checkout optionally collects Family, Couple, Business and Solo preferences. These show suggestions without reordering the catalog. All eligible hotel offerings remain accessible, and the existing special-request text field stays available. Room/property/rate amenities remain included features rather than purchasable options.
+## Customer journey
 
-## Partner setup
+The existing checkout remains **Guest details → Personalize your stay → Review & pay**. Guest details offers one optional trip type: Business, Couple, Family, Friends / Group, Solo / Traveller, Special occasion or Other. Recommendations use this choice without restricting the catalog. Legacy bookings retain the full saved `travelerPreferences` array; pre check-in does not silently reduce it to one value.
 
-Use **Partner → Stay Customizations** for the selected property. Create hotel-provided items, preparation services, or approval-based free room preferences. Configure applicable rooms and overnight/hourly stays, traveler suggestions, connector/variant choices, final unit price per stay, quantity limit shared across variants, advance notice in minutes, confirmation method, and active/paused status. Empty room selection means all rooms. New hotels have no offerings automatically.
+Personalization starts with at most eight eligible, deterministic recommendations (hard cap ten in the shared helper). Matching owner tags rank first, then useful free options and category diversity. There are no invented offerings or AI recommendations. **Browse all**, search, relevant category selection and Free/Paid/Selected filters remain available. Selected names and removal actions remain above the catalog when the browse mode changes. Unavailable active offerings appear separately under a collapsed disclosure in Browse all; search opens matching unavailable results with room, stay mode, inclusion or deadline reasons. Unavailable offerings never enter the shortlist. Paused offerings remain hidden.
 
-Prices are entered as the final inclusive customer amount. Zero means Free. The limit is per reservation, not shared physical stock; use hotel approval for scarce items. Existing room amenities are managed through the existing room/listing editors.
+Continuing without selections is supported. Guest information, trip type, input drafts, general hotel note and selections remain in the mounted checkout while navigating stages. Browser Back/Forward uses the existing UI-only step parameter. Reloads start at Guest details; no identity/contact data is persisted in browser storage or URLs.
 
-## Payments and commitments
+## Owner library and forms
 
-The quote and booking contracts accept optional `customizationSelections` (`offeringId`, nullable `variantId`, `quantity`) and `travelerPreferences`. Empty defaults preserve older clients. Eligibility and agreed terms are rechecked inside the inventory transaction; changed prices/terms require a new quote.
+Use **Partner → Stay Customizations → Create offering**. Search templates (cake, charger, pillow, etc.), select an editable draft or create from scratch. Selecting a template does not save or publish. Before saving, the owner explicitly reviews prices, eligibility, advance notice and confirmation settings.
 
-Reservation records retain immutable agreed names, descriptions, variants, quantities, unit/line prices, version, confirmation conditions, cancellation policy and absolute preparation deadline. Catalog edits and pauses do not rewrite existing commitments. Mutable request status, hotel response, and preparation lock are separate from those terms.
+The universal offering form separates Yes/no, Choose one, Choose multiple and Text responses from optional quantities and Free/Paid pricing. All offerings can be skipped. Quantity limits are shared across options; without quantities, a multiple-choice limit counts distinct options. Preferences can be free or paid. Existing form types keep their saved behavior through a compatibility adapter; scheduled services, packages and hotel quotes remain available under additional settings. Variant prices remain final overrides, not surcharges: blank/API null inherits Default price; zero means Free. Omitted override fields from older clients retain the stable variant's saved price. See [Universal offering responses](OFFERING_RESPONSE_FORMS.md) for contracts, snapshots and compatibility.
 
-Room pricing/tax/fee fields retain their meaning. `extrasTotalPaise` is additional and tax inclusive. Online bookings collect the full extras charge plus the existing room amount due now, including room deposits. Pay-at-property bookings collect the combined balance at the hotel. For a ₹1,000 room with a ₹250 deposit and ₹200 decoration, payment due now is ₹450; hotel balance is ₹750.
+Priced variants handle size or tier; independent choice groups handle flavour/design without manually enumerating combinations. Choice groups and guest notes can be required or optional. Independent choices do not add surcharges; use a priced variant for any choice that changes the price. Scheduled services require a service time; owners can require people and notes. People and requested whole hours are collected where their pricing units need them.
 
-Paid approval requests are charged at purchase. Hotel decline records a line credit and queues a deterministic partial refund using the existing refunds worker, leases, reconciliation, and provider idempotency. Unpaid pay-at-property extras receive a balance credit. The original purchase total remains unchanged; DTOs expose `effectiveTotalPaise`, `netPaidPaise`, `customizationCreditPaise`, and the correctly adjusted `balanceDuePaise`. Receipts preserve the original amount and show adjustments/refunds.
+The full category library covers Comfort, Bathroom, Food, Celebrations, Family, Business, Technology, Room preferences, Housekeeping, Transport, Wellness, Experiences, Villa/group services, Pets and Other. Existing `room_essentials` maps to Comfort and `devices` to Technology without rewriting stored records. Other legacy values remain supported. Pet requests require the property's explicit `petPolicy.allowed === true` (compatible explicit petsAllowed fields also work); unspecified does not count as permission.
 
-Extras follow the snapshotted room cancellation policy. Cancellation reserves only amounts not already reserved/refunded for declined extras, applies the policy to the remaining commitment, and cancels outstanding requests in the same transaction. Paid requests cannot be edited through pre check-in. Refund processing requires the existing booking/background workers and Razorpay configuration; no separate payment provider or post-booking charging path is added.
+Optional illustrative JPEG/PNG/WebP images up to 4 MB can be uploaded or captured when the device supports it. Images are decoded, metadata stripped, resized and converted to WebP using Sharp, then stored through the existing private R2 helper. Property-scoped image IDs are verified on save. Owners can preview, replace and remove images. Customers can only read images attached to active offerings of an active approved bookable property. Draft images require owner membership. Upload errors preserve the draft and an in-flight upload blocks saving. Photos are labeled illustrative; icon fallbacks remain when there is no image. Removing an attachment does not remove the archived object immediately; automatic unused-image cleanup is not included.
 
-## Arrival and staff preparation
+## Prices and saved agreements
 
-Confirmed guests can save drafts or submit expected local arrival time, review existing guest names/contact details, update travel preferences and arrival notes, and edit eligible free requests. Submission requires arrival time and guest review. Saving later edits returns pre check-in to Incomplete until resubmitted. No new identity details or documents are collected.
+All prices are final and inclusive of charges. The server resolves prices during quoting and again inside reservation creation, with the existing fingerprint/version refresh protection. The snapshot saves names, descriptions, stable variants, guest inputs, pricing unit, billable quantity, unit and line prices, cancellation terms and absolute deadline. Catalog edits and pauses never reprice or erase it.
 
-Pre check-in remains available until hotel check-in or booked departure. Expected arrival does not change booked start/end times or preparation deadlines. Older reservations without explicit UTC bounds use their saved local dates/times. Request edits stop at their saved deadline or once preparation starts. Paused offerings retain existing commitments and permit eligible reductions/removal, but no increases/new selections. Historical declined/cancelled requests remain recorded; prepared offerings cannot be removed and recreated to bypass the lock. Each booking retains up to 100 request-history entries, then directs further changes to the hotel.
+| Unit | Billable quantity |
+| --- | --- |
+| Item | Selected quantity, once per stay |
+| Stay | Selected quantity, once for the booking |
+| Package | Number of selected packages |
+| Night | Selected quantity × booked nights; overnight stays only |
+| Person | Selected quantity × participating booked adults and children; defaults to all adults and children; infants excluded |
+| Hour | Selected quantity × requested whole service hours; if omitted, the remaining booked stay from the chosen service time (or arrival) rounded up |
 
-Staff use the live Reservations inspector: Requested → Confirmed or Declined → Preparing → Ready → Fulfilled. Immediate offerings start Confirmed with a confirmed booking. Declines require a customer-visible explanation. Request mutations and pre check-in saves use a booking revision to reject concurrent stale edits. All changes create booking audit events and use the existing notification outbox. Visible itineraries and reservations refresh every 15 seconds and on focus without discarding form drafts; requests do not overlap background reservation loads.
+Explicit service hours must fit before departure. Service dates/times must be upcoming and inside the booked stay, and people cannot exceed the booked adults plus children. Review and selection summaries show billable quantity × unit price = line total. Shared quantity limits, room/stay eligibility and preparation deadlines continue to apply across variants.
 
-## API and storage
+Included amenities remain in the room/property/rate snapshot. An exact amenity name/code match cannot be sold again unless the owner explicitly marks it as an additional quantity or upgrade and describes that additional service. Owners can link an amenity code when the offering name differs. Semantic matching of arbitrary descriptions is intentionally not attempted; owners must review inclusion links and room applicability. Requests cannot promise a different room type or change a room's included features.
 
-- `POST /api/bookings/personalization`: all active hotel offerings for a validated hotel/room/rate/stay; checkout explains room, stay-mode and preparation-deadline restrictions. Paused listings remain hidden.
-- `GET/POST /api/partner/properties/[propertyId]/stay-customizations`: owner catalog and version-checked create/edit/pause.
-- `GET/POST /api/bookings/[bookingId]/pre-checkin`: owned booking options, draft saves and submissions.
-- `POST /api/partner/bookings/[bookingId]/customizations`: active property staff request transitions.
+## Approval, quotes and payments
 
-Catalog storage is `properties/{propertyId}/stayCustomizations/{offeringId}`. Booking fields are additive: `customizations`, `travelerPreferences`, `preCheckin`, `stayRevision`, `extrasTotalPaise`, `roomTotalPaise`, and `customizationCreditPaise`. Missing fields have safe legacy defaults. Operational data remains accessible through authenticated server DTOs, with browser Firestore reads/writes denied. No destructive migration or new compound index is required.
+New requests carry `agreementVersion: 2`. Existing requests without it keep their original accounting and status semantics.
+
+- **Immediate paid extra:** included in checkout, fully collected online even with a room deposit. Existing pay-at-property and snapshotted room cancellation terms remain.
+- **New approval request with a known price:** shows its estimated line price but is excluded from checkout total/payable. The hotel can approve for free, decline with an explanation, offer the saved price or send a revised final quote.
+- **Unlisted/custom request:** clearly awaits review/quote. The internal zero placeholder is never presented as a free confirmed promise. The general hotel note remains separate.
+- **Free hotel approval:** becomes Confirmed without payment.
+- **Hotel price quote:** records exact amount, scope, conditions, expiry and version. The customer explicitly accepts or declines the exact version. Changing or withdrawing a quote invalidates prior acceptance/payment eligibility.
+- **Accepted paid quote:** stays Requested / Awaiting payment until provider-verified capture. Accepting a quote does not charge a card. The guest explicitly opens a separate Razorpay payment step. Paid quotes must be at least ₹1.
+
+Payments use a durable `stayQuoteOrders` identity per booking/request/quote version. Retrying uses the same order. The existing payment worker recovers interrupted creation using the unique receipt and reconciles captured payments; ambiguous failures never create replacement orders. Signed webhooks and signed guest callbacks both verify amount, currency, order, active booking, quote version and expiry. A global payment attempt receipt makes duplicate callbacks/captures idempotent. Captures after cancellation, expiry, withdrawal or price change are queued for full refund instead of confirming a service. Provider failures or dismissal leave the request Awaiting payment and allow retry.
+
+Supplemental payments are deliberately separate from the original booking payment ledger: `stayPaymentReceipts` and `supplementalPayments` expose paid/refund-pending/refunded amounts. The itinerary, reservation inspector and printable receipt display them separately; the payment receipt lists additional paid extras separately, with their payment references and refund status. Free preferences and unpaid requests are excluded from the receipt. This preserves room balances and avoids refunding a separate payment against the room's original Razorpay capture.
+
+On booking cancellation, outstanding requests close atomically. Paid separately quoted services that are not Fulfilled receive a full refund to their own payment ID; fulfilled services remain charged. This policy is displayed alongside every quote. Original room/immediate-extra cancellation policies remain unchanged. Legacy upfront-paid approval declines retain the original line credit and deterministic refund behavior. The existing refunds worker handles provider idempotency, leases, retries and reconciliation; quote refunds update only the supplemental ledger, leaving the original payment totals untouched.
+
+## Arrival, management and authorization
+
+The live itinerary and Reservations inspector show requests, saved guest inputs, preparation status, hotel responses, quotes, acceptance and payment status. Staff retain manual Preparing → Ready → Fulfilled controls once a request is confirmed. A separate Actions & Audit history shows actors, timestamps, decisions, quote scope and amounts. Mutations create detailed booking events and meaningful decision/payment events use the existing notification outbox. Screens refresh through the existing polling/focus behavior.
+
+Pre check-in retains existing expected-arrival, guest review, notes, free sibling eligibility and paid commitment preservation. Existing free commitments keep saved terms; increases require the same variant still to be available and free. Paid/quoted/unlisted requests cannot be removed by an ordinary pre check-in save. Preparation locks, deadlines and declined-request restrictions remain. Booking revisions serialize guest/hotel changes and provide a clear refresh/retry conflict response. Guest access requires the booking owner; staff access requires active membership of that booking's property. Offering/image writes require the property owner.
+
+## Storage, setup and compatibility
+
+No live data migration, deployment or automatic catalog update is performed. Existing bookings remain readable, and legacy offerings inherit their original per-item-per-stay pricing until an owner edits them. Existing category values are mapped on read. Older API clients omitting additive offering fields preserve saved metadata.
+
+New additive APIs:
+
+- `POST /api/bookings/[bookingId]/stay-requests`: unlisted request creation and guest quote acceptance/decline.
+- `POST /api/bookings/[bookingId]/stay-quote-payment`: create/reuse accepted-quote session or verify its signed result.
+- `GET/POST /api/partner/bookings/[bookingId]/stay-requests`: authorized decision/quote actions and audit history.
+- `POST /api/partner/properties/[propertyId]/stay-image`: owner image upload.
+- `GET /api/stay-images/[propertyId]/[imageId]`: authorized draft/public active-offering image delivery.
+
+The original personalization discovery, catalog, pre check-in and preparation APIs remain. New server-only records are `stayQuoteOrders`, booking `stayPaymentReceipts`, and property-scoped `stayImages`. Browser Firestore access remains denied. Queries use existing booking-worker indexes or single-field indexes; no new compound index is needed.
+
+Deploy the updated web app **and rebuild/restart the booking/background workers** together. Reuse production Razorpay credentials and the configured signed `payment.captured` webhook at `/api/webhooks/razorpay`. Keep booking payment reconciliation, refund and notification workers running. Images need the existing private R2 configuration and write/read credentials. No new provider is required. Owners should review template prices, inclusions, trip tags, room applicability and pet policy before publishing.
 
 ## Verification
 
-- `npx vitest run` — domain, pricing, contracts, and regression tests.
-- `FIRESTORE_EMULATOR_HOST=127.0.0.1:8787 npx vitest run tests/stay-transactions.emulator.test.ts tests/booking-transactions.emulator.test.ts` — isolated Firestore transactions, snapshot preservation, concurrency, authorization, deposits, decline credits, cancellation, and refund processing. Start the cached Firestore emulator with Java 21 or later and project `demo-helpkey-bookings`; never point these tests at a live database.
-- `npm run test:e2e:stay` — real checkout, itinerary, owner editor, and reservation components at desktop/mobile sizes with mocked HTTP services. Screenshots/traces are in `test-results/stay`.
-- `npm run typecheck` and `npm run build -- --webpack` — type and production compilation checks.
+- `npm test`: unit/domain/API tests, including six pricing units, category compatibility, shortlist cap, required inputs, inclusion/pet gates, quote versions and upload validation.
+- Isolated Firestore emulator (`demo-helpkey-bookings`, Java 21+) with `tests/stay-transactions.emulator.test.ts` and `tests/booking-transactions.emulator.test.ts`: real transactions, legacy paid commitments, shared limits, deposits, authorization, concurrent mutations, quotes, accepted payments, late capture, interrupted order recovery, cancellation and provider-idempotent refunds. Provider responses are mocked. Never point these tests at live Firebase.
+- `npm run test:e2e:stay`: actual checkout, owner, itinerary and partner components served with mocked HTTP services, at 390, 768 and 1366 px. Includes large catalogs, stage preservation, templates, images/failures, variants/choices, quote acceptance and payment retry. Screenshots/traces in ignored `test-results/stay`.
+- `npm run typecheck`, scoped ESLint, `npm run build -- --webpack`, and worker compilation.
 
-Browser fixtures and mocked provider responses do not validate a live Razorpay transaction or production delivery latency. No live offerings/bookings are created by this feature’s verification.
+These checks do not claim live Razorpay charging, live R2 delivery or production notification delivery. No real guest or hotel records are modified during verification. AI recommendations, stock checks, staff assignment and automatic manual-request decisions remain out of scope.
 
-### Variant final prices
+### Verified in this workspace (26 October 2026)
 
-Owners can set a **Default price** and an optional final price for each variant.
-A blank variant price (API `null`) inherits the default; `0` explicitly means
-Free. Variant prices include all charges and replace the default rather than
-adding a surcharge. Omitted variant prices from older API clients preserve the
-existing override for the same stable variant ID. Converting to Room preference
-clears overrides; positive preference prices are rejected.
+- Full Vitest run: **287 passed, 57 skipped**. Skips cover emulator/provider/queue suites requiring their own environment.
+- Separate isolated Firestore run: **36 passed**, with mocked Razorpay responses.
+- Browser suite: **18 passed**, with real components and mocked HTTP/provider boundaries, including mobile/tablet/desktop.
+- Focused final agreement/label checks: **38 passed**; discovery route check: **1 passed**.
+- Scoped ESLint has no errors or warnings in the stay feature, checkout/itinerary/receipt, image/request routes, discovery test and search map. Existing unused-variable warnings in the broader reservation/bookings files remain outside the focused fixes.
+- TypeScript, production webpack compilation and worker builds passed. Live provider/storage/notification delivery was not exercised.
 
-Customer cards show the common price or range, with each choice’s actual price
-beside its quantity. Quantities share the offering limit and all room, deadline,
-approval and cancellation terms. Quotes and reservation transactions resolve the
-same prices and reject changed versions or prices through quote refresh. Saved
-unit and line prices remain unchanged by catalog edits. Online deposit bookings
-collect the full extras amount upfront; declines refund the saved line amount.
+## Partner workspace: offerings and guest requests
 
-Pre check-in allows new free variants even under a paid default, and excludes
-paid variants even under a free default. Paid commitments are retained and count
-toward the shared quantity limit alongside free choices. Existing free requests
-keep their saved terms; increases require that same variant to remain available
-and free. Preparation, declined-request and deadline restrictions still apply.
+Stay Customizations now has two tabs. Offerings provides catalog-wide Active/Paused counts, search, normalized categories, name/effective-price sorting and paused duplicate drafts. An accessible responsive drawer groups details, pricing/guest options and eligibility, with a guest preview, explicit review, field errors and unsaved-change protection. Version conflicts retain the edited draft; loading the latest version requires an explicit discard decision. Existing booking snapshots remain unchanged when an offering changes or pauses.
 
-No migration or automatic repricing is needed. Existing variants, including
-Cosmozin Hotel’s active offerings, inherit their existing default until edited.
+Catalog GET now returns `canManage`; active property members can read the catalog, but saving offerings and uploading images remain owner-only. The Guest requests tab is available to active property members, using existing booking decision, quote/payment and preparation rules. No shared stock or service-slot reservation is introduced.
 
+`GET /api/partner/properties/[propertyId]/stay-requests` accepts `from`, `to`, optional `status` (`open`, `approval`, `waiting`, `todo`, `preparing`, `ready`, `completed`, `all`) and an optional signed `cursor`. Dates select **overlapping stay dates**, not request creation or service dates; the default is today through six days ahead in the property's timezone, with a maximum 31-day range. Each response scans at most 200 bookings and returns matching request rows, timezone, scanned count and `nextCursor`. Empty result pages can still have a continuation; the interface offers Load more bookings and does not claim global request totals. Cursors are bound to user, property, dates and status. This reuses the existing property/checkIn/checkOut descending booking index; no additional composite index or data backfill is needed.
 
-### Three-stage customer checkout
+The queue refreshes every 30 seconds while visible and on focus. Request details fetch the current booking revision and reuse the shared approval/quote/preparation controls and booking audit history. Unsent form values survive action errors; server-side revision conflicts force a refresh before another attempt. Completed/cancelled reservations are read-only; unfinished requests on closed stays appear only in history views, not open work. Online agreement and payment requirements remain enforced by existing transactional services.
 
-Checkout now presents Guest details → Personalize your stay → Review & pay.
-Personalization is visited as a normal stage, with **Continue to review** enabled
-without any selections; there is no separate Skip requirement. Guest fields,
-identity inputs, notes and selections stay in the mounted checkout while moving
-between stages. Native history uses a UI-only `step` query parameter and supports
-Back/Forward; reloads and direct links restart at guest details. No identity or
-contact information is written to browser storage or the URL.
-
-Extras have category navigation, search across offering/variant names and
-descriptions, Free options/Paid extras/Selected filters, compact cards, and
-variant quantity steppers. Mixed-price offerings appear in both price filters;
-selected siblings remain in the selection summary when hidden by a filter.
-Recommendations appear under optional trip suggestions and do not reorder cards.
-The final stage shows saved quote line prices, free requests, payment split,
-cancellation conditions and required consent before reservation creation.
-
-Owners select Guest browsing category when editing an offering: Room essentials,
-Devices & convenience, Food & drinks, Celebrations, Room preferences, Other extras.
-The optional `category` catalog field uses keys `room_essentials`, `devices`,
-`food_drinks`, `celebrations`, `room_preferences`, `other`. Existing room preferences
-fall back to Room preferences and other legacy offerings to Other extras. Older
-clients omitting category preserve the saved value. Categories do not change
-pricing or reservation snapshots. No live catalog migration is performed.
-
-Visual browser checks cover the three stages at 390px, 768px and 1366px, including
-47-offering catalogs. Checkout uses the public hotel theme tokens, compact desktop
-summary, mobile stay identity and a safe-area-aware action bar. Pre check-in
-retains its separate existing picker and eligibility rules.
-
-
-### Discoverable unavailable options
-
-Customer catalog search and categories include every active offering, including
-ones that cannot be selected for the chosen room, stay mode or arrival deadline.
-Selectable options appear first. Other options are grouped under **Unavailable
-for this stay**, collapsed by default to keep the catalog compact. Searching opens
-the matching unavailable group automatically and shows a short restriction reason,
-price and disabled action; descriptions and variant prices remain under Details.
-Trip suggestions only recommend eligible options. Quote and reservation creation
-still reject ineligible selections; discovery does not bypass preparation rules.
+Verification adds catalog/status tests, isolated emulator tests for bounded pagination/filter-bound cursors/property access, and browser coverage of mobile/tablet/desktop catalog filters, duplication, draft protection, conflicts, staff access and preparation transitions. Tests use fixtures or `demo-helpkey-bookings`, never live guest records.

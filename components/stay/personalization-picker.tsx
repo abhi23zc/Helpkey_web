@@ -1,4 +1,7 @@
 "use client";
+import { ResponseControls } from "./response-controls";
+import { replaceSelection, resolveResponse, requiredResponseError } from "@/lib/stay/response";
+import { GuestInputFields } from "./guest-input-fields";
 import { offeringPriceLabel, variantPrice } from "@/lib/stay/pricing";
 import { useEffect, useState } from "react";
 import type {
@@ -6,13 +9,15 @@ import type {
   Selection,
   TravelerCategory,
 } from "@/lib/stay/contracts";
-import { travelerCategories } from "@/lib/stay/contracts";
+import { travelerCategories, travelerLabels } from "@/lib/stay/contracts";
 import { formatMoney } from "@/lib/customer/offer";
 export function TravelerChips({
   value,
   onChange,
   disabled = false,
+  single = false,
 }: {
+  single?: boolean;
   value: TravelerCategory[];
   onChange: (v: TravelerCategory[]) => void;
   disabled?: boolean;
@@ -20,7 +25,9 @@ export function TravelerChips({
   return (
     <div>
       <p className="mb-2 text-sm text-slate-600">
-        What brings you here? Choose any, or skip.
+        {single
+          ? "Trip type (optional) · Helps us suggest relevant extras"
+          : "Trip preferences · Choose any, or skip."}
       </p>
       <div className="flex flex-wrap gap-2">
         {travelerCategories.map((t) => (
@@ -33,12 +40,14 @@ export function TravelerChips({
               onChange(
                 value.includes(t)
                   ? value.filter((v) => v !== t)
-                  : [...value, t],
+                  : single
+                    ? [t]
+                    : [...value, t],
               )
             }
             className={`rounded-full border px-4 py-2 text-sm disabled:opacity-50 ${value.includes(t) ? "border-[#061224] bg-[#061224] text-white" : "border-slate-200 bg-white text-slate-700"}`}
           >
-            {t}
+            {travelerLabels[t] ?? t}
           </button>
         ))}
       </div>
@@ -68,6 +77,8 @@ export function PersonalizationPicker({
   currency?: string;
   disabled?: boolean;
 }) {
+  const [error, setError] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, Selection["inputs"]>>({});
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const upcoming = offerings
@@ -88,6 +99,7 @@ export function PersonalizationPicker({
   );
   return (
     <div className="space-y-3">
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {!sorted.length && (
         <p className="text-sm text-slate-500">
           No additional options are available for this stay. You can still leave
@@ -95,9 +107,11 @@ export function PersonalizationPicker({
         </p>
       )}
       {sorted.map((o) => {
-        const count = (retainedQuantities[o.id] ?? 0) + selections
-          .filter((s) => s.offeringId === o.id)
-          .reduce((sum, s) => sum + s.quantity, 0);
+        const count =
+          (retainedQuantities[o.id] ?? 0) +
+          selections
+            .filter((s) => s.offeringId === o.id)
+            .reduce((sum, s) => sum + s.quantity, 0);
         const deadline = new Date(
           Date.parse(startAt) - o.advanceNoticeMinutes * 60000,
         );
@@ -149,61 +163,57 @@ export function PersonalizationPicker({
               );
               const quantity = selected?.quantity ?? 0;
               return (
-                <label
-                  key={v.id ?? "default"}
-                  className="mt-3 flex items-center justify-between gap-3 text-sm"
-                >
-                  <span>{v.name} · {variantPrice(o, v.id) === 0 ? "Free" : formatMoney(variantPrice(o, v.id), currency)}</span>
-                  <select
-                    aria-label={`${o.name} ${v.name}`}
+                <div key={v.id ?? "default"} className="mt-3 space-y-2">
+                  <GuestInputFields
+                    offering={o}
+                    timezone={timezone}
                     disabled={disabled}
-                    value={quantity}
-                    onChange={(e) => {
-                      const rest = selections.filter(
-                        (s) => !(s.offeringId === o.id && s.variantId === v.id),
-                      );
-                      const n = Number(e.target.value);
-                      onChange(
-                        n
-                          ? [
-                              ...rest,
-                              {
-                                offeringId: o.id,
-                                variantId: v.id,
-                                quantity: n,
-                              },
-                            ]
-                          : rest,
-                      );
+                    value={
+                      drafts[JSON.stringify([o.id, v.id])] ?? selected?.inputs
+                    }
+                    onChange={(inputs) => {
+                      setDrafts((old) => ({
+                        ...old,
+                        [JSON.stringify([o.id, v.id])]: inputs,
+                      }));
+                      if (selected)
+                        onChange(
+                          selections.map((s) =>
+                            s === selected ? { ...s, inputs } : s,
+                          ),
+                        );
                     }}
-                    className="rounded-lg border border-slate-200 bg-white p-2"
-                  >
-                    {Array.from(
-                      {
-                        length:
-                          Math.max(o.maxQuantity - count + quantity, quantity) +
-                          1,
-                      },
-                      (_, n) => (
-                        <option
-                          key={n}
-                          value={n}
-                          disabled={
-                            n > 0 &&
-                            (expired || freeOnly && variantPrice(o, v.id) > 0 || n > o.maxQuantity - count + quantity)
-                          }
-                        >
-                          {n === 0 ? "Not selected" : n}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
+                  />
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span>
+                      {!o.variants.length ? "Request this" : v.name} ·{" "}
+                      {variantPrice(o, v.id) === 0
+                        ? "Free"
+                        : formatMoney(variantPrice(o, v.id), currency)}
+                    </span>
+                    <ResponseControls offering={o} optionName={v.name} quantity={quantity} count={count} disabled={disabled} legacySelect blockIncrease={expired || (freeOnly && variantPrice(o, v.id) > 0) || (resolveResponse(o).responseType === "single" && (retainedQuantities[o.id] ?? 0) > 0)} onChange={n => {
+                      const inputs = drafts[JSON.stringify([o.id, v.id])] ?? selected?.inputs;
+                      const missing = requiredResponseError(o, inputs);
+                      if (n > 0 && missing) { setError(missing); return; }
+                      setError(""); onChange(replaceSelection(selections, o, v.id, n, inputs));
+                    }} />
+
+                  </div>
+                </div>
               );
             })}
             {count > 0 && (
               <p className="mt-2 text-right text-sm font-semibold">
-                {formatMoney(selections.filter((s) => s.offeringId === o.id).reduce((sum, s) => sum + s.quantity * variantPrice(o, s.variantId), 0), currency)}
+                {formatMoney(
+                  selections
+                    .filter((s) => s.offeringId === o.id)
+                    .reduce(
+                      (sum, s) =>
+                        sum + s.quantity * variantPrice(o, s.variantId),
+                      0,
+                    ),
+                  currency,
+                )}
               </p>
             )}
           </div>

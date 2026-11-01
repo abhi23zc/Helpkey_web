@@ -6,6 +6,7 @@ import type {
   TravelerCategory,
 } from "@/lib/stay/contracts";
 import { CheckoutExtrasCatalog } from "./checkout-extras-catalog";
+import { requestPriceBreakdown } from "@/lib/stay/pricing";
 import { formatMoney } from "@/lib/customer/offer";
 type Amenity = { code: string; label: string };
 type Summary = {
@@ -83,6 +84,11 @@ export function CheckoutPersonalization({
       )}
       {quote && (
         <CheckoutExtrasCatalog
+          includedCodes={[
+            ...quote.includedAmenities.roomAmenities,
+            ...quote.includedAmenities.propertyAmenities,
+            ...quote.includedAmenities.rateInclusions,
+          ].map((a) => a.code)}
           roomTypeId={roomTypeId}
           bookingMode={bookingMode}
           offerings={offerings}
@@ -137,6 +143,12 @@ export function CheckoutPersonalization({
                       {name}
                       {variantName ? ` · ${variantName}` : ""} × {s.quantity}
                     </p>
+                    {saved?.billableQuantity && saved.unitPricePaise > 0 ? (
+                      <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                        {requestPriceBreakdown(saved, quote?.currency)} · per{" "}
+                        {saved.pricingUnit ?? "item"}
+                      </p>
+                    ) : null}
                     {!available && (
                       <p className="mt-1 text-xs text-amber-800">
                         This option changed. Remove it to continue.
@@ -145,7 +157,7 @@ export function CheckoutPersonalization({
                     {available && (
                       <p className="mt-1 text-xs text-[var(--hk-muted)]">
                         {offering.confirmation === "approval"
-                          ? "Hotel approval required"
+                          ? "Pending hotel approval · Excluded from checkout payment"
                           : "Confirmed with booking"}
                       </p>
                     )}

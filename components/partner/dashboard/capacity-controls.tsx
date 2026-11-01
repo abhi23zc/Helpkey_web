@@ -1,10 +1,11 @@
 "use client";
+import { PartnerDatePicker } from "./partner-date-picker";
 import { useEffect, useState } from "react";
 import { resolveLocal } from "@/lib/booking/domain";
 import { requestJson } from "@/lib/partner/upload-client";
 type CalendarView = { capacity: number; calendar: { reserved?: Record<string, number>; blocked?: Record<string, number>; stopSell?: boolean }; blocks: { id: string; reason: string; quantity: number; startAt: string; endAt: string }[] };
 export function CapacityControls({ propertyId, roomTypeId, timezone }: { propertyId: string; roomTypeId: string; timezone: string }) {
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("date") || "");
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("17:00");
   const [quantity, setQuantity] = useState(1);
@@ -21,7 +22,7 @@ export function CapacityControls({ propertyId, roomTypeId, timezone }: { propert
     return () => controller.abort();
   }, [date, roomTypeId, url, version]);
   const mutate = async (action: () => Promise<unknown>) => { setBusy(true); setMessage(""); try { await action(); setVersion((n) => n + 1); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save inventory"); } finally { setBusy(false); } };
-  return <div className="space-y-3 rounded-xl border border-slate-200 p-3"><h3 className="font-bold">Time-based availability and maintenance</h3><label className="block">Property-local date ({timezone})<input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>{date && <>
+  return <div className="space-y-3 rounded-xl border border-slate-200 p-3"><h3 className="font-bold">Time-based availability and maintenance</h3><label className="block">Property-local date ({timezone})<PartnerDatePicker  value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>{date && <>
     {view && <><p>{view.capacity} rooms · {Object.keys(view.calendar.reserved ?? {}).filter((key) => (view.calendar.reserved?.[key] ?? 0) > 0).length} reserved quarter-hour intervals</p><label className="block"><input type="checkbox" disabled={busy} checked={view.calendar.stopSell ?? false} onChange={(e) => void mutate(() => requestJson(url, { roomTypeId, date, stopSell: e.target.checked }, "PATCH"))} /> Stop selling availability on this date</label></>}
     <div className="grid grid-cols-2 gap-2"><label>Block begins<input type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} className="block w-full rounded border p-2" /></label><label>Block ends<input type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} className="block w-full rounded border p-2" /></label></div>
     <label className="block">Room quantity<input type="number" min={1} max={view?.capacity ?? 500} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className="block w-full rounded border p-2" /></label><label className="block">Reason<input value={reason} minLength={3} onChange={(e) => setReason(e.target.value)} className="block w-full rounded border p-2" /></label>

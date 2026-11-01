@@ -24,6 +24,7 @@ const bundle = await build({
   stdin: { contents: entry, loader: "tsx", resolveDir: process.cwd() },
   bundle: true,
   write: false,
+  outdir: "/tmp/helpkey-stay-fixture-memory",
   format: "esm",
   platform: "browser",
   jsx: "automatic",
@@ -61,10 +62,10 @@ const html =
 createServer(async (req, res) => {
   if (req.url === "/fixture.js") {
     res.setHeader("Content-Type", "text/javascript");
-    res.end(bundle.outputFiles[0].contents);
+    res.end(bundle.outputFiles.find(f => f.path.endsWith(".js")).contents);
   } else if (req.url === "/fixture.css") {
     res.setHeader("Content-Type", "text/css");
-    res.end(css.css);
+    res.end(css.css + "\n" + (bundle.outputFiles.find(f => f.path.endsWith(".css"))?.text ?? ""));
   } else if (req.url === "/photo-unavailable.svg") {
     res.setHeader("Content-Type", "image/svg+xml");
     res.end(await readFile("public/photo-unavailable.svg"));

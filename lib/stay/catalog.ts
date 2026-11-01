@@ -6,38 +6,13 @@ export function readOffering(
   id: string,
   value: FirebaseFirestore.DocumentData,
 ): Offering | null {
-  const {
-    propertyId,
-    version,
-    name,
-    description,
-    kind,
-    category,
-    travelerCategories,
-    roomTypeIds,
-    bookingModes,
-    unitPricePaise,
-    maxQuantity,
-    advanceNoticeMinutes,
-    confirmation,
-    variants,
-    status,
-  } = value;
-  const parsed = offeringSchema.safeParse({
-    name,
-    description,
-    kind,
-    category,
-    travelerCategories,
-    roomTypeIds,
-    bookingModes,
-    unitPricePaise,
-    maxQuantity,
-    advanceNoticeMinutes,
-    confirmation,
-    variants,
-    status,
-  });
+  const { propertyId, version } = value;
+  const fields = Object.fromEntries(
+    Object.keys(offeringSchema.shape)
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, value[key]]),
+  );
+  const parsed = offeringSchema.safeParse(fields);
   return parsed.success &&
     typeof propertyId === "string" &&
     Number.isInteger(version)

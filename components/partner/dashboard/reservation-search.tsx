@@ -1,0 +1,20 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { Search, X } from "lucide-react";
+import { apiFetch } from "@/lib/api/client";
+export function ReservationSearch({ propertyId, date }: { propertyId: string; date: string }) {
+  const [text, setText] = useState("");
+  const [term, setTerm] = useState("");
+  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(0);
+  const ref = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  useEffect(() => { const timer = setTimeout(() => setTerm(text.trim()), 300); return () => clearTimeout(timer); }, [text]);
+  useEffect(() => { const listener = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); input.current?.focus(); setOpen(true); } }; const outside = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); }; window.addEventListener("keydown", listener); window.addEventListener("mousedown", outside); return () => { window.removeEventListener("keydown", listener); window.removeEventListener("mousedown", outside); }; }, []);
+  const query = useQuery({ queryKey: ["partner", propertyId, "reservation-search", term], enabled: !!propertyId && term.length >= 2, queryFn: ({ signal }) => apiFetch<{ bookings: { id: string; confirmationCode: string; leadGuest?: { name?: string } }[] }>(`/api/partner/bookings/search?${new URLSearchParams({ propertyId, q: term })}`, { signal }), staleTime: 10_000 });
+  const rows = query.data?.bookings ?? [];
+  const select = (id: string) => { setOpen(false); setText(""); router.push(`/partner/dashboard?${new URLSearchParams({ propertyId, date, bookingId: id })}`); };
+  return <div ref={ref} className="relative flex h-12 min-w-0 items-center rounded-2xl border border-slate-200 bg-white px-3 shadow-xs"><Search className="mr-2 h-4 w-4 shrink-0 text-slate-400" /><input ref={input} role="combobox" aria-label="Search property reservations" aria-expanded={open && term.length >= 2} aria-controls="reservation-search-results" aria-autocomplete="list" aria-activedescendant={open && rows[index] ? `reservation-result-${index}` : undefined} value={text} onChange={e => { setText(e.target.value); setOpen(true); setIndex(0); }} onFocus={() => setOpen(true)} onKeyDown={e => { if (e.key === "Escape") setOpen(false); if (e.key === "ArrowDown") { e.preventDefault(); setIndex(i => Math.min(rows.length - 1, i + 1)); } if (e.key === "ArrowUp") { e.preventDefault(); setIndex(i => Math.max(0, i - 1)); } if (e.key === "Enter" && rows[index]) { e.preventDefault(); select(rows[index].id); } }} placeholder="Guest, reference or booking ID…" className="min-w-0 flex-1 bg-transparent text-sm outline-none" disabled={!propertyId} />{text && <button aria-label="Clear search" onClick={() => setText("")}><X className="h-4 w-4" /></button>}{open && term.length >= 2 && <div id="reservation-search-results" role="listbox" aria-label="Matching reservations" className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl">{query.isFetching ? <p role="status" className="p-3 text-xs">Searching…</p> : query.isError ? <p role="alert" className="p-3 text-xs text-red-700">Search unavailable. <button onClick={() => void query.refetch()} className="underline">Retry</button></p> : !rows.length ? <p className="p-3 text-xs text-slate-500">No matches. Use a full name, reference, phone or booking ID.</p> : rows.map((r, i) => <button id={`reservation-result-${i}`} key={r.id} role="option" aria-selected={index === i} onMouseEnter={() => setIndex(i)} onClick={() => select(r.id)} className={`block w-full rounded-lg p-3 text-left text-xs ${index === i ? "bg-slate-100" : ""}`}><b>{r.leadGuest?.name || "Guest"}</b><span className="mt-1 block text-slate-500">{r.confirmationCode}</span></button>)}</div>}</div>;
+}

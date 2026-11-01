@@ -37,7 +37,7 @@ describe("checkout extras browsing", () => {
     expect(offeringCategory({ kind: "preference" })).toBe("room_preferences");
     expect(
       offeringCategory({ kind: "preference", category: "room_essentials" }),
-    ).toBe("room_essentials");
+    ).toBe("comfort");
     expect(
       offeringSchema.safeParse({ ...input, category: "invented" }).success,
     ).toBe(false);

@@ -1,6 +1,6 @@
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { withApiHandler } from "@/lib/api/handler";
-import { propertyOwner } from "@/lib/partner/service";
+import { requireRole } from "@/lib/partner/service";
 import { adminDb } from "@/lib/firebase/admin";
 import { offeringsFor } from "@/lib/stay/catalog";
 import { saveOffering } from "@/lib/stay/service";
@@ -12,7 +12,12 @@ async function get(_request: Request, { params }: Context) {
     return Response.json({ error: "Unauthenticated" }, { status: 401 });
   try {
     const { propertyId } = await params;
-    await propertyOwner(user.uid, propertyId);
+    await requireRole(user.uid, "partner");
+    const membership = await adminDb
+      .collection("propertyMemberships")
+      .doc(`${propertyId}_${user.uid}`)
+      .get();
+    if (membership.get("status") !== "active") throw new Error("FORBIDDEN");
     const [offerings, rooms] = await Promise.all([
       offeringsFor(propertyId),
       adminDb
@@ -22,6 +27,7 @@ async function get(_request: Request, { params }: Context) {
     ]);
     return Response.json({
       offerings,
+      canManage: membership.get("role") === "owner",
       rooms: rooms.docs.map((d) => ({
         id: d.id,
         name: d.get("name") ?? "Room",

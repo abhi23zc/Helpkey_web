@@ -10,6 +10,7 @@ type Settings = {
   maxAdults?: number; maxChildren?: number; maxInfants?: number; maxOccupancy?: number;
   checkInTime?: string; checkOutTime?: string; cleaningBufferMinutes?: number;
   basePricePaise?: number; durationPrices?: DurationPrice[];
+  datePrices?: Record<string, { basePricePaise?: number; durationPrices?: DurationPrice[] }>;
   paymentMode?: string; depositBasisPoints?: number; taxBasisPoints?: number; customerFeePaise?: number;
   allowMidnightCrossing?: boolean; arrivalWindow?: { start: string; end: string };
   operatingWindow?: { start: string; end: string }; eligibleWeekdays?: number[];
@@ -55,9 +56,23 @@ function integer(value: unknown, fallback: number, min: number, max: number) {
   if (!Number.isSafeInteger(n) || Number(n) < min || Number(n) > max) throw new Error("INVALID_RATE_CONFIGURATION");
   return Number(n);
 }
+/** Shared checkout and owner-example totals, with integer paise rounding. */
+export function calculateGuestPrice(subtotalPaise: number, rate: Pick<Settings, "taxBasisPoints" | "customerFeePaise" | "paymentMode" | "depositBasisPoints">) {
+  money(subtotalPaise);
+  const taxBasisPoints = integer(rate.taxBasisPoints, 0, 0, 10000);
+  const taxPaise = Number((BigInt(subtotalPaise) * BigInt(taxBasisPoints) + BigInt(5000)) / BigInt(10000));
+  const customerFeePaise = money(rate.customerFeePaise ?? 0);
+  const totalPaise = money(subtotalPaise + taxPaise + customerFeePaise);
+  const paymentMode = rate.paymentMode ?? "full";
+  if (!["full", "deposit", "pay_at_property"].includes(paymentMode)) throw new Error("INVALID_RATE_CONFIGURATION");
+  const depositBasisPoints = integer(rate.depositBasisPoints, paymentMode === "deposit" ? 2500 : 10000, 0, 10000);
+  const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Number((BigInt(totalPaise) * BigInt(depositBasisPoints) + BigInt(5000)) / BigInt(10000)) : totalPaise;
+  return { subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, paymentMode, depositBasisPoints, payableNowPaise, balanceDuePaise: totalPaise - payableNowPaise };
+}
 export function evaluateStay(input: StayRequest, property: Settings, room: Settings, rate: Settings, now = Date.now()) {
   if (property.childrenPolicy?.allowed === false && (input.children > 0 || input.infants > 0)) throw new Error("CHILDREN_NOT_ALLOWED");
   const bookingMode = input.bookingMode ?? "overnight";
+  if (bookingMode === "hourly" && rate.datePrices?.[input.checkIn]?.durationPrices) rate = { ...rate, durationPrices: rate.datePrices[input.checkIn].durationPrices };
   const timezone = property.timezone ?? "Asia/Kolkata";
   localParts(now, timezone); // Validate the IANA timezone, including legacy defaults.
   if (!(property.bookingModes ?? ["overnight"]).includes(bookingMode) || !(room.bookingModes ?? property.bookingModes ?? ["overnight"]).includes(bookingMode)) throw new Error("BOOKING_MODE_NOT_AVAILABLE");
@@ -107,16 +122,9 @@ export function evaluateStay(input: StayRequest, property: Settings, room: Setti
   if (Array.isArray(rate.eligibleWeekdays) && !rate.eligibleWeekdays.includes(weekday)) throw new Error("ARRIVAL_WEEKDAY_NOT_ALLOWED");
   const cleaningBufferMinutes = integer(room.cleaningBufferMinutes ?? property.cleaningBufferMinutes, 30, 0, 1440);
   const billedHours = bookingMode === "hourly" ? durationMinutes / 60 : 0;
-  const unitPricePaise = money(pricingModel === "duration" ? rate.durationPrices?.find(row => row.hours * 60 === durationMinutes)?.pricePaise : rate.basePricePaise);
-  const subtotalPaise = money(unitPricePaise * (pricingModel === "nightly" ? nights : 1));
-  const taxBasisPoints = integer(rate.taxBasisPoints, 0, 0, 10000);
-  const taxPaise = Number((BigInt(subtotalPaise) * BigInt(taxBasisPoints) + BigInt(5000)) / BigInt(10000));
-  const customerFeePaise = money(rate.customerFeePaise ?? 0);
-  const totalPaise = money(subtotalPaise + taxPaise + customerFeePaise);
-  const paymentMode = rate.paymentMode ?? "full";
-  if (!["full", "deposit", "pay_at_property"].includes(paymentMode)) throw new Error("INVALID_RATE_CONFIGURATION");
-  const depositBasisPoints = integer(rate.depositBasisPoints, paymentMode === "deposit" ? 2500 : 10000, 0, 10000);
-  const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Number((BigInt(totalPaise) * BigInt(depositBasisPoints) + BigInt(5000)) / BigInt(10000)) : totalPaise;
+  const unitPricePaise = money(pricingModel === "duration" ? rate.durationPrices?.find(row => row.hours * 60 === durationMinutes)?.pricePaise : rate.datePrices?.[input.checkIn]?.basePricePaise ?? rate.basePricePaise);
+  const subtotalPaise = money(pricingModel === "nightly" ? Array.from({ length: nights }, (_, i) => new Date(Date.parse(`${input.checkIn}T00:00Z`) + i * 86400000).toISOString().slice(0, 10)).reduce((sum, date) => sum + money(rate.datePrices?.[date]?.basePricePaise ?? rate.basePricePaise), 0) : unitPricePaise);
+  const { taxBasisPoints, taxPaise, customerFeePaise, totalPaise, paymentMode, depositBasisPoints, payableNowPaise } = calculateGuestPrice(subtotalPaise, rate);
   return { bookingMode, pricingModel, timezone, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), inventoryEndAt: new Date(end + cleaningBufferMinutes * 60_000).toISOString(), checkIn: input.checkIn, checkOut: localParts(end, timezone).date, arrivalTime: localParts(start, timezone).time, departureTime: localParts(end, timezone).time, durationMinutes, cleaningBufferMinutes, nights, billedHours, unitPricePaise, subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, payableNowPaise, balanceDuePaise: totalPaise - payableNowPaise, paymentMode, depositBasisPoints };
 }
 export type Allocation = { date: string; intervals: string[] };

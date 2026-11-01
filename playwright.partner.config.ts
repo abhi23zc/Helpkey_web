@@ -1,0 +1,2 @@
+import { defineConfig } from "@playwright/test";
+export default defineConfig({ outputDir: "test-results/partner-dashboard", testDir: "./tests/e2e", testMatch: ["partner-dashboard.spec.ts", "partner-reservations.spec.ts", "partner-rooms.spec.ts"], workers: 1, use: { baseURL: `http://127.0.0.1:${process.env.PARTNER_TEST_PORT || "3004"}`, trace: "retain-on-failure" }, webServer: { command: "node tests/e2e/fixtures/partner-dashboard-server.mjs", url: `http://127.0.0.1:${process.env.PARTNER_TEST_PORT || "3004"}`, reuseExistingServer: false, timeout: 120000 } });

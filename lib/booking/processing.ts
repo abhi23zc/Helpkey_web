@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { providerFetch } from "@/lib/providers/http";
+import { reconcileStayQuotePayments } from "@/lib/stay/payments";
 import { confirmPaidBooking } from "@/lib/bookings";
 
 import { retryDelay } from "@/lib/background/config";
@@ -62,9 +63,13 @@ export async function processRefund(refundId: string) {
       if (!current || current.leaseOwner !== owner || current.leaseExpiresAt?.toMillis() <= Date.now() || ["processed", "failed"].includes(current.status) || !booking) return;
       tx.update(ref, { providerRefundId: result.id, status: result.status, ...(result.status === "processed" ? { processedAt: FieldValue.serverTimestamp() } : {}), leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + 60_000), updatedAt: FieldValue.serverTimestamp() });
       if (result.status === "processed") {
+        if (current.stayQuote) {
+          tx.update(bookingRef, { stayPaymentReceipts: (booking.stayPaymentReceipts ?? []).map((r: import("@/lib/stay/contracts").StayPaymentReceipt) => r.paymentId===claim.paymentId?{...r,status:"refunded"}:r), customizations: (booking.customizations ?? []).map((r: import("@/lib/stay/contracts").StayRequest) => r.quote?.paymentId === claim.paymentId ? { ...r, quote: { ...r.quote, paymentStatus: "refunded" } } : r), stayRevision: (booking.stayRevision ?? 0) + 1, updatedAt: FieldValue.serverTimestamp() });
+        } else {
         const refundedPaise = (booking.refundedPaise ?? 0) + claim.amountPaise;
         const refundDuePaise = Math.max(0, (booking.refundDuePaise ?? 0) - claim.amountPaise);
         tx.update(bookingRef, { refundedAt: FieldValue.serverTimestamp(), refundedPaise, refundDuePaise, paymentStatus: refundDuePaise > 0 ? "refund_pending" : refundedPaise >= booking.paidPaise ? "refunded" : "partially_refunded", updatedAt: FieldValue.serverTimestamp() });
+        }
         tx.create(bookingRef.collection("events").doc(), { type: "refund_processed", refundId, amountPaise: claim.amountPaise, actorId: "system:refunds", createdAt: FieldValue.serverTimestamp() });
       }
     });
@@ -97,6 +102,7 @@ export async function processRefundBatch() {
 export async function reconcileBookingPayment(bookingId: string) {
   const ref = adminDb.collection("bookings").doc(bookingId);
   const data = (await ref.get()).data();
+  if (data?.stayQuoteReconciliationPending) { await reconcileStayQuotePayments(bookingId); if(data.bookingStatus!=="pending_payment") return; }
   if (!data || data.paymentMethod !== "online") return;
   let orderId = data.razorpayOrderId;
   if (!orderId) {

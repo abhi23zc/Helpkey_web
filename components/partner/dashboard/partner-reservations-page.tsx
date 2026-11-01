@@ -1,1390 +1,1145 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle,
+  AlertCircle,
+  ArrowDownToLine,
   BedDouble,
-  CalendarCheck2,
+  Bell,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Headphones,
-  Mail,
-  MoreHorizontal,
-  Phone,
+  Clock3,
+  Filter,
+  LogIn,
+  LogOut,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
-  ShieldCheck,
   X,
 } from "lucide-react";
-import { StayRequestList } from "@/components/stay/stay-request-list";
-import type { StayBookingData } from "@/lib/stay/contracts";
+import { apiFetch } from "@/lib/api/client";
+import { localParts } from "@/lib/booking/domain";
+import { formatPaise } from "@/lib/currency";
+import type { serializeBooking } from "@/lib/bookings";
 import { PartnerShell } from "./partner-shell";
-import { Drawer } from "./drawer";
+import { ReservationWorkspace } from "./reservation-workspace";
+import { PartnerDatePicker } from "./partner-date-picker";
+import { pageRange, shiftDay } from "@/lib/partner/date-range";
 import { ManualBookingDialog } from "./manual-booking-dialog";
+import { PhysicalRoomRegister } from "./reservation-operations";
 
-type Booking = Partial<StayBookingData> & {
-  timezone?: string;
-  balanceDuePaise?: number;
-  effectiveTotalPaise?: number;
-  customizationCreditPaise?: number;
-  extrasTotalPaise?: number;
-  refundDuePaise?: number;
-  refundedPaise?: number;
-  id: string;
-  confirmationCode: string;
-  propertyName: string;
-  roomName: string;
-  ratePlanName: string;
-  checkIn: string;
-  checkOut: string;
-  nights: number;
-  adults: number;
-  children: number;
-  totalPaise: number;
-  payableNowPaise: number;
-  paidPaise: number;
-  currency: string;
-  bookingStatus: string;
-  paymentStatus: string;
-  paymentMethod: string | null;
-  leadGuest: { name?: string; email?: string; phone?: string; adultGuestNames?: string[] } | null;
-  specialRequest: string | null;
-  createdAt: string | null;
+type Reservation = ReturnType<typeof serializeBooking>;
+
+export type ReservationChoices = {
+  roomTypes: { id: string; name: string; status: string }[];
+  ratePlans: {
+    id: string;
+    name: string;
+    roomTypeId: string;
+    bookingMode: string;
+    status: string;
+  }[];
 };
 
-type StatusId = "all" | "arrivals" | "in_house" | "upcoming" | "pending_payment" | "cancelled" | "no_show";
-type ActionStatus = "checked_in" | "checked_out" | "no_show" | "cancelled";
+type Result = ReservationChoices & {
+  bookings: Reservation[];
+  totalCount: number;
+  nextCursor: string | null;
+  metrics: Record<string, number>;
+  tabCounts: Record<string, number>;
+  generatedAt: string;
+  timezone: string;
+  features: { allocation: boolean; payments: boolean; amendments: boolean };
+};
 
-const statusTabs: Array<{ id: StatusId; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "arrivals", label: "Arriving Today" },
-  { id: "in_house", label: "In House" },
-  { id: "upcoming", label: "Upcoming" },
-  { id: "pending_payment", label: "Pending Payment" },
-  { id: "cancelled", label: "Cancelled" },
-  { id: "no_show", label: "No-show Risk" },
+const tabs = [
+  ["all", "All"],
+  ["arrivals", "Arrivals"],
+  ["departures", "Departures"],
+  ["in_house", "In house"],
+  ["requests", "Guest requests"],
+  ["overdue", "Overdue arrivals"],
+  ["upcoming", "Upcoming"],
+  ["balances", "Balance due"],
+  ["pending_payment", "Awaiting payment"],
+  ["cancelled", "Cancelled"],
+  ["no_show", "No-shows"],
 ];
 
-const closedStatuses = new Set(["cancelled", "expired", "payment_failed"]);
-const activeStatuses = new Set(["pending_payment", "confirmed", "checked_in"]);
+const statusOptions = [
+  "all",
+  "pending_payment",
+  "confirmed",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+  "no_show",
+  "expired",
+  "payment_failed",
+];
 
-const money = (value: number, currency = "INR") =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(value / 100);
-
-const sentenceLabel = (value: string) =>
-  value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const getTodayKey = () => {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`;
+const paymentLabels: Record<string, string> = {
+  all: "All payment statuses",
+  pending: "Pending payment",
+  partially_paid: "Partially paid",
+  paid: "Paid in full",
+  pay_at_property: "Pay at hotel (Cash / Desk)",
+  paid_at_property: "Paid at hotel",
+  failed: "Payment failed",
+  refund_pending: "Refund pending",
+  partially_refunded: "Partially refunded",
+  refunded: "Refunded",
 };
 
-const formatShortDate = (value: string) =>
-  new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
-    month: "short",
-    day: "numeric",
-  });
+const paymentOptions = Object.keys(paymentLabels);
 
-const formatFullDate = (value: string) =>
-  new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+const statusLabels: Record<string, string> = {
+  all: "All booking statuses",
+  pending_payment: "Awaiting payment",
+  confirmed: "Confirmed",
+  checked_in: "Checked in (In-house)",
+  checked_out: "Checked out",
+  cancelled: "Cancelled",
+  no_show: "No-show",
+  expired: "Expired booking",
+  payment_failed: "Payment failed",
+};
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "G";
-  return (parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`).toUpperCase();
+function formatFriendlyTimezone(tz: string): string {
+  if (!tz) return "Hotel local time";
+  if (tz.includes("Kolkata")) return "India Time (IST)";
+  const city = tz.split("/").pop()?.replaceAll("_", " ") || tz;
+  return `Local time (${city})`;
 }
 
-function isArrivalToday(booking: Booking, today: string) {
-  return booking.checkIn === today && ["confirmed", "checked_in"].includes(booking.bookingStatus);
-}
+const label = (s: string) => s.replaceAll("_", " ");
 
-function isStayingTonight(booking: Booking, today: string) {
-  return booking.checkIn <= today && booking.checkOut > today && ["confirmed", "checked_in"].includes(booking.bookingStatus);
-}
+export const reservationButton =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-[#061224] shadow-xs transition-all hover:border-[#c89b3c] hover:bg-[#fbf5e8]/50 active:scale-95 disabled:cursor-wait disabled:opacity-50";
 
-function isNoShowRisk(booking: Booking, today: string) {
-  return booking.checkIn < today && booking.bookingStatus === "confirmed";
-}
+const selectClass =
+  "block h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#061224] shadow-2xs outline-none transition focus:border-[#c89b3c] focus:ring-2 focus:ring-[#c89b3c]/20";
 
 export function PartnerReservationsPage() {
   return (
     <PartnerShell>
-      {({ selectedProperty }) => (
-        <PartnerReservations
-          propertyId={selectedProperty?.id}
-          propertyName={selectedProperty?.name ?? "Selected property"}
-        />
-      )}
+      {({ selectedProperty, reportingDate }) =>
+        selectedProperty ? (
+          <Reservations
+            key={selectedProperty.id}
+            propertyId={selectedProperty.id}
+            propertyName={selectedProperty.name}
+            date={reportingDate}
+          />
+        ) : (
+          <div className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-xs">
+            <h1 className="text-2xl font-bold text-[#061224]">Reservations</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Select or add a property to manage reservations.
+            </p>
+            <a
+              href="/partner/onboarding"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#061224]/90"
+            >
+              Add a property
+            </a>
+          </div>
+        )
+      }
     </PartnerShell>
   );
 }
 
-function PartnerReservations({ propertyId, propertyName }: { propertyId?: string; propertyName: string }) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusId>("all");
-  const [roomFilter, setRoomFilter] = useState("all");
-  const [paymentFilter, setPaymentFilter] = useState("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [assignedRooms, setAssignedRooms] = useState<Record<string, string>>({});
-  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const loadController = useRef<AbortController | null>(null);
-  const PAGE_SIZE = 15;
-  const cursors = useRef<Record<number, string>>({});
-  const [totalCount, setTotalCount] = useState(0);
-  const [serverMetrics, setServerMetrics] = useState({ arrivals: 0, departures: 0, staying: 0, pendingRequests: 0, noShowRisk: 0 });
-  const [serverTabCounts, setServerTabCounts] = useState<Record<StatusId, number>>({ all: 0, arrivals: 0, in_house: 0, upcoming: 0, pending_payment: 0, cancelled: 0, no_show: 0 });
-  const [roomNames, setRoomNames] = useState<string[]>([]);
-
-  const today = useMemo(() => getTodayKey(), []);
-
-  const load = useCallback(async (background = false) => {
-    if (background && loadController.current) return;
-    loadController.current?.abort();
-    const controller = new AbortController();
-    loadController.current = controller;
-    if (!propertyId) {
-      loadController.current = null;
-      setBookings([]);
-      setLoading(false);
-      return;
-    }
-
-    if (!background) setLoading(true);
-    setError("");
-    try {
-      const params = new URLSearchParams({ propertyId, status, q: query, limit: String(PAGE_SIZE), ...(page > 1 && cursors.current[page] ? { cursor: cursors.current[page] } : {}), ...(roomFilter !== "all" ? { roomName: roomFilter } : {}), ...(paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}) });
-      const response = await fetch(`/api/partner/bookings?${params}`, { cache: "no-store", signal: controller.signal });
-      const body = (await response.json()) as { bookings?: Booking[]; error?: string; totalCount: number; metrics: typeof serverMetrics; tabCounts: Record<StatusId, number>; roomNames: string[]; nextCursor?: string };
-      if (!response.ok) throw new Error(body.error ?? "Unable to load reservations.");
-      setBookings(body.bookings ?? []);
-      setTotalCount(body.totalCount);
-      setServerMetrics(body.metrics);
-      setServerTabCounts(body.tabCounts);
-      setRoomNames(body.roomNames);
-      if (body.nextCursor) cursors.current[page + 1] = body.nextCursor;
-    } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Unable to load reservations.");
-    } finally {
-      if (loadController.current === controller) { loadController.current = null; setLoading(false); }
-    }
-  }, [propertyId, query, status, roomFilter, paymentFilter, page]);
-
-  useEffect(() => {
-    void Promise.resolve().then(() => load());
-    return () => { loadController.current?.abort(); loadController.current = null; };
-  }, [load]);
-
-  useEffect(() => {
-    if (!inspectorOpen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setInspectorOpen(false);
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [inspectorOpen]);
-
-  // Reset to first page whenever filters/search change
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPage(1);
-  }, [status, roomFilter, paymentFilter, query]);
-
-  useEffect(() => {
-    const refresh = () => { if (document.visibilityState === "visible") void load(true); };
-    const timer = setInterval(refresh, 15000);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("stay-request-updated", refresh);
-    return () => { clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("stay-request-updated", refresh); };
-  }, [load]);
-  const rooms = roomNames;
-  const metrics = serverMetrics;
-  const tabCounts = serverTabCounts;
-  const filtered = bookings;
-
-  const selectedBooking = useMemo(() => {
-    return filtered.find((booking) => booking.id === selectedId) ?? filtered[0] ?? null;
-  }, [filtered, selectedId]);
-
-  const dateRangeLabel = useMemo(() => {
-    if (!filtered.length) return "No stays in view";
-    const sorted = [...filtered].sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-    return `${formatShortDate(sorted[0].checkIn)} – ${formatShortDate(sorted[sorted.length - 1].checkOut)}`;
-  }, [filtered]);
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const paginatedBookings = filtered;
-
-  const updateStatus = async (bookingId: string, nextStatus: ActionStatus) => {
-    setBusy(bookingId);
-    setError("");
-    try {
-      const response = await fetch(`/api/partner/bookings/${bookingId}/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      const body = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Unable to update reservation.");
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to update reservation.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const selectReservation = (bookingId: string) => {
-    setSelectedId(bookingId);
-    setInspectorOpen(true);
-  };
-
-  const exportCsv = () => {
-    const header = ["Booking ID", "Guest", "Room Type", "Stay Dates", "Guests", "Payment", "Status", "Total"];
-    const rows = filtered.map((booking) => [
-      booking.confirmationCode,
-      booking.leadGuest?.name ?? "Guest",
-      booking.roomName,
-      `${booking.checkIn} to ${booking.checkOut}`,
-      String(booking.adults + booking.children),
-      sentenceLabel(booking.paymentStatus),
-      sentenceLabel(booking.bookingStatus),
-      money(booking.totalPaise, booking.currency),
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `helpkey-reservations-${today}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <section className="space-y-5 pt-1">
-      <div className="flex flex-col justify-between gap-4  px-5 py-4  xl:flex-row xl:items-center">
-        <div>
-          <h1 className="text-[28px] font-bold leading-tight tracking-[-0.035em] text-[#061224]">Reservations</h1>
-          <p className="mt-1 text-sm font-medium text-[#5f6b82]">
-            {propertyName} · Manage arrivals, guest requests, payments and booking changes.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setBookingDialogOpen(true)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#061224] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#0b1f3a] transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Add Manual Booking
-          </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#e4ded2] bg-white px-4 text-xs font-semibold text-[#061224] hover:border-[#c89b3c] hover:bg-[#fbf5e8]"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#e4ded2] bg-white px-4 text-xs font-semibold text-[#061224] hover:border-[#c89b3c] hover:bg-[#fbf5e8] disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Sync Calendar
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard icon={CalendarCheck2} label="Arrivals Today" value={metrics.arrivals} note="Ready for check-in" tone="gold" />
-        <KpiCard icon={CalendarDays} label="Departures Today" value={metrics.departures} note="Expected check-outs" tone="red" />
-        <KpiCard icon={BedDouble} label="Staying Tonight" value={metrics.staying} note="Live occupied stays" tone="blue" />
-        <KpiCard icon={ShieldCheck} label="Pending Requests" value={metrics.pendingRequests} note="Guest notes to review" tone="amber" />
-        <KpiCard icon={AlertTriangle} label="No-show Risk" value={metrics.noShowRisk} note={metrics.noShowRisk ? "High attention" : "No risk flagged"} tone="warning" />
-      </div>
-
-      <div className="rounded-2xl border border-[#e4ded2] bg-white p-3 shadow-[0_8px_28px_rgba(6,18,36,0.05)]">
-        <div className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_minmax(170px,0.8fr)_88px]">
-          <FilterBox label="Date Range" value={dateRangeLabel} icon={CalendarDays} />
-          <SelectBox label="Reservation Status" value={status} onChange={(value) => setStatus(value as StatusId)}>
-            {statusTabs.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </SelectBox>
-          <SelectBox label="Room Type" value={roomFilter} onChange={setRoomFilter}>
-            <option value="all">All Room Types</option>
-            {rooms.map((room) => (
-              <option key={room} value={room}>
-                {room}
-              </option>
-            ))}
-          </SelectBox>
-          <SelectBox label="Payment Status" value={paymentFilter} onChange={setPaymentFilter}>
-            <option value="all">All</option>
-            <option value="paid">Paid</option>
-            <option value="pending">Pending</option>
-            <option value="pay_at_property">Pay at Property</option>
-            <option value="failed">Failed</option>
-          </SelectBox>
-          <button
-            type="button"
-            onClick={() => {
-              setStatus("all");
-              setRoomFilter("all");
-              setPaymentFilter("all");
-              setQuery("");
-            }}
-            className="inline-flex h-[54px] items-center justify-center rounded-xl border border-blue-100 bg-blue-50 px-4 text-xs font-semibold text-blue-700 hover:bg-blue-100 lg:self-end"
-          >
-            Reset
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-[#e4ded2] bg-white shadow-[0_8px_28px_rgba(6,18,36,0.05)]">
-        <div className="border-b border-[#ede7dc] p-4">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search reservations, guests, booking ID..."
-              className="h-12 w-full rounded-xl border border-[#e4ded2] bg-[#fbfbff] pl-11 pr-16 text-sm font-medium text-[#061224] outline-none focus:border-[#061224] focus:ring-2 focus:ring-[#061224]/10"
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            ) : (
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-[#e4ded2] bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                ⌘K
-              </span>
-            )}
-          </label>
-          <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto">
-            {statusTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatus(tab.id)}
-                className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  status === tab.id
-                    ? "border-[#061224] bg-[#061224] text-white"
-                    : "border-[#e4ded2] bg-white text-[#4d5870] hover:border-[#c89b3c] hover:bg-[#fbf5e8] hover:text-[#061224]"
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] ${status === tab.id ? "bg-[#f4d58b] text-[#061224]" : "bg-[#eef2ff] text-[#061224]"}`}>
-                  {tabCounts[tab.id]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && (
-          <div className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {error}
-          </div>
-        )}
-
-        <div className="min-w-0">
-            {loading ? (
-              <ReservationSkeleton />
-            ) : filtered.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <ReservationTable
-                bookings={paginatedBookings}
-                selectedId={selectedBooking?.id ?? null}
-                busy={busy}
-                onSelect={selectReservation}
-                onUpdate={updateStatus}
-                page={page}
-                totalPages={totalPages}
-                totalCount={totalCount}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-              />
-            )}
-        </div>
-      </div>
-
-      <BookingInspector
-        open={inspectorOpen}
-        booking={selectedBooking}
-        today={today}
-        assignedRoom={selectedBooking ? assignedRooms[selectedBooking.id] ?? "1205" : "1205"}
-        onAssignRoom={(room) => {
-          if (!selectedBooking) return;
-          setAssignedRooms((prev) => ({ ...prev, [selectedBooking.id]: room }));
-        }}
-        busy={selectedBooking ? busy === selectedBooking.id : false}
-        onUpdate={updateStatus}
-        onClose={() => setInspectorOpen(false)}
-      />
-
-      <ManualBookingDialog
-        open={bookingDialogOpen}
-        propertyId={propertyId}
-        propertyName={propertyName}
-        onClose={() => setBookingDialogOpen(false)}
-        onCreated={() => {
-          setBookingDialogOpen(false);
-          void load();
-        }}
-      />
-    </section>
-  );
-}
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  note,
-  tone,
+function Reservations({
+  propertyId,
+  propertyName,
+  date,
 }: {
-  icon: typeof CalendarCheck2;
-  label: string;
-  value: number;
-  note: string;
-  tone: "gold" | "red" | "blue" | "amber" | "warning";
+  propertyId: string;
+  propertyName: string;
+  date: string;
 }) {
-  const tones = {
-    gold: "bg-[#fbf0d8] text-[#b8821f] ring-[#f0cf88]",
-    red: "bg-red-50 text-red-600 ring-red-100",
-    blue: "bg-blue-50 text-blue-700 ring-blue-100",
-    amber: "bg-amber-50 text-amber-700 ring-amber-100",
-    warning: "bg-[#fff4d8] text-[#d08a00] ring-[#f0cf88]",
-  };
-
-  return (
-    <article className="min-h-[124px] rounded-2xl border border-[#e4ded2] bg-white p-4 shadow-[0_8px_28px_rgba(6,18,36,0.04)]">
-      <div className="flex h-full flex-col justify-between gap-3">
-        <div className="flex items-start gap-3">
-        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ring-1 ${tones[tone]}`}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="max-w-[130px] text-[12px] font-semibold uppercase leading-tight tracking-[0.04em] text-[#34415a]">{label}</p>
-          <p className="mt-1 text-3xl font-bold leading-none tracking-[-0.04em] text-[#061224]">{value}</p>
-        </div>
-        </div>
-        <p className={`text-xs font-medium ${tone === "warning" && value ? "text-red-600" : "text-[#66738b]"}`}>
-          {note}
-        </p>
-      </div>
-    </article>
+  const searchParams = useSearchParams(),
+    searchString = searchParams.toString();
+  const scope =
+      searchParams.get("scope") ||
+      (["overdue", "overdue_departures"].includes(
+        searchParams.get("view") || "",
+      )
+        ? "all"
+        : "range"),
+    view = searchParams.get("view") || "all",
+    q = searchParams.get("q") || "";
+  const dates = pageRange(
+    searchParams.get("from"),
+    searchParams.get("to"),
+    date,
+    0,
+    scope === "day" ? 0 : 6,
   );
-}
+  const selectedId = searchParams.get("bookingId");
+  const [manualOpen, setManualOpen] = useState(false),
+    [roomsOpen, setRoomsOpen] = useState(false),
+    [exporting, setExporting] = useState(false),
+    [exportError, setExportError] = useState("");
+  const [search, setSearch] = useState(q);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
+    inputRef = useRef<HTMLInputElement>(null);
+  const [previousCursors, setPreviousCursors] = useState<string[]>([]);
 
-function FilterBox({ label, value, icon: Icon }: { label: string; value: string; icon: typeof CalendarDays }) {
-  return (
-    <div className="rounded-xl border border-[#e4ded2] bg-white px-3 py-2">
-      <p className="text-[11px] font-medium text-[#4d5870]">{label}</p>
-      <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#061224]">
-        <Icon className="h-4 w-4 text-[#8b96aa]" />
-        <span className="truncate">{value}</span>
-        <ChevronDown className="ml-auto h-4 w-4 text-[#8b96aa]" />
-      </div>
-    </div>
-  );
-}
-
-function SelectBox({
-  label,
-  value,
-  onChange,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="rounded-xl border border-[#e4ded2] bg-white px-3 py-2">
-      <span className="block text-[11px] font-medium text-[#4d5870]">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full bg-transparent text-sm font-semibold text-[#061224] outline-none"
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function ReservationTable({
-  bookings,
-  selectedId,
-  busy,
-  onSelect,
-  onUpdate,
-  page,
-  totalPages,
-  totalCount,
-  pageSize,
-  onPageChange,
-}: {
-  bookings: Booking[];
-  selectedId: string | null;
-  busy: string | null;
-  onSelect: (id: string) => void;
-  onUpdate: (bookingId: string, status: ActionStatus) => void;
-  page: number;
-  totalPages: number;
-  totalCount: number;
-  pageSize: number;
-  onPageChange: (p: number) => void;
-}) {
-  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, totalCount);
-
-  // Build page number list (show max 5 pages with ellipsis logic)
-  const pageNumbers: (number | "...")[] = [];
-  if (totalPages <= 5) {
-    for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
-  } else {
-    pageNumbers.push(1);
-    if (page > 3) pageNumbers.push("...");
-    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pageNumbers.push(i);
-    if (page < totalPages - 2) pageNumbers.push("...");
-    pageNumbers.push(totalPages);
+  const params = new URLSearchParams(searchString);
+  params.set("propertyId", propertyId);
+  params.set("date", date);
+  params.set("scope", scope);
+  if (!params.has("scope") && ["overdue", "overdue_departures"].includes(view))
+    params.set("scope", "all");
+  if (scope === "range") {
+    params.set("from", dates.from);
+    params.set("to", dates.to);
   }
+  params.delete("bookingId");
+  const requestKey = params.toString();
 
-  return (
-    <div>
-      <div className="hidden grid-cols-[1.08fr_1.15fr_1fr_0.78fr_0.82fr_0.58fr] border-b border-[#ede7dc] bg-[#fbfbff] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.04em] text-[#4d5870] lg:grid">
-        <span>Booking</span>
-        <span>Guest</span>
-        <span>Stay</span>
-        <span>Payment</span>
-        <span>Status</span>
-        <span className="text-right">Actions</span>
-      </div>
-      <div className="divide-y divide-[#ede7dc] lg:block">
-        {bookings.map((booking) => (
-          <ReservationRow
-            key={booking.id}
-            booking={booking}
-            selected={booking.id === selectedId}
-            busy={busy === booking.id}
-            onSelect={() => onSelect(booking.id)}
-            onUpdate={onUpdate}
-          />
-        ))}
-      </div>
-      {totalCount > 0 && (
-        <div className="flex flex-col gap-3 border-t border-[#ede7dc] px-4 py-4 text-xs font-semibold text-[#4d5870] sm:flex-row sm:items-center sm:justify-between">
-          <span>Showing {from}–{to} of {totalCount} reservation{totalCount !== 1 ? "s" : ""}</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onPageChange(page - 1)}
-              disabled={page === 1}
-              className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#4d5870] hover:border-[#c89b3c] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            {pageNumbers.map((num, idx) =>
-              num === "..." ? (
-                <span key={`ellipsis-${idx}`} className="px-1 text-[#8b96aa]">…</span>
-              ) : (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => onPageChange(num)}
-                  className={`grid h-8 min-w-[32px] place-items-center rounded-lg px-2 text-xs font-bold transition-colors ${
-                    num === page
-                      ? "bg-[#061224] text-white"
-                      : "border border-[#e4ded2] bg-white text-[#061224] hover:border-[#c89b3c] hover:bg-[#fbf5e8]"
-                  }`}
-                  aria-label={`Page ${num}`}
-                  aria-current={num === page ? "page" : undefined}
-                >
-                  {num}
-                </button>
-              )
-            )}
-            <button
-              type="button"
-              onClick={() => onPageChange(page + 1)}
-              disabled={page === totalPages}
-              className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#4d5870] hover:border-[#c89b3c] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              aria-label="Next page"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReservationRow({
-  booking,
-  selected,
-  busy,
-  onSelect,
-  onUpdate,
-}: {
-  booking: Booking;
-  selected: boolean;
-  busy: boolean;
-  onSelect: () => void;
-  onUpdate: (bookingId: string, status: ActionStatus) => void;
-}) {
-  const guestName = booking.leadGuest?.name ?? "Guest";
-  const guests = booking.adults + booking.children;
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") onSelect();
-      }}
-      className={`mx-3 my-3 grid cursor-pointer gap-3 rounded-xl border border-[#e4ded2] px-4 py-4 text-sm shadow-sm outline-none transition hover:bg-[#fbf5e8]/45 lg:m-0 lg:grid-cols-[1.08fr_1.15fr_1fr_0.78fr_0.82fr_0.58fr] lg:items-center lg:rounded-none lg:border-0 lg:shadow-none ${
-        selected ? "bg-[#fffaf0] ring-1 ring-inset ring-[#c89b3c]" : "bg-white"
-      }`}
-    >
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b96aa] lg:hidden">Booking</p>
-        <p className="break-words font-semibold leading-tight text-[#061224]">{booking.confirmationCode}</p>
-        <p className="mt-1 text-xs font-normal text-[#68758c]">{booking.roomName}</p>
-      </div>
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b96aa] lg:hidden">Guest</p>
-        <p className="font-semibold text-[#061224]">{guestName}</p>
-        <p className="mt-1 break-words text-xs font-normal text-[#68758c]">
-          {guests} guest{guests === 1 ? "" : "s"}
-          {booking.leadGuest?.phone ? ` · ${booking.leadGuest.phone}` : ""}
-        </p>
-      </div>
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b96aa] lg:hidden">Stay</p>
-        <p className="font-semibold text-[#061224]">{formatShortDate(booking.checkIn)} – {formatShortDate(booking.checkOut)}</p>
-        <p className="text-xs font-normal text-[#68758c]">
-          {booking.nights} night{booking.nights === 1 ? "" : "s"} · {booking.ratePlanName}
-        </p>
-      </div>
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b96aa] lg:hidden">Payment</p>
-        <PaymentBadge value={booking.paymentStatus} />
-      </div>
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b96aa] lg:hidden">Status</p>
-        <StatusBadge value={booking.bookingStatus} />
-      </div>
-      <div className="flex items-center justify-end gap-2 border-t border-[#ede7dc] pt-3 lg:border-t-0 lg:pt-0">
-        <InlineActions booking={booking} busy={busy} onUpdate={onUpdate} />
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect();
-          }}
-          className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4ded2] bg-white text-[#061224] hover:border-[#c89b3c]"
-          aria-label="Open reservation details"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function InlineActions({
-  booking,
-  busy,
-  onUpdate,
-}: {
-  booking: Booking;
-  busy: boolean;
-  onUpdate: (bookingId: string, status: ActionStatus) => void;
-}) {
-  if (booking.bookingStatus === "confirmed") {
-    return (
-      <button
-        type="button"
-        disabled={busy}
-        onClick={(event) => {
-          event.stopPropagation();
-          void onUpdate(booking.id, "checked_in");
-        }}
-        className="rounded-lg bg-[#061224] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-      >
-        {busy ? "..." : "Check in"}
-      </button>
-    );
-  }
-
-  if (booking.bookingStatus === "checked_in") {
-    return (
-      <button
-        type="button"
-        disabled={busy}
-        onClick={(event) => {
-          event.stopPropagation();
-          void onUpdate(booking.id, "checked_out");
-        }}
-        className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-      >
-        {busy ? "..." : "Complete"}
-      </button>
-    );
-  }
-
-  return null;
-}
-
-type ReservationTab = "details" | "guest" | "stay" | "payment" | "audit";
-
-function BookingInspector({
-  open,
-  booking,
-  today,
-  assignedRoom,
-  onAssignRoom,
-  busy,
-  onUpdate,
-  onClose,
-}: {
-  open: boolean;
-  booking: Booking | null;
-  today: string;
-  assignedRoom: string;
-  onAssignRoom: (room: string) => void;
-  busy: boolean;
-  onUpdate: (bookingId: string, status: ActionStatus) => void;
-  onClose: () => void;
-}) {
-  const [tab, setTab] = useState<ReservationTab>("details");
-  const [noteText, setNoteText] = useState("");
-  const [noteSaved, setNoteSaved] = useState(false);
-  const [checklist, setChecklist] = useState({
-    idVerified: true,
-    paymentConfirmed: true,
-    roomCleaned: true,
-    keyIssued: false,
+  const query = useQuery({
+    queryKey: ["partner", propertyId, "reservations", requestKey],
+    queryFn: ({ signal }) =>
+      apiFetch<Result>(`/api/partner/bookings?${requestKey}`, { signal }),
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTab("details");
-    setNoteSaved(false);
-  }, [booking?.id]);
+  const refetch = query.refetch;
+  const refresh = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
-  if (!booking) return null;
-
-  const guestName = booking.leadGuest?.name ?? "Guest";
-  const guests = booking.adults + booking.children;
-  const due = booking.balanceDuePaise ?? Math.max(0, (booking.effectiveTotalPaise ?? booking.totalPaise) - booking.paidPaise);
-  const readiness =
-    booking.bookingStatus === "checked_in"
-      ? 100
-      : booking.bookingStatus === "confirmed" && booking.paymentStatus === "paid"
-      ? 92
-      : 65;
-
-  const toggleChecklist = (key: keyof typeof checklist) => {
-    setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const footerAction = (
-    <div className="flex items-center gap-2">
-      {booking.bookingStatus === "confirmed" && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onUpdate(booking.id, "checked_in")}
-          className="flex-1 rounded-xl bg-[#061224] py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-colors disabled:opacity-50"
-        >
-          {busy ? "Updating..." : "Mark Checked In"}
-        </button>
-      )}
-      {booking.bookingStatus === "checked_in" && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onUpdate(booking.id, "checked_out")}
-          className="flex-1 rounded-xl bg-emerald-700 py-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-800 transition-colors disabled:opacity-50"
-        >
-          {busy ? "Updating..." : "Complete Stay"}
-        </button>
-      )}
-      {["checked_out", "cancelled", "no_show"].includes(booking.bookingStatus) && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex-1 rounded-xl bg-[#061224] py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-colors"
-        >
-          Close Details
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-      >
-        Dismiss
-      </button>
-    </div>
+  const update = useCallback(
+    (patch: Record<string, string | null>, reset = true) => {
+      const next = new URLSearchParams(window.location.search);
+      next.set("propertyId", propertyId);
+      if (reset) {
+        next.delete("cursor");
+        setPreviousCursors([]);
+      }
+      for (const [key, value] of Object.entries(patch)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      window.history.pushState(null, "", `${window.location.pathname}?${next}`);
+    },
+    [propertyId, setPreviousCursors],
   );
 
+  useEffect(() => {
+    // Browser back/forward must restore the search text as well as the server query.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSearch(q);
+  }, [q]);
+
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k" &&
+        !(
+          event.target instanceof Element &&
+          event.target.closest('[role="dialog"]')
+        )
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("stay-request-updated", refresh);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("stay-request-updated", refresh);
+    };
+  }, [refresh]);
+
+  const data = query.data;
+
+  const exportCsv = async () => {
+    setExporting(true);
+    setExportError("");
+    try {
+      const filters = new URLSearchParams(requestKey);
+      filters.delete("cursor");
+      const response = await fetch(`/api/partner/bookings/export?${filters}`);
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(
+          body.apiError?.message ||
+            body.error?.message ||
+            body.message ||
+            (typeof body.error === "string" ? body.error : "Export failed."),
+        );
+      }
+      const url = URL.createObjectURL(await response.blob()),
+        a = document.createElement("a");
+      a.href = url;
+      a.download = `helpkey-reservations-${date}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const select = (key: string, fallback: string) =>
+    searchParams.get(key) || fallback;
+
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  const today = localParts(clock, data?.timezone || "Asia/Kolkata").date;
+  const advancedCount = ["status", "bookingMode"].filter(
+    (k) => select(k, "all") !== "all",
+  ).length;
+  const hasActiveFilters = Boolean(
+    search ||
+      scope === "all" ||
+      dates.from !== today ||
+      dates.to !== shiftDay(today, 6) ||
+      view !== "all" ||
+      select("dateBasis", "stay") !== "stay" ||
+      searchParams.get("roomTypeId") ||
+      select("paymentStatus", "all") !== "all" ||
+      advancedCount,
+  );
+
+  const reset = () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setSearch("");
+    update({
+      date: today,
+      ...Object.fromEntries(
+        [
+          "view",
+          "scope",
+          "dateBasis",
+          "from",
+          "to",
+          "q",
+          "status",
+          "roomTypeId",
+          "paymentStatus",
+          "bookingMode",
+        ].map((k) => [k, null]),
+      ),
+    });
+  };
+
+  const when = (b: Reservation, start: boolean) => {
+    const instant = start ? b.startAt : b.endAt;
+    return instant
+      ? new Intl.DateTimeFormat("en-IN", {
+          day: "numeric",
+          month: "short",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZone: b.timezone,
+        }).format(new Date(instant))
+      : start
+        ? b.checkIn
+        : b.checkOut;
+  };
+
+  const metricsConfig = [
+    {
+      id: "arrivals",
+      text: "Arrivals",
+      sub:
+        scope === "range"
+          ? "Check-ins in selected range"
+          : "Check-ins on selected date",
+      icon: LogIn,
+      iconColor: "text-emerald-700 bg-emerald-50 border-emerald-200/60",
+    },
+    {
+      id: "departures",
+      text: "Departures",
+      sub:
+        scope === "range"
+          ? "Check-outs in selected range"
+          : "Check-outs on selected date",
+      icon: LogOut,
+      iconColor: "text-blue-700 bg-blue-50 border-blue-200/60",
+    },
+    {
+      id: "in_house",
+      text: "In-house guests",
+      sub:
+        scope === "range"
+          ? "Checked-in stays overlapping range"
+          : "Checked-in stays on selected date",
+      icon: BedDouble,
+      iconColor: "text-indigo-700 bg-indigo-50 border-indigo-200/60",
+    },
+    {
+      id: "requests",
+      text: "Guest requests",
+      sub: "Pending guest requests",
+      icon: Bell,
+      iconColor: "text-amber-700 bg-amber-50 border-amber-200/60",
+    },
+    {
+      id: "overdue",
+      text: "Delayed check-ins · now",
+      sub: "Confirmed, past check-in time",
+      icon: Clock3,
+      iconColor: "text-amber-800 bg-amber-100/70 border-amber-300",
+    },
+  ] as const;
+
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title={booking.confirmationCode}
-      description={`${guestName} · ${guests} guest${guests === 1 ? "" : "s"} · ${booking.roomName}`}
-      badge={<StatusBadge value={booking.bookingStatus} />}
-      headerExtra={<PaymentBadge value={booking.paymentStatus} />}
-      footer={footerAction}
-    >
-      <section className="mb-5 space-y-3 rounded-xl bg-slate-50 p-4">
-        <h3 className="text-sm font-bold">Arrival preparation</h3>
-        <p className="text-xs">Travel preferences: {booking.travelerPreferences?.join(", ") || "Not specified"} · Pre check-in: {booking.preCheckin?.status === "submitted" ? "Submitted" : "Incomplete"}</p>
-        {booking.preCheckin?.expectedArrivalAt && <p className="text-xs">Expected arrival: {new Date(booking.preCheckin.expectedArrivalAt).toLocaleString("en-IN", { timeZone: booking.timezone ?? "Asia/Kolkata" })}</p>}
-        {booking.preCheckin?.notes && <p className="text-sm">Arrival notes: {booking.preCheckin.notes}</p>}
-        {booking.specialRequest && <p className="text-sm">Additional requests: {booking.specialRequest}</p>}
-        <StayRequestList requests={booking.customizations ?? []} timezone={booking.timezone ?? "Asia/Kolkata"} currency={booking.currency} staff={{ bookingId: booking.id, revision: booking.stayRevision ?? 0, enabled: ["confirmed", "checked_in"].includes(booking.bookingStatus), refresh: () => window.dispatchEvent(new Event("stay-request-updated")) }} />
-      </section>
-      {/* Top Tab Bar (Matching Image 2 Room Editor tabs) */}
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-100 pb-2 mb-4">
-        {[
-          { id: "details", label: "Details" },
-          { id: "guest", label: "Guest Info" },
-          { id: "stay", label: "Stay & Room" },
-          { id: "payment", label: "Payment" },
-          { id: "audit", label: "Actions & Audit" },
-        ].map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id as ReservationTab)}
-            className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors ${
-              tab === item.id ? "bg-[#061224] text-white shadow-xs" : "text-slate-500 hover:bg-slate-100 hover:text-[#061224]"
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Contents */}
-      <div className="space-y-4 text-xs">
-        {/* TAB 1: OVERVIEW DETAILS */}
-        {tab === "details" && (
-          <div className="space-y-4">
-            {/* Guest Summary Card */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
-              <div className="flex items-center gap-3.5">
-                <div className="grid h-13 w-13 shrink-0 place-items-center rounded-full bg-[#f6e8c8] text-lg font-bold text-[#b8821f] border border-[#f0cf88]">
-                  {initials(guestName)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-base font-bold text-[#061224]">{guestName}</p>
-                    {readiness >= 90 && (
-                      <span className="rounded bg-[#c89b3c]/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-[#9a6b18]">
-                        VIP
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-slate-500 font-medium">
-                    {guests} guest{guests === 1 ? "" : "s"} · {booking.leadGuest?.phone ?? "No phone"}
-                  </p>
-                  <p className="truncate text-xs text-slate-400 font-normal">{booking.leadGuest?.email ?? "No email"}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Readiness Score Dial Gauge */}
-            <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-[#fbfbff] to-[#f4f7fc] p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#061224]">Check-in Readiness</span>
-                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
-                  <CheckCircle2 className="h-4 w-4" /> {readiness >= 90 ? "Guest Ready" : "Requires Review"}
-                </span>
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <div>
-                  <p className="text-3xl font-extrabold tracking-tight text-emerald-600">{readiness}%</p>
-                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">
-                    {readiness >= 90 ? "All pre-arrival requirements completed" : "Pending checklist verification"}
-                  </p>
-                </div>
-                <div className="relative grid h-16 w-16 place-items-center">
-                  <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 36 36">
-                    <path
-                      className="text-slate-200"
-                      strokeWidth="3.5"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <path
-                      className="text-emerald-500 transition-all duration-500"
-                      strokeDasharray={`${readiness}, 100`}
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                  </svg>
-                  <span className="absolute text-xs font-extrabold text-[#061224]">{readiness}%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Stay Grid */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Stay Duration</span>
-                <p className="mt-1 font-bold text-[#061224]">{booking.nights} night{booking.nights === 1 ? "" : "s"}</p>
-                <p className="text-[11px] text-slate-500">{formatShortDate(booking.checkIn)} – {formatShortDate(booking.checkOut)}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 p-3 bg-white">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assigned Room</span>
-                <p className="mt-1 font-bold text-[#061224]">Room {assignedRoom}</p>
-                <p className="text-[11px] text-emerald-600 font-semibold">{booking.roomName}</p>
-              </div>
-            </div>
-
-            {/* Staff Internal Notes Card */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-[#061224]">Internal Staff Note</span>
-                {noteSaved && <span className="text-[10px] font-bold text-emerald-600">Saved</span>}
-              </div>
-              <textarea
-                value={noteText}
-                onChange={(e) => {
-                  setNoteText(e.target.value);
-                  setNoteSaved(false);
-                }}
-                placeholder="Add private note for reception staff (e.g. VIP guest, late arrival expected)..."
-                rows={2}
-                className="w-full rounded-lg border border-slate-200 p-2 text-xs outline-none focus:border-[#c89b3c]"
-              />
-              <button
-                type="button"
-                onClick={() => setNoteSaved(true)}
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
-              >
-                Save Internal Note
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: GUEST INFO */}
-        {tab === "guest" && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <h3 className="font-bold text-sm text-[#061224]">Lead Guest Profile</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400">Full Name</label>
-                  <input
-                    readOnly
-                    value={guestName}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-bold text-[#061224]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400">Total Occupants</label>
-                  <input
-                    readOnly
-                    value={`${booking.adults} Adults, ${booking.children} Children`}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-bold text-[#061224]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400">Phone Number</label>
-                  <input
-                    readOnly
-                    value={booking.leadGuest?.phone ?? "Not provided"}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-[#061224]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400">Email Address</label>
-                  <input
-                    readOnly
-                    value={booking.leadGuest?.email ?? "Not provided"}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-[#061224]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Special Request Box */}
-            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-1">
-              <span className="font-bold text-blue-900 text-xs">Guest Special Request</span>
-              <p className="text-xs text-blue-800 leading-relaxed font-medium">
-                {booking.specialRequest ?? "No special request recorded for this reservation."}
-              </p>
-            </div>
-
-            {/* Communication Shortcuts */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2">
-              <span className="font-bold text-[#061224]">Direct Communication</span>
-              <div className="space-y-2 pt-1">
-                <ActionLink icon={Mail} label="Send Email to Guest" href={booking.leadGuest?.email ? `mailto:${booking.leadGuest.email}` : undefined} />
-                <ActionLink icon={Phone} label="Call Guest Phone" href={booking.leadGuest?.phone ? `tel:${booking.leadGuest.phone}` : undefined} />
-                <ActionLink icon={Headphones} label="Contact Helpkey Partner Desk" href="mailto:support@helpkey.in" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: STAY & ROOM */}
-        {tab === "stay" && (
-          <div className="space-y-4">
-            {/* Timeline */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <span className="font-bold text-sm text-[#061224]">Stay Timeline & Schedule</span>
-              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
-                <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Check-In Date</p>
-                  <p className="font-bold text-[#061224] text-sm mt-0.5">{formatFullDate(booking.checkIn)}</p>
-                  <p className="text-slate-500 text-[11px]">From 15:00 PM</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 text-right">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Check-Out Date</p>
-                  <p className="font-bold text-[#061224] text-sm mt-0.5">{formatFullDate(booking.checkOut)}</p>
-                  <p className="text-slate-500 text-[11px]">Until 11:00 AM</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Room Assignment */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <span className="font-bold text-sm text-[#061224]">Room Category & Physical Assignment</span>
-              <div className="space-y-2 text-xs">
-                <DetailRow label="Booked Room Category" value={booking.roomName} strong />
-                <DetailRow label="Rate Plan" value={booking.ratePlanName} />
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-2">
-                  <span className="font-bold text-[#061224]">Assign Room Number</span>
-                  <select
-                    value={assignedRoom}
-                    onChange={(e) => onAssignRoom(e.target.value)}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 font-bold text-[#061224] outline-none focus:border-[#c89b3c]"
-                  >
-                    <option value="1205">Room 1205</option>
-                    <option value="1206">Room 1206</option>
-                    <option value="1301">Room 1301</option>
-                    <option value="1402">Room 1402</option>
-                    <option value="1501">Room 1501</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Pre-arrival Checklist */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-              <span className="font-bold text-sm text-[#061224]">Pre-arrival Checklist</span>
-              <div className="space-y-2 pt-1">
-                {[
-                  { key: "idVerified", label: "Government ID / Passport Verified" },
-                  { key: "paymentConfirmed", label: "Full Payment Clear / Pre-authorized" },
-                  { key: "roomCleaned", label: "Housekeeping Inspection Passed" },
-                  { key: "keyIssued", label: "Key Card Prepared / Handed Over" },
-                ].map((item) => {
-                  const checked = checklist[item.key as keyof typeof checklist];
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => toggleChecklist(item.key as keyof typeof checklist)}
-                      className={`flex w-full items-center justify-between rounded-xl border p-3 font-semibold transition-colors ${
-                        checked
-                          ? "border-emerald-200 bg-emerald-50/60 text-emerald-800"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="text-xs">{item.label}</span>
-                      {checked ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <div className="h-4 w-4 rounded border border-slate-300 bg-white" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: PAYMENT */}
-        {tab === "payment" && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-[#061224]">Financial Breakdown</span>
-                <PaymentBadge value={booking.paymentStatus} />
-              </div>
-              <div className="space-y-2 pt-1 border-t border-slate-100">
-                <DetailRow label="Original booking total" value={money(booking.totalPaise, booking.currency)} />
-                {!!booking.extrasTotalPaise && <DetailRow label="Extras included in total" value={money(booking.extrasTotalPaise, booking.currency)} />}
-                {!!booking.customizationCreditPaise && <DetailRow label="Declined extras credit" value={money(booking.customizationCreditPaise, booking.currency)} />}
-                <DetailRow label="Current total" value={money(booking.effectiveTotalPaise ?? booking.totalPaise, booking.currency)} strong />
-                <DetailRow label="Originally due at booking" value={money(booking.payableNowPaise, booking.currency)} />
-                <DetailRow label="Amount Paid" value={money(booking.paidPaise, booking.currency)} success />
-                {!!booking.refundDuePaise && <DetailRow label="Refund pending" value={money(booking.refundDuePaise, booking.currency)} />}
-                {!!booking.refundedPaise && <DetailRow label="Refunded" value={money(booking.refundedPaise, booking.currency)} />}
-                <div className="flex items-center justify-between border-t border-slate-100 pt-2 font-bold text-sm">
-                  <span className="text-[#061224]">Outstanding Balance</span>
-                  <span className={due > 0 ? "text-amber-700" : "text-emerald-700"}>
-                    {money(due, booking.currency)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-              <span className="font-bold text-xs text-[#061224]">Payment Channel & Method</span>
-              <DetailRow label="Payment Method" value={booking.paymentMethod ? sentenceLabel(booking.paymentMethod) : "Helpkey Online Pay"} />
-              <DetailRow label="Booking Date" value={booking.createdAt ? formatFullDate(booking.createdAt.slice(0, 10)) : "Direct Booking"} />
-            </div>
-
-            {due > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <p className="font-bold text-amber-900 text-xs">Collect Balance at Front Desk</p>
-                <p className="text-xs text-amber-800 mt-0.5 font-medium">
-                  Guest has a remaining balance of {money(due, booking.currency)} to settle upon check-in.
-                </p>
-              </div>
+    <section className="space-y-4 pb-8 text-[#061224]">
+      {/* 1. Page Header & Actions Hub */}
+      <header className="flex min-w-0 flex-col gap-3 pt-1 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 xl:shrink-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#061224]">
+              Reservations
+            </h1>
+            {data && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 shadow-2xs">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                {formatFriendlyTimezone(data.timezone)}
+              </span>
             )}
           </div>
-        )}
+          <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">{propertyName}</span>
+            <span className="text-slate-300">•</span>
+            <span>
+              {scope === "all"
+                ? "All dates"
+                : scope === "range"
+                  ? `${dates.from} – ${dates.to}`
+                  : new Intl.DateTimeFormat("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    }).format(new Date(`${date}T12:00:00Z`))}
+            </span>
+          </p>
+        </div>
 
-        {/* TAB 5: ACTIONS & AUDIT */}
-        {tab === "audit" && (
-          <div className="space-y-4">
-            {/* Quick Status Control */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <span className="font-bold text-sm text-[#061224]">Reservation Status Actions</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy || booking.bookingStatus !== "confirmed"}
-                  onClick={() => void onUpdate(booking.id, "checked_in")}
-                  className="rounded-xl bg-[#061224] py-2.5 font-bold text-white shadow-xs hover:bg-[#0c1f3b] disabled:opacity-40 transition-colors"
-                >
-                  Mark Checked In
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || booking.bookingStatus !== "checked_in"}
-                  onClick={() => void onUpdate(booking.id, "checked_out")}
-                  className="rounded-xl bg-emerald-700 py-2.5 font-bold text-white shadow-xs hover:bg-emerald-800 disabled:opacity-40 transition-colors"
-                >
-                  Complete Stay
-                </button>
-              </div>
+        <div className="grid min-w-0 grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap xl:flex-1 xl:justify-end">
+          <button
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#061224]/90 active:scale-95"
+            onClick={() => setManualOpen(true)}
+          >
+            <Plus size={15} />
+            New reservation
+          </button>
+
+          <div className="col-span-2 flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="min-w-0 flex-1 sm:min-w-[260px]">
+              <PartnerDatePicker
+                displayLabel={scope === "all" ? "Choose dates" : undefined}
+                aria-label="Reservation date range"
+                range
+                value={dates.from}
+                endValue={dates.to}
+                maxDays={31}
+                onChange={() => {}}
+                onRangeChange={(from: string, to: string) =>
+                  update({ scope: "range", from, to })
+                }
+                timezone={data?.timezone}
+              />
             </div>
+            <button
+              type="button"
+              aria-pressed={scope === "all"}
+              className={`shrink-0 rounded-xl border px-3 py-2.5 text-xs font-semibold ${scope === "all" ? "border-[#061224] bg-[#061224] text-white" : "border-slate-200 bg-white text-slate-600"}`}
+              onClick={() =>
+                update({
+                  scope: "all",
+                  date: today,
+                  from: null,
+                  to: null,
+                  view: "all",
+                })
+              }
+            >
+              All dates
+            </button>
+          </div>
+          <button
+            className={reservationButton}
+            disabled={query.isFetching}
+            onClick={refresh}
+            title="Refresh reservations"
+          >
+            <RefreshCw
+              size={15}
+              className={`text-slate-500 ${query.isFetching ? "animate-spin text-[#c89b3c]" : ""}`}
+            />
+            Refresh
+          </button>
 
-            {/* Safe / Danger Zone */}
-            <div className="rounded-2xl border border-red-200 bg-red-50/50 p-4 space-y-3">
-              <div className="flex items-center gap-1.5 font-bold text-red-900 text-xs">
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-                <span>Sensitive Administrative Actions</span>
-              </div>
-              <p className="text-[11px] text-red-700 leading-relaxed font-medium">
-                Modifying these states affects inventory and guest notifications.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !["pending_payment", "confirmed"].includes(booking.bookingStatus)}
-                  onClick={() => void onUpdate(booking.id, "cancelled")}
-                  className="rounded-xl border border-red-300 bg-white py-2 font-bold text-red-700 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
-                  Cancel Reservation
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || booking.bookingStatus !== "confirmed"}
-                  onClick={() => void onUpdate(booking.id, "no_show")}
-                  className="rounded-xl border border-red-300 bg-white py-2 font-bold text-red-700 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
-                  Mark No-show
-                </button>
-              </div>
-            </div>
+          <button
+            className={reservationButton}
+            disabled={exporting || !data}
+            onClick={() => void exportCsv()}
+          >
+            <ArrowDownToLine size={15} className="text-slate-500" />
+            {exporting ? "Exporting…" : "Export"}
+          </button>
+        </div>
+      </header>
 
-            {/* Activity Timeline */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
-              <span className="font-bold text-sm text-[#061224]">Activity Log</span>
-              <div className="space-y-2.5 pt-1 border-t border-slate-100 text-[11px]">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="font-semibold text-[#061224]">Status: {sentenceLabel(booking.bookingStatus)}</span>
-                  <span className="text-slate-400">System Log</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="font-semibold text-[#061224]">Room {assignedRoom} assigned</span>
-                  <span className="text-slate-400">Desk Staff</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="font-semibold text-[#061224]">Payment status: {sentenceLabel(booking.paymentStatus)}</span>
-                  <span className="text-slate-400">Gateway</span>
+      {scope === "all" && (
+        <p className="text-xs font-semibold text-slate-500">
+          Today’s operations · reservation list includes all dates
+        </p>
+      )}
+      {/* 2. Interactive Operational KPI Cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        {metricsConfig.map(({ id, text, sub, icon: Icon, iconColor }) => {
+          const isActive = view === id;
+          const count = data?.metrics[id] ?? 0;
+          const isOverdueAlert = id === "overdue" && count > 0;
+
+          return (
+            <button
+              key={id}
+              onClick={() =>
+                update({
+                  view: id,
+                  scope:
+                    id === "overdue"
+                      ? "all"
+                      : scope === "range"
+                        ? "range"
+                        : "day",
+                })
+              }
+              className={`group relative flex flex-col justify-between rounded-2xl border p-3.5 text-left transition-all duration-200 active:scale-[0.98] ${
+                id === "overdue" ? "col-span-2 sm:col-span-1" : ""
+              } ${
+                isActive
+                  ? "border-[#061224] bg-white ring-2 ring-[#061224]/10 shadow-sm"
+                  : isOverdueAlert
+                    ? "border-amber-300 bg-amber-50/40 hover:border-amber-400"
+                    : "border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-2xs"
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="text-xs font-semibold text-slate-500 group-hover:text-slate-700">
+                  {text}
+                </span>
+                <div
+                  className={`grid h-7 w-7 place-items-center rounded-lg border ${iconColor}`}
+                >
+                  <Icon size={14} />
                 </div>
               </div>
+
+              <div className="mt-2 flex items-baseline gap-2">
+                <span
+                  className={`text-2xl font-extrabold tracking-tight ${
+                    isOverdueAlert
+                      ? "text-amber-800"
+                      : isActive
+                        ? "text-[#061224]"
+                        : "text-slate-800"
+                  }`}
+                >
+                  {data ? count : "—"}
+                </span>
+                {isActive && (
+                  <span className="rounded-full bg-[#061224] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    Active
+                  </span>
+                )}
+              </div>
+
+              <span className="mt-1 text-[11px] text-slate-400 font-medium">
+                {sub}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 3. Streamlined Filter Control Bar */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">
+              Quick dates:
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[1, 7, 30].map((days) => {
+                const end = new Date(
+                  Date.parse(`${today}T12:00Z`) + (days - 1) * 86400000,
+                )
+                  .toISOString()
+                  .slice(0, 10);
+                const active =
+                  scope !== "all" && dates.from === today && dates.to === end;
+                return (
+                  <button
+                    key={days}
+                    aria-pressed={active}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${active ? "bg-[#061224] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                    onClick={() =>
+                      update({
+                        scope: "range",
+                        date: today,
+                        from: today,
+                        to: end,
+                      })
+                    }
+                  >
+                    {days === 1 ? "Today" : `Next ${days} days`}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {hasActiveFilters && (
+            <button
+              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 hover:text-rose-800 transition"
+              onClick={reset}
+            >
+              <RotateCcw size={12} />
+              Reset filters
+            </button>
+          )}
+        </div>
+
+        <div
+          className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${scope === "all" ? "lg:grid-cols-2" : "lg:grid-cols-3"} items-end`}
+        >
+          {scope !== "all" && (
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+                Filter by
+              </label>
+              <select
+                aria-label="Filter by"
+                className={selectClass}
+                value={select("dateBasis", "stay")}
+                onChange={(e) => update({ dateBasis: e.target.value })}
+              >
+                <option value="stay">Stay dates</option>
+                <option value="arrival">Arrival date</option>
+                <option value="departure">Departure date</option>
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+              Room type
+            </label>
+            <select
+              aria-label="Room type"
+              className={selectClass}
+              value={select("roomTypeId", "")}
+              onChange={(e) => update({ roomTypeId: e.target.value })}
+            >
+              <option value="">All room types</option>
+              {data?.roomTypes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+              Payment status
+            </label>
+            <select
+              aria-label="Payment status"
+              className={selectClass}
+              value={select("paymentStatus", "all")}
+              onChange={(e) => update({ paymentStatus: e.target.value })}
+            >
+              {paymentOptions.map((s) => (
+                <option key={s} value={s}>
+                  {paymentLabels[s] || label(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <details className="group pt-1 text-xs">
+          <summary className="flex cursor-pointer items-center gap-1.5 font-semibold text-slate-600 hover:text-[#061224] select-none">
+            <Filter size={13} className="text-slate-400" />
+            <span>
+              More filters{advancedCount ? ` (${advancedCount})` : ""}
+            </span>
+          </summary>
+          <div className="mt-2.5 flex flex-wrap gap-3 pt-2 border-t border-slate-100">
+            <label className="min-w-40 text-[11px] font-semibold text-slate-500">
+              Booking status
+              <select
+                aria-label="Booking status"
+                className={selectClass}
+                value={select("status", "all")}
+                onChange={(e) => update({ status: e.target.value })}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {statusLabels[s] || label(s)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-40 text-[11px] font-semibold text-slate-500">
+              Stay type
+              <select
+                aria-label="Stay type"
+                className={selectClass}
+                value={select("bookingMode", "all")}
+                onChange={(e) => update({ bookingMode: e.target.value })}
+              >
+                <option value="all">All stay types</option>
+                <option value="overnight">Overnight stay</option>
+                <option value="hourly">Hourly / Day-use stay</option>
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
+
+      {/* 4. Reservations Workspace Card (Search, Tabs & Table) */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xs">
+        {/* Search & Tabs Top Header */}
+        <div className="border-b border-slate-200/80 p-4 space-y-3">
+          <div className="relative">
+            <Search
+              size={16}
+              className="absolute left-3.5 top-3.5 text-slate-400"
+            />
+            <input
+              ref={inputRef}
+              aria-label="Search reservations"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-20 text-xs font-medium text-[#061224] outline-none transition focus:border-[#c89b3c] focus:bg-white focus:ring-2 focus:ring-[#c89b3c]/20"
+              placeholder="Guest name, phone, email or booking reference…"
+              value={search}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSearch(value);
+                if (searchTimer.current) clearTimeout(searchTimer.current);
+                searchTimer.current = setTimeout(
+                  () => update({ q: value }),
+                  300,
+                );
+              }}
+            />
+            <div className="absolute right-3 top-3 flex items-center gap-1.5">
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setSearch("");
+                    update({ q: "" });
+                  }}
+                  className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                ⌘K
+              </kbd>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400 font-medium">
+            Search by guest name, mobile number, email, or booking ID.
+          </p>
+
+          <nav
+            aria-label="Reservation views"
+            className="flex gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar"
+          >
+            {tabs.map(([id, text]) => {
+              const isSelected = view === id;
+              const count = data?.tabCounts[id];
+              return (
+                <button
+                  key={id}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    update({
+                      view: id,
+                      ...(id === "upcoming" ? { scope: "all" } : {}),
+                    })
+                  }
+                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                    isSelected
+                      ? "bg-[#061224] text-white shadow-2xs"
+                      : "border border-slate-200/80 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <span>{text}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {count ?? "—"}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Error Notification */}
+        {(query.isError || exportError) && (
+          <div
+            role="alert"
+            className="m-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50/80 p-3.5 text-xs font-medium text-red-800"
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-600 shrink-0" />
+              <span>{exportError || query.error?.message}</span>
+            </div>
+            <button
+              className="ml-3 font-bold underline hover:text-red-900"
+              onClick={() => {
+                setExportError("");
+                refresh();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Content State */}
+        {query.isPending ? (
+          <div role="status" className="space-y-3 p-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <RefreshCw size={14} className="animate-spin text-[#c89b3c]" />
+              <span>Loading reservations…</span>
+            </div>
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-14 animate-pulse rounded-xl bg-slate-100"
+              />
+            ))}
+          </div>
+        ) : data?.bookings.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+              <CalendarDays size={24} />
+            </div>
+            <h2 className="mt-3 text-sm font-bold text-slate-800">
+              No reservations match this view
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
+              Try adjusting the date range, switching views, or clearing active
+              filters.
+            </p>
+            <button className={reservationButton + " mt-4"} onClick={reset}>
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          data && (
+            <>
+              {/* Desktop High-Density Table */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Guest &amp; Booking ID</th>
+                      <th className="px-4 py-3">Stay &amp; Dates</th>
+                      <th className="px-4 py-3">Room &amp; Assigned Unit</th>
+                      <th className="px-4 py-3">Payment &amp; Balance</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {data.bookings.map((b) => (
+                      <tr
+                        key={b.id}
+                        className="transition-colors hover:bg-[#fbf5e8]/40"
+                      >
+                        {/* Guest Column */}
+                        <td className="px-4 py-3.5">
+                          <button
+                            onClick={() => update({ bookingId: b.id }, false)}
+                            className="text-left font-bold text-[#061224] hover:text-[#c89b3c] transition-colors"
+                          >
+                            {b.leadGuest?.name || "Guest"}
+                          </button>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
+                              {b.confirmationCode || b.id}
+                            </span>
+                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                              {b.source === "manual_partner"
+                                ? "Front Desk"
+                                : "Helpkey Online"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Stay Column */}
+                        <td className="px-4 py-3.5">
+                          <p className="font-semibold text-slate-800">
+                            {when(b, true)}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            to {when(b, false)} ·{" "}
+                            <span className="font-semibold text-slate-700">
+                              {b.bookingMode === "hourly"
+                                ? `${b.billedHours} hr${b.billedHours === 1 ? "" : "s"}`
+                                : `${b.nights} night${b.nights === 1 ? "" : "s"}`}
+                            </span>
+                          </p>
+                        </td>
+
+                        {/* Room Column */}
+                        <td className="px-4 py-3.5">
+                          <p className="font-semibold text-slate-800">
+                            {b.roomName}
+                          </p>
+                          <div className="mt-1">
+                            {b.physicalUnitLabel ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200/60">
+                                <CheckCircle2 size={11} />
+                                Room {b.physicalUnitLabel}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200/60">
+                                <AlertCircle size={11} />
+                                Room not assigned
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Payment Column */}
+                        <td className="px-4 py-3.5">
+                          <p className="font-bold text-slate-900">
+                            {formatPaise(b.totalPaise)}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {paymentLabels[b.paymentStatus] ||
+                              label(b.paymentStatus)}
+                          </p>
+                          {b.balanceDuePaise > 0 && (
+                            <p className="mt-0.5 text-[11px] font-bold text-amber-700">
+                              {formatPaise(b.balanceDuePaise)} balance due
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Status Column */}
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold capitalize ${
+                              b.bookingStatus === "confirmed"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : b.bookingStatus === "checked_in"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : b.bookingStatus === "checked_out"
+                                    ? "bg-slate-100 text-slate-600"
+                                    : b.bookingStatus === "cancelled"
+                                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                      : "bg-amber-50 text-amber-700 border border-amber-200"
+                            }`}
+                          >
+                            {statusLabels[b.bookingStatus] ||
+                              label(b.bookingStatus)}
+                          </span>
+                        </td>
+
+                        {/* Actions Column */}
+                        <td className="px-4 py-3.5 text-right">
+                          <button
+                            className={reservationButton}
+                            onClick={() => update({ bookingId: b.id }, false)}
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card List */}
+              <div className="divide-y divide-slate-100 md:hidden">
+                {data.bookings.map((b) => (
+                  <article key={b.id} className="space-y-2.5 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h2 className="font-bold text-sm text-[#061224]">
+                          {b.leadGuest?.name || "Guest"}
+                        </h2>
+                        <span className="font-mono text-[11px] text-slate-500">
+                          {b.confirmationCode}
+                        </span>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold capitalize text-slate-700">
+                        {statusLabels[b.bookingStatus] ||
+                          label(b.bookingStatus)}
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-2.5 text-xs space-y-1">
+                      <p className="font-semibold text-slate-800">
+                        {b.roomName} ·{" "}
+                        {b.physicalUnitLabel
+                          ? `Room ${b.physicalUnitLabel}`
+                          : "Room not assigned"}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {when(b, true)} → {when(b, false)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800">
+                          {formatPaise(b.totalPaise)}
+                        </span>
+                        {b.balanceDuePaise > 0 && (
+                          <span className="ml-2 text-[11px] font-bold text-amber-700">
+                            {formatPaise(b.balanceDuePaise)} balance due
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        className={reservationButton}
+                        onClick={() => update({ bookingId: b.id }, false)}
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )
+        )}
+
+        {/* 5. Pagination & Live Update Status Footer */}
+        {data && (
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 px-4 py-3 text-xs text-slate-500 bg-slate-50/50">
+            <span>
+              <strong className="text-slate-800">{data.totalCount}</strong>{" "}
+              reservations found · Updated{" "}
+              {new Date(data.generatedAt).toLocaleTimeString("en-IN", {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+              {query.isFetching
+                ? " · Refreshing…"
+                : " · Auto-refreshes every minute"}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                aria-label="Previous page"
+                className={reservationButton}
+                disabled={!searchParams.get("cursor")}
+                onClick={() => {
+                  const previous = [...previousCursors];
+                  const cursor = previous.pop();
+                  setPreviousCursors(previous);
+                  update({ cursor: cursor || null }, false);
+                }}
+              >
+                <ChevronLeft size={14} />
+                Previous
+              </button>
+              <button
+                aria-label="Next page"
+                className={reservationButton}
+                disabled={!data.nextCursor}
+                onClick={() => {
+                  setPreviousCursors((v) => [
+                    ...v,
+                    searchParams.get("cursor") || "",
+                  ]);
+                  update({ cursor: data.nextCursor }, false);
+                }}
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </footer>
         )}
       </div>
-    </Drawer>
-  );
-}
 
-function ActionLink({ icon: Icon, label, href }: { icon: typeof Mail; label: string; href?: string }) {
-  const className = "flex w-full items-center gap-3 rounded-lg border border-[#e4ded2] bg-white px-3 py-2.5 text-xs font-semibold text-[#061224] hover:border-[#c89b3c] hover:bg-[#fbf5e8]";
+      {/* Side Workspace Drawer */}
+      <ReservationWorkspace
+        key={`${propertyId}/${selectedId || "closed"}`}
+        bookingId={selectedId}
+        propertyId={propertyId}
+        onChanged={refresh}
+        onClose={() => update({ bookingId: null }, false)}
+      />
 
-  if (!href) {
-    return (
-      <button type="button" disabled className={`${className} cursor-not-allowed opacity-45`}>
-        <Icon className="h-4 w-4" />
-        {label}
-      </button>
-    );
-  }
+      {/* Manual Booking Dialog */}
+      {manualOpen && (
+        <ManualBookingDialog
+          open
+          propertyId={propertyId}
+          propertyName={propertyName}
+          onClose={() => {
+            setManualOpen(false);
+            refresh();
+          }}
+          onCreated={(id) => {
+            setManualOpen(false);
+            refresh();
+            if (id) update({ bookingId: id }, false);
+          }}
+        />
+      )}
 
-  return (
-    <a href={href} className={className}>
-      <Icon className="h-4 w-4" />
-      {label}
-    </a>
-  );
-}
-
-function DetailPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-xl border border-[#e4ded2] bg-white p-4">
-      <h3 className="mb-3 text-xs font-semibold text-[#061224]">{title}</h3>
-      <div className="space-y-2">{children}</div>
+      {/* Physical Room Register Modal */}
+      {roomsOpen && data && (
+        <PhysicalRoomRegister
+          propertyId={propertyId}
+          rooms={data.roomTypes}
+          onClose={() => setRoomsOpen(false)}
+        />
+      )}
     </section>
-  );
-}
-
-function DetailRow({ label, value, strong = false, success = false }: { label: string; value: string; strong?: boolean; success?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="font-semibold text-[#68758c]">{label}</span>
-      <span className={`text-right font-semibold ${strong ? "text-[#061224]" : success ? "text-emerald-700" : "text-[#263247]"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function StatusBadge({ value }: { value: string }) {
-  const styles: Record<string, string> = {
-    arriving_today: "border-blue-100 bg-blue-50 text-blue-700",
-    confirmed: "border-blue-100 bg-blue-50 text-blue-700",
-    checked_in: "border-emerald-100 bg-emerald-50 text-emerald-700",
-    checked_out: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    pending_payment: "border-amber-100 bg-amber-50 text-amber-700",
-    cancelled: "border-red-100 bg-red-50 text-red-700",
-    no_show: "border-red-100 bg-red-50 text-red-700",
-    expired: "border-slate-200 bg-slate-100 text-slate-700",
-    payment_failed: "border-red-100 bg-red-50 text-red-700",
-  };
-
-  return (
-    <span className={`inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${styles[value] ?? "border-slate-200 bg-slate-100 text-slate-700"}`}>
-      {value === "arriving_today" ? "Arriving Today" : sentenceLabel(value)}
-    </span>
-  );
-}
-
-function PaymentBadge({ value }: { value: string }) {
-  const paid = value === "paid" || value === "pay_at_property";
-  return (
-    <span className={`inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${paid ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "border-amber-100 bg-amber-50 text-amber-700"}`}>
-      {sentenceLabel(value)}
-    </span>
-  );
-}
-
-function ReservationSkeleton() {
-  return (
-    <div className="space-y-0">
-      {[1, 2, 3, 4, 5].map((item) => (
-        <div key={item} className="grid gap-3 border-b border-[#ede7dc] px-4 py-4 lg:grid-cols-7">
-          {Array.from({ length: 7 }).map((_, index) => (
-            <div key={index} className="h-5 animate-pulse rounded bg-slate-100" />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="p-10 text-center">
-      <CalendarDays className="mx-auto h-9 w-9 text-[#c89b3c]" />
-      <h2 className="mt-3 text-lg font-semibold text-[#061224]">No reservations found</h2>
-      <p className="mt-1 text-sm font-semibold text-[#68758c]">
-        Try another status, room type, payment filter, or search term.
-      </p>
-    </div>
   );
 }
