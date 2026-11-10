@@ -103,19 +103,19 @@ export function CheckoutPersonalization({
         />
       )}
       {selections.length > 0 && (
-        <div className="rounded-2xl border border-[var(--hk-border)] bg-white p-5">
+        <div className="lg:hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-bold text-[var(--hk-navy)]">Your additions</h3>
+            <h3 className="font-bold text-[#000615]">Your additions</h3>
             <button
               type="button"
               disabled={locked}
               onClick={() => setSelections([])}
-              className="min-h-11 text-xs font-semibold text-[var(--hk-muted)] underline"
+              className="text-xs font-semibold text-slate-500 underline hover:text-[#000615]"
             >
               Remove all extras
             </button>
           </div>
-          <div className="divide-y divide-[var(--hk-border)]">
+          <div className="divide-y divide-slate-100">
             {selections.map((s) => {
               const offering = offerings.find((o) => o.id === s.offeringId);
               const saved = quote?.customizations.find(
@@ -139,12 +139,12 @@ export function CheckoutPersonalization({
                   className="flex items-center justify-between gap-3 py-3 text-sm"
                 >
                   <div>
-                    <p className="font-medium text-[var(--hk-navy)]">
+                    <p className="font-medium text-[#000615]">
                       {name}
                       {variantName ? ` · ${variantName}` : ""} × {s.quantity}
                     </p>
                     {saved?.billableQuantity && saved.unitPricePaise > 0 ? (
-                      <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                      <p className="mt-1 text-xs text-slate-500">
                         {requestPriceBreakdown(saved, quote?.currency)} · per{" "}
                         {saved.pricingUnit ?? "item"}
                       </p>
@@ -155,7 +155,7 @@ export function CheckoutPersonalization({
                       </p>
                     )}
                     {available && (
-                      <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                      <p className="mt-1 text-xs text-slate-500">
                         {offering.confirmation === "approval"
                           ? "Pending hotel approval · Excluded from checkout payment"
                           : "Confirmed with booking"}
@@ -163,7 +163,7 @@ export function CheckoutPersonalization({
                     )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end">
-                    <span className="text-xs font-semibold text-[var(--hk-navy)]">
+                    <span className="text-xs font-semibold text-[#000615]">
                       {priceError
                         ? "Price pending"
                         : updating || !saved || saved.quantity !== s.quantity
@@ -182,7 +182,7 @@ export function CheckoutPersonalization({
                       onClick={() =>
                         setSelections(selections.filter((n) => n !== s))
                       }
-                      className="min-h-11 shrink-0 text-xs font-semibold underline"
+                      className="min-h-8 shrink-0 text-xs font-semibold underline text-slate-500"
                     >
                       Remove
                     </button>
@@ -191,24 +191,7 @@ export function CheckoutPersonalization({
               );
             })}
           </div>
-          <p
-            role="status"
-            className="mt-3 border-t border-[var(--hk-border)] pt-3 text-sm font-semibold text-[var(--hk-navy)]"
-          >
-            {priceError
-              ? "Price needs refreshing. Remove the changed option or retry above."
-              : updating
-                ? "Updating your stay total…"
-                : quote
-                  ? `Extra charges: ${formatMoney(quote.extrasTotalPaise, quote.currency)} · Booking total: ${formatMoney(quote.totalPaise, quote.currency)}`
-                  : "Waiting for a current price"}
-          </p>
         </div>
-      )}
-      {!selections.length && (
-        <p className="text-center text-sm text-[var(--hk-muted)]">
-          No extras added · ₹0 additional charges
-        </p>
       )}
     </section>
   );

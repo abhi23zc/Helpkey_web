@@ -26,44 +26,65 @@ export function CheckoutProgress({
   return (
     <nav
       aria-label="Checkout progress"
-      className="mt-6 grid grid-cols-3 gap-2 sm:gap-4"
+      className="flex items-center justify-between gap-2 sm:gap-3 w-full"
     >
-      {checkoutSteps.map((value, i) => (
-        <button
-          type="button"
-          key={value}
-          aria-current={step === value ? "step" : undefined}
-          disabled={locked || i > furthestStep}
-          onClick={() => onChange(value)}
-          className={`flex min-h-14 items-center gap-2 rounded-xl border px-2 py-3 text-left transition sm:gap-3 sm:px-4 ${i === index ? "border-[var(--hk-navy)] bg-[var(--hk-navy)] text-white shadow-sm" : "border-[var(--hk-border)] bg-white text-[var(--hk-muted)] hover:border-[var(--hk-navy)]/40"}`}
-        >
-          <span
-            className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold sm:h-8 sm:w-8 ${i === index ? "bg-white/15" : "bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]"}`}
-          >
-            {i < index ? <Check className="h-4 w-4" /> : i + 1}
-          </span>
-          <span className="text-[11px] font-semibold leading-4 sm:text-sm">
-            <span className="hidden sm:inline">
-              {checkoutStepLabels[value]}
-            </span>
-            <span className="sm:hidden">
-              {value === "details"
-                ? "Details"
-                : value === "extras"
-                  ? "Extras"
-                  : "Review"}
-            </span>
-            {value === "extras" && (
+      {checkoutSteps.map((value, i) => {
+        const isCurrent = i === index;
+        const isCompleted = i < index;
+        const isAccessible = !locked && i <= furthestStep;
+
+        return (
+          <div key={value} className="flex flex-1 items-center gap-2 sm:gap-3 last:flex-initial">
+            <button
+              type="button"
+              aria-current={isCurrent ? "step" : undefined}
+              disabled={!isAccessible}
+              onClick={() => onChange(value)}
+              className={`group flex items-center gap-2 text-left transition ${
+                isAccessible ? "cursor-pointer" : "cursor-default opacity-60"
+              }`}
+            >
               <span
-                className={`block text-[10px] font-normal ${i === index ? "text-white/75" : "text-[var(--hk-muted)]"}`}
+                className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold transition sm:h-7 sm:w-7 ${
+                  isCompleted
+                    ? "bg-[#b48a3c] text-white shadow-xs"
+                    : isCurrent
+                      ? "bg-[#b48a3c] text-white ring-2 ring-[#b48a3c]/30 shadow-xs"
+                      : "border border-slate-300 bg-white text-slate-500"
+                }`}
               >
-                <span className="hidden sm:inline">Optional additions</span>
-                <span className="sm:hidden">Optional</span>
+                {isCompleted ? <Check className="h-3.5 w-3.5 stroke-[2.5]" /> : i + 1}
               </span>
+              <span
+                className={`text-xs sm:text-sm font-semibold transition ${
+                  isCurrent
+                    ? "text-[#141b2b]"
+                    : isCompleted
+                      ? "text-[#141b2b] group-hover:text-[#b48a3c]"
+                      : "text-slate-500"
+                }`}
+              >
+                <span className="hidden sm:inline">{checkoutStepLabels[value]}</span>
+                <span className="sm:hidden">
+                  {value === "details"
+                    ? "Details"
+                    : value === "extras"
+                      ? "Personalize"
+                      : "Review"}
+                </span>
+              </span>
+            </button>
+
+            {i < checkoutSteps.length - 1 && (
+              <div
+                className={`h-0.5 flex-1 transition ${
+                  i < index ? "bg-[#b48a3c]" : "bg-slate-200"
+                }`}
+              />
             )}
-          </span>
-        </button>
-      ))}
+          </div>
+        );
+      })}
     </nav>
   );
 }
