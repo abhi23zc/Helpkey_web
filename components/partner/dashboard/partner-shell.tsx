@@ -155,7 +155,7 @@ export function PartnerShell({
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const syncSidebar = () => setSidebarCollapsed(window.innerWidth < 1440);
+    const syncSidebar = () => setSidebarCollapsed(window.innerWidth < 1100);
     syncSidebar();
     window.addEventListener("resize", syncSidebar);
     return () => window.removeEventListener("resize", syncSidebar);
@@ -201,7 +201,7 @@ export function PartnerShell({
     {(data.loading || contentLoading) ? <div className="fixed inset-0 z-[100] overflow-y-auto"><PartnerWorkspaceSkeleton /></div> : null}
     <main
       className={`min-h-screen bg-[#f7f5f0] text-[#061224] font-sans transition-[padding] duration-300 ${
-        sidebarCollapsed ? "lg:pl-20" : "lg:pl-[248px]"
+        sidebarCollapsed ? "lg:pl-20" : "lg:pl-[264px]"
       }`}
     >
       <PartnerSidebar propertyId={data.selectedPropertyId} date={data.reportingDate}

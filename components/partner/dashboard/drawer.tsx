@@ -89,8 +89,8 @@ export function Drawer({
 
   const panelClass =
     "relative flex h-full w-full max-w-full flex-col bg-[#fbfbf9] shadow-2xl hk-drawer-panel " +
-    (spacious ? "sm:w-[640px] lg:w-[680px] " : "sm:w-[580px] ") +
-    "sm:max-w-[94vw] sm:border-l sm:border-[#ede7dc]";
+    (spacious ? "sm:w-[760px] md:w-[840px] lg:w-[900px] xl:w-[960px] " : "sm:w-[580px] ") +
+    "sm:max-w-[96vw] sm:border-l sm:border-[#ede7dc]";
 
   return (
     <div

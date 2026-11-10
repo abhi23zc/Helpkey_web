@@ -8,6 +8,7 @@ import {
   pricingUnits,
   type OfferingInput,
 } from "@/lib/stay/contracts";
+import { CategoryIcon } from "./category-icon";
 import { resolveResponse } from "@/lib/stay/response";
 import { pricingUnitLabel } from "@/lib/stay/pricing";
 import { searchTemplates, type OfferingTemplate } from "@/lib/stay/templates";
@@ -22,47 +23,68 @@ export function TemplateLibrary({
 }) {
   const [search, setSearch] = useState("");
   return (
-    <div className="space-y-4 rounded-xl bg-slate-50 p-4">
-      <div>
-        <h3 className="font-semibold">Start with a template</h3>
-        <p className="mt-1 text-sm text-slate-500">
-          Choose a starting point, then review and edit your draft.
-        </p>
+    <div className="space-y-4 rounded-2xl bg-slate-50/80 p-5 border border-slate-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h3 className="text-base font-bold text-slate-900">Start with a template</h3>
+          <p className="text-xs text-slate-500">
+            Pick a popular hotel extra to get started quickly, or design your own from scratch.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={scratch}
+          className="self-start sm:self-auto text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors"
+        >
+          Create from scratch
+        </button>
       </div>
       <input
         aria-label="Search offering templates"
-        placeholder="Try cake, charger or pillow…"
+        placeholder="Search templates (e.g. cake, charger, pillow, bathrobes)…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={field}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#061224] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
       />
-      <div className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+      <div className="grid max-h-80 gap-2.5 overflow-y-auto sm:grid-cols-2 pr-1">
         {searchTemplates(search).map((t) => (
           <button
             type="button"
             key={t.id}
             onClick={() => choose(t)}
-            className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-[#b58a32]"
+            className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-all hover:border-amber-500/60 hover:shadow-xs"
           >
-            <span className="text-sm font-semibold">{t.draft.name}</span>
-            <span className="mt-1 block text-xs text-slate-500">
-              {formTypeLabels[t.draft.formType!]}
-            </span>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 border border-amber-200/50">
+              <CategoryIcon category={t.draft.category || "other"} className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-slate-900 group-hover:text-amber-700">
+                {t.draft.name}
+              </span>
+              <span className="mt-0.5 inline-block text-[11px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                {formTypeLabels[t.draft.formType!]}
+              </span>
+              {t.draft.description && (
+                <p className="mt-1 line-clamp-1 text-xs text-slate-400">
+                  {t.draft.description}
+                </p>
+              )}
+            </div>
           </button>
         ))}
         {!searchTemplates(search).length && (
-          <p className="text-sm text-slate-500">
-            No template found. Create your own below.
-          </p>
+          <div className="col-span-2 rounded-xl bg-white p-6 text-center border border-slate-200">
+            <p className="text-sm text-slate-600">No template found matching &quot;{search}&quot;</p>
+            <button
+              type="button"
+              onClick={scratch}
+              className="mt-2 text-xs font-semibold text-amber-700 underline"
+            >
+              Start from scratch instead
+            </button>
+          </div>
         )}
       </div>
-      <button
-        type="button"
-        onClick={scratch}
-        className="min-h-11 text-sm font-semibold underline"
-      >
-        Create from scratch
-      </button>
     </div>
   );
 }
@@ -114,116 +136,226 @@ export function OfferingFields({
   }
   return (
     <>
-      <label className="text-sm sm:col-span-2">How should guests respond?
-        <select aria-label="How should guests respond?" className={field} value={resolveResponse(value).responseType} onChange={e => {
-          const responseType = e.target.value as NonNullable<OfferingInput["responseConfig"]>["responseType"];
-          const quantityEnabled = resolveResponse(value).quantityEnabled;
-          patch({ ...(["single", "multiple"].includes(responseType) && !value.variants.length ? { variants: [{ id: crypto.randomUUID(), name: "" }] } : {}), responseConfig: { responseType, quantityEnabled }, maxQuantity: quantityEnabled ? value.maxQuantity : responseType === "multiple" ? Math.max(1, value.variants.length) : 1 });
-        }}><option value="yes_no">Yes / no</option><option value="single">Choose one option</option><option value="multiple">Choose multiple options</option><option value="text">Write a response</option></select>
-      </label>
-      <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={resolveResponse(value).quantityEnabled} onChange={e => {
-        const response = resolveResponse(value);
-        if (!e.target.checked) quantityLimit.current = value.maxQuantity;
-        patch({ responseConfig: { ...response, quantityEnabled: e.target.checked }, maxQuantity: e.target.checked ? Math.max(quantityLimit.current, 1) : response.responseType === "multiple" ? Math.max(1, value.variants.length) : 1 });
-      }} />Allow guests to choose quantities</label>
-      <p className="text-xs leading-5 text-slate-500 sm:col-span-2">{resolveResponse(value).responseType === "single" ? "Guests choose one option, such as Rose, Vanilla or Lavender." : resolveResponse(value).responseType === "multiple" ? "Guests can select several options or skip this offering." : resolveResponse(value).responseType === "text" ? "Guests write their response only if they request this offering." : "Guests can request this offering or leave it unselected."} {resolveResponse(value).quantityEnabled ? "The quantity limit is shared across all options." : "No quantity is asked."}</p>
-      {value.formType === "custom" ? <p className="text-sm sm:col-span-2">Price after hotel review. The guest must accept the hotel’s quote before paying.</p> : <label className="text-sm sm:col-span-2">Price<select aria-label="Price" className={field} value={paid ? "paid" : "free"} onChange={e => onPaidChange(e.target.value === "paid")}><option value="free">Free</option><option value="paid">Paid</option></select></label>}
-
-      {paid && value.formType !== "custom" && <label className="text-sm">
-        Pricing unit
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          Guest Response Format
+        </label>
         <select
-          aria-label="Pricing unit"
+          aria-label="How should guests respond?"
           className={field}
-          value={value.pricingUnit ?? "item"}
-          onChange={(e) =>
+          value={resolveResponse(value).responseType}
+          onChange={(e) => {
+            const responseType = e.target.value as NonNullable<
+              OfferingInput["responseConfig"]
+            >["responseType"];
+            const quantityEnabled = resolveResponse(value).quantityEnabled;
             patch({
-              pricingUnit: e.target.value as OfferingInput["pricingUnit"],
-            })
-          }
-        >
-          {pricingUnits.map((u) => (
-            <option key={u} value={u}>
-              {pricingUnitLabel(u)}
-            </option>
-          ))}
-        </select>
-      </label>}
-      {paid && value.formType !== "custom" && <p className="text-xs leading-5 text-slate-500 sm:col-span-2">
-        {
-          (
-            {
-              item: "Price × selected quantity, once per stay.",
-              stay: "Price × selected quantity, once per stay.",
-              package: "Package price × selected quantity, once per stay.",
-              night:
-                "Price × selected quantity × booked nights. Available for overnight stays only.",
-              person:
-                "Price × selected quantity × participating adults and children. Infants are excluded.",
-              hour: "Price × selected quantity × whole service hours within the booked stay; partial hours round up.",
-            } as const
-          )[value.pricingUnit ?? "item"]
-        }{" "}
-        All charges included.
-      </p>}
-      {children}
-      <details className="sm:col-span-2 rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium">Additional service settings</summary><p className="my-2 text-xs text-slate-500">Keep packages, service scheduling or requests that need a hotel quote. Guest response and quantities are configured above.</p>
-      <label className="text-sm">
-        Service behavior
-        <select
-          aria-label="Service form"
-          className={field}
-          value={["scheduled", "package", "custom"].includes(value.formType ?? "") ? value.formType : "standard"}
-          onChange={e => {
-            const response = resolveResponse(value);
-            const standard = response.responseType === "single" ? "choice" : response.responseType === "multiple" ? "variants" : response.responseType === "text" ? "text" : response.quantityEnabled ? "quantity" : "simple";
-            const formType = e.target.value === "standard" ? standard : e.target.value as OfferingInput["formType"];
-            patch({ formType, responseConfig: resolveResponse(value), ...(formType === "custom" ? { confirmation: "approval" } : {}) });
+              ...(["single", "multiple"].includes(responseType) &&
+              !value.variants.length
+                ? { variants: [{ id: crypto.randomUUID(), name: "" }] }
+                : {}),
+              responseConfig: { responseType, quantityEnabled },
+              maxQuantity: quantityEnabled
+                ? value.maxQuantity
+                : responseType === "multiple"
+                  ? Math.max(1, value.variants.length)
+                  : 1,
+            });
           }}
         >
-          <option value="standard">Standard request</option>
-          <option value="scheduled">Scheduled service (date and time)</option>
-          <option value="package">Package (with inclusions)</option>
-          <option value="custom">Hotel quote required</option>
+          <option value="yes_no">Simple Request (Yes / No)</option>
+          <option value="single">Single Choice (e.g. Flavor, Scent, Size)</option>
+          <option value="multiple">Multiple Choices (Select several)</option>
+          <option value="text">Written Note / Special Instruction</option>
         </select>
-      </label>
-      <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!value.timeRequired || value.formType === "scheduled"} disabled={value.formType === "scheduled"} onChange={e => patch({ timeRequired: e.target.checked })} />Ask for a service date and time</label>
-      </details>
-      {(value.formType === "scheduled" || value.pricingUnit === "person") && (
-        <label className="flex items-center gap-2 text-sm">
+      </div>
+
+      <div className="sm:col-span-2 rounded-xl bg-slate-50 border border-slate-200/80 p-3.5 space-y-1.5">
+        <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 cursor-pointer">
           <input
             type="checkbox"
+            className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
+            checked={resolveResponse(value).quantityEnabled}
+            onChange={(e) => {
+              const response = resolveResponse(value);
+              if (!e.target.checked) quantityLimit.current = value.maxQuantity;
+              patch({
+                responseConfig: { ...response, quantityEnabled: e.target.checked },
+                maxQuantity: e.target.checked
+                  ? Math.max(quantityLimit.current, 1)
+                  : response.responseType === "multiple"
+                    ? Math.max(1, value.variants.length)
+                    : 1,
+              });
+            }}
+          />
+          <span>Allow guests to choose quantities (e.g. 1, 2, 3...)</span>
+        </label>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {resolveResponse(value).responseType === "single"
+            ? "Guests choose one option, such as Rose, Vanilla or Lavender."
+            : resolveResponse(value).responseType === "multiple"
+              ? "Guests can select several options or skip this offering."
+              : resolveResponse(value).responseType === "text"
+                ? "Guests write their response only if they request this offering."
+                : "Guests can request this offering or leave it unselected."}{" "}
+          {resolveResponse(value).quantityEnabled
+            ? "The quantity limit is shared across all options."
+            : "No quantity is asked."}
+        </p>
+      </div>
+
+      {value.formType === "custom" ? (
+        <p className="text-xs text-amber-800 bg-amber-50 rounded-xl p-3 sm:col-span-2 border border-amber-200">
+          Price after hotel review. The guest must accept the hotel’s quote before paying.
+        </p>
+      ) : (
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            Pricing Type
+          </label>
+          <select
+            aria-label="Price"
+            className={field}
+            value={paid ? "paid" : "free"}
+            onChange={(e) => onPaidChange(e.target.value === "paid")}
+          >
+            <option value="free">Free (Complimentary Amenity)</option>
+            <option value="paid">Paid (Bookable Add-on)</option>
+          </select>
+        </div>
+      )}
+
+      {paid && value.formType !== "custom" && (
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            Pricing Unit
+          </label>
+          <select
+            aria-label="Pricing unit"
+            className={field}
+            value={value.pricingUnit ?? "item"}
+            onChange={(e) =>
+              patch({
+                pricingUnit: e.target.value as OfferingInput["pricingUnit"],
+              })
+            }
+          >
+            {pricingUnits.map((u) => (
+              <option key={u} value={u}>
+                {pricingUnitLabel(u)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {paid && value.formType !== "custom" && (
+        <p className="text-xs leading-5 text-slate-500 sm:col-span-2">
+          {
+            (
+              {
+                item: "Price × selected quantity, once per stay.",
+                stay: "Price × selected quantity, once per stay.",
+                package: "Package price × selected quantity, once per stay.",
+                night:
+                  "Price × selected quantity × booked nights. Available for overnight stays only.",
+                person:
+                  "Price × selected quantity × participating adults and children. Infants are excluded.",
+                hour: "Price × selected quantity × whole service hours within the booked stay; partial hours round up.",
+              } as const
+            )[value.pricingUnit ?? "item"]
+          }{" "}
+          All charges included.
+        </p>
+      )}
+
+      {children}
+
+      <details className="sm:col-span-2 rounded-xl border border-slate-200 p-3.5 bg-slate-50/50">
+        <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-700">
+          ▸ Additional service options (Schedules & Packages)
+        </summary>
+        <p className="my-2 text-xs text-slate-500">
+          Keep packages, service scheduling or requests that need a hotel quote. Guest response and quantities are configured above.
+        </p>
+        <div className="mt-3 space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Service Behavior
+            </label>
+            <select
+              aria-label="Service form"
+              className={field}
+              value={["scheduled", "package", "custom"].includes(value.formType ?? "") ? value.formType : "standard"}
+              onChange={e => {
+                const response = resolveResponse(value);
+                const standard = response.responseType === "single" ? "choice" : response.responseType === "multiple" ? "variants" : response.responseType === "text" ? "text" : response.quantityEnabled ? "quantity" : "simple";
+                const formType = e.target.value === "standard" ? standard : e.target.value as OfferingInput["formType"];
+                patch({ formType, responseConfig: resolveResponse(value), ...(formType === "custom" ? { confirmation: "approval" } : {}) });
+              }}
+            >
+              <option value="standard">Standard request</option>
+              <option value="scheduled">Scheduled service (date and time)</option>
+              <option value="package">Package (with inclusions)</option>
+              <option value="custom">Hotel quote required</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
+              checked={!!value.timeRequired || value.formType === "scheduled"}
+              disabled={value.formType === "scheduled"}
+              onChange={e => patch({ timeRequired: e.target.checked })}
+            />
+            <span>Ask for a service date and time</span>
+          </label>
+        </div>
+      </details>
+
+      {(value.formType === "scheduled" || value.pricingUnit === "person") && (
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer sm:col-span-2">
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
             checked={value.peopleRequired ?? false}
             onChange={(e) => patch({ peopleRequired: e.target.checked })}
           />
-          Number of people required
+          <span>Number of people required</span>
         </label>
       )}
+
       {value.formType === "scheduled" && (
-        <p className="text-sm text-slate-500">
+        <p className="text-xs text-slate-500 sm:col-span-2">
           Guests must choose a service time within their booked stay.
         </p>
       )}
-      <>
-          <label className="text-sm">
-            Guest note label
-            <input
-              maxLength={100}
-              value={value.noteLabel ?? ""}
-              placeholder="e.g. Message on cake"
-              onChange={(e) => patch({ noteLabel: e.target.value })}
-              className={field}
-            />
+
+      <div className="sm:col-span-2 rounded-xl bg-slate-50 border border-slate-200/80 p-3.5 space-y-2.5">
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            Guest Special Note / Instructions Field
           </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={resolveResponse(value).responseType === "text" || (value.noteRequired ?? false)}
-              disabled={resolveResponse(value).responseType === "text"}
-              onChange={(e) => patch({ noteRequired: e.target.checked })}
-            />
-            {resolveResponse(value).responseType === "text" ? "Response required when requested" : "Guest note required"}
-          </label>
-      </>
+          <input
+            maxLength={100}
+            value={value.noteLabel ?? ""}
+            placeholder="e.g. Message on cake, Flight number, Dietary requirements"
+            onChange={(e) => patch({ noteLabel: e.target.value })}
+            className={field}
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
+            checked={resolveResponse(value).responseType === "text" || (value.noteRequired ?? false)}
+            disabled={resolveResponse(value).responseType === "text"}
+            onChange={(e) => patch({ noteRequired: e.target.checked })}
+          />
+          <span>{resolveResponse(value).responseType === "text" ? "Guest response is mandatory when requested" : "Require guest to fill this note"}</span>
+        </label>
+      </div>
       {(["single", "multiple"].includes(resolveResponse(value).responseType) || !!value.choiceGroups?.length) && (
         <div className="space-y-3 sm:col-span-2">
           <p className="text-sm font-semibold">Additional choices</p>
