@@ -143,9 +143,23 @@ export function OfferingFields({
         <select
           aria-label="How should guests respond?"
           className={field}
-          value={resolveResponse(value).responseType}
+          value={value.formType === "package" ? "package" : resolveResponse(value).responseType}
           onChange={(e) => {
-            const responseType = e.target.value as NonNullable<
+            const selected = e.target.value;
+            if (selected === "package") {
+              patch({
+                formType: "package",
+                pricingUnit: "package",
+                responseConfig: { responseType: "single", quantityEnabled: false },
+                variants: value.variants.length > 0
+                  ? value.variants.map((v) => ({ ...v, inclusions: v.inclusions ?? "" }))
+                  : [
+                      { id: crypto.randomUUID(), name: "Standard Package", inclusions: "" },
+                    ],
+              });
+              return;
+            }
+            const responseType = selected as NonNullable<
               OfferingInput["responseConfig"]
             >["responseType"];
             const quantityEnabled = resolveResponse(value).quantityEnabled;
@@ -154,6 +168,8 @@ export function OfferingFields({
               !value.variants.length
                 ? { variants: [{ id: crypto.randomUUID(), name: "" }] }
                 : {}),
+              formType: value.formType === "package" ? "simple" : value.formType,
+              pricingUnit: value.pricingUnit === "package" ? "item" : value.pricingUnit,
               responseConfig: { responseType, quantityEnabled },
               maxQuantity: quantityEnabled
                 ? value.maxQuantity
@@ -166,6 +182,7 @@ export function OfferingFields({
           <option value="yes_no">Simple Request (Yes / No)</option>
           <option value="single">Single Choice (e.g. Flavor, Scent, Size)</option>
           <option value="multiple">Multiple Choices (Select several)</option>
+          <option value="package">Curated Package (With Inclusions)</option>
           <option value="text">Written Note / Special Instruction</option>
         </select>
       </div>
@@ -289,10 +306,29 @@ export function OfferingFields({
               className={field}
               value={["scheduled", "package", "custom"].includes(value.formType ?? "") ? value.formType : "standard"}
               onChange={e => {
+                const selected = e.target.value;
+                if (selected === "package") {
+                  patch({
+                    formType: "package",
+                    pricingUnit: "package",
+                    responseConfig: { responseType: "single", quantityEnabled: false },
+                    variants: value.variants.length > 0
+                      ? value.variants.map((v) => ({ ...v, inclusions: v.inclusions ?? "" }))
+                      : [
+                          { id: crypto.randomUUID(), name: "Standard Package", inclusions: "" },
+                        ],
+                  });
+                  return;
+                }
                 const response = resolveResponse(value);
                 const standard = response.responseType === "single" ? "choice" : response.responseType === "multiple" ? "variants" : response.responseType === "text" ? "text" : response.quantityEnabled ? "quantity" : "simple";
-                const formType = e.target.value === "standard" ? standard : e.target.value as OfferingInput["formType"];
-                patch({ formType, responseConfig: resolveResponse(value), ...(formType === "custom" ? { confirmation: "approval" } : {}) });
+                const formType = selected === "standard" ? standard : selected as OfferingInput["formType"];
+                patch({
+                  formType,
+                  pricingUnit: value.pricingUnit === "package" ? "item" : value.pricingUnit,
+                  responseConfig: resolveResponse(value),
+                  ...(formType === "custom" ? { confirmation: "approval" } : {}),
+                });
               }}
             >
               <option value="standard">Standard request</option>

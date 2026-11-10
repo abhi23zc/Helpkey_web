@@ -12,7 +12,7 @@ export function OfferingGuestPreview({ value, currency }: { value: OfferingInput
   const [drafts, setDrafts] = useState<Record<string, Selection["inputs"]>>({});
   const [error, setError] = useState("");
   const [startAt] = useState(() => new Date(Date.now() + 86400000).toISOString());
-  const offering: Offering = { ...value, variants: ["single", "multiple"].includes(resolveResponse(value).responseType) ? value.variants : [], id: "preview", propertyId: "preview", version: 1 };
+  const offering: Offering = { ...value, variants: (value.formType === "package" || ["single", "multiple"].includes(resolveResponse(value).responseType)) ? value.variants : [], id: "preview", propertyId: "preview", version: 1 };
   const count = selections.reduce((sum, s) => sum + s.quantity, 0);
   const context = { startAt, endAt: new Date(Date.parse(startAt) + 2 * 86400000).toISOString(), nights: 2, adults: 2, children: 1 };
   let total: number | null = 0;

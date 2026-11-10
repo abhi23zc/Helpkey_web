@@ -1250,9 +1250,16 @@ function OfferingEditor({
                 )}
               </div>
             )}
-            {(["single", "multiple"].includes(resolveResponse(value).responseType)) && (
-              <div className="sm:col-span-2">
-                <p className="text-sm font-semibold">Options guests can choose from</p>
+            {(value.formType === "package" || ["single", "multiple"].includes(resolveResponse(value).responseType)) && (
+              <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {value.formType === "package" ? "Package Tiers & Inclusions" : "Options guests can choose from"}
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  {value.formType === "package"
+                    ? "Add package tiers (e.g. Basic, Premium, Luxury) and specify what is included in each."
+                    : "Define the available choices (e.g. Lavender, Rose or Small, Medium)."}
+                </p>
                 {issueFor("variants") && <p role="alert" className="text-xs text-red-700">{issueFor("variants")}</p>}
                 {value.variants.map((v, i) => (
                   <div
@@ -1346,13 +1353,13 @@ function OfferingEditor({
                     patch({
                       variants: [
                         ...value.variants,
-                        { id: crypto.randomUUID(), name: "" },
+                        { id: crypto.randomUUID(), name: "", inclusions: value.formType === "package" ? "" : undefined },
                       ],
                     })
                   }
-                  className="mt-3 text-sm underline"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
                 >
-                  Add choice
+                  {value.formType === "package" ? "+ Add another package tier" : "+ Add another choice"}
                 </button>
               </div>
             )}
