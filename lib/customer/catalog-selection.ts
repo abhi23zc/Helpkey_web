@@ -92,5 +92,6 @@ export function deriveCatalogResults(cards: CatalogCandidate[], input: CatalogSe
   const selected = selectCatalogCards(cards, input).filter(card =>
     (input.minPricePaise === undefined || (card.minimumPricePaise !== null && card.minimumPricePaise >= input.minPricePaise)) &&
     (input.maxPricePaise === undefined || (card.minimumPricePaise !== null && card.minimumPricePaise <= input.maxPricePaise)));
-  return { properties: sortCatalog(selected, input), availableAmenities };
+  const availablePropertyTypes = [...new Set(cards.map(card => card.propertyType.toLowerCase()))].sort();
+  return { properties: sortCatalog(selected, input), availableAmenities, availablePropertyTypes };
 }

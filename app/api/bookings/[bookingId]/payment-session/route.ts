@@ -1,3 +1,7 @@
+import { ApiException } from "@/lib/api/errors";
+import { claimCheckoutAttempt, reconcilePaymentForGuest } from "@/lib/booking/recovery";
+import { enforceRateLimit } from "@/lib/api/rate-limit";
+import { bookingFailure } from "@/lib/booking/api-error";
 import { withApiHandler } from "@/lib/api/handler";
 import { Timestamp } from "firebase-admin/firestore";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -9,9 +13,14 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
   if (!user) return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   try {
     const { bookingId } = await params;
+    if (_request.headers.get("x-checkout-recovery") === "1") {
+      await enforceRateLimit({ bucket: "payment-attempt", identifier: user.uid, limit: 20, windowSeconds: 300, failClosed: true });
+      return Response.json(await claimCheckoutAttempt(user.uid, bookingId));
+    }
     const snap = await adminDb.collection("bookings").doc(bookingId).get();
     const data = snap.data();
     if (!snap.exists || data?.guestId !== user.uid) throw new Error("BOOKING_NOT_FOUND");
+    if (!(await reconcilePaymentForGuest(user.uid, bookingId)).paymentEligible) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     if (data.bookingStatus !== "pending_payment" || !data.razorpayOrderId) throw new Error("PAYMENT_NOT_EXPECTED");
     if (data.expiresAt instanceof Timestamp && data.expiresAt.toMillis() <= Date.now()) throw new Error("PAYMENT_NOT_EXPECTED");
     if (!process.env.RAZORPAY_KEY_ID) throw new Error("ONLINE_PAYMENT_NOT_CONFIGURED");
@@ -19,6 +28,9 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
       bookingId,
       confirmationCode: data.confirmationCode,
       razorpay: {
+        holdExpiresAt: data.expiresAt instanceof Timestamp ? data.expiresAt.toDate().toISOString() : null,
+        serverTime: new Date().toISOString(),
+        attemptId: data.checkoutAttempt?.id ?? null,
         keyId: process.env.RAZORPAY_KEY_ID,
         orderId: data.razorpayOrderId,
         amount: data.payableNowPaise ?? data.totalPaise,
@@ -27,7 +39,8 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
       },
     });
   } catch (error) {
-    return Response.json({ error: bookingError(error) }, { status: 422 });
+    if (error instanceof ApiException) throw error;
+    return Response.json(bookingFailure(error, bookingError(error)), { status: 422 });
   }
 }
 

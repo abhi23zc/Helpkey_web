@@ -56,7 +56,7 @@ export type CatalogDetailProperty = CatalogProperty & GuestPolicies & {
   checkOutTime: string;
 };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null; offers?: SearchOffer[] };
-export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean; total: number; evaluatedAt: number; expiresAt: number; availableAmenities: string[]; clientSnapshot?: ClientSearchSnapshot };
+export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean; total: number; serverNow: number; availablePropertyTypes: string[]; evaluatedAt: number; expiresAt: number; availableAmenities: string[]; clientSnapshot?: ClientSearchSnapshot };
 
 async function filterAvailability(cards: CatalogSearchProperty[], input: CatalogSearch, documents: FirebaseFirestore.QueryDocumentSnapshot[]) {
   if (!input.checkIn || !cards.length) return cards;
@@ -313,7 +313,7 @@ export async function searchCatalogPage(input: CatalogSearch, options: { include
     };
     if (Buffer.byteLength(JSON.stringify(candidate)) <= 256 * 1024) clientSnapshot = candidate;
   }
-  return { properties, total: items.length, hasMore, nextCursor: hasMore && last ? encodeCursor({ id: last.id, values: [queryHash, fingerprint, cursor?.values[2] ?? snapshot.expiresAt] }) : null, evaluatedAt: snapshot.evaluatedAt, expiresAt: snapshot.expiresAt, availableAmenities: amenities, ...(clientSnapshot ? { clientSnapshot } : {}) };
+  return { properties, serverNow: Date.now(), availablePropertyTypes: derived.availablePropertyTypes, total: items.length, hasMore, nextCursor: hasMore && last ? encodeCursor({ id: last.id, values: [queryHash, fingerprint, cursor?.values[2] ?? snapshot.expiresAt] }) : null, evaluatedAt: snapshot.evaluatedAt, expiresAt: snapshot.expiresAt, availableAmenities: amenities, ...(clientSnapshot ? { clientSnapshot } : {}) };
 }
 
 /** Current public summaries for saved hotels; never return private source fields. */

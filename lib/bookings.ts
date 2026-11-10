@@ -345,6 +345,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
       if (existing.data()?.requestFingerprint !== requestFingerprint) throw new Error("IDEMPOTENCY_CONFLICT");
       return String(existing.data()?.confirmationCode);
     }
+    if ((await tx.get(adminDb.collection("bookingSubmissionClosures").doc(id))).exists) throw new Error("SUBMISSION_CLOSED");
     if (manual) {
       const membership = await tx.get(adminDb.collection("propertyMemberships").doc(`${quoteData.propertyId}_${uid}`));
       if (membership.data()?.status !== "active") throw new Error("FORBIDDEN");
@@ -575,6 +576,7 @@ export async function createBooking(uid: string, raw: unknown, idempotencyKey?: 
 function existingBookingResponse(id: string, data: FirebaseFirestore.DocumentData) {
   if (!["pending_payment", "confirmed", "checked_in", "checked_out", "completed"].includes(data.bookingStatus)) throw new Error("BOOKING_NOT_ACTIVE");
   const requiresPayment = data.bookingStatus === "pending_payment";
+  if (requiresPayment && data.checkoutAttempt) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
   if (requiresPayment && (!data.razorpayOrderId || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() <= Date.now())) throw new Error("PAYMENT_ORDER_RECONCILIATION_REQUIRED");
   return { bookingId: id, confirmationCode: data.confirmationCode as string, quote: data.quoteSnapshot ?? { totalPaise: data.totalPaise, payableNowPaise: data.payableNowPaise, currency: data.currency }, requiresPayment, expiresAt: asIso(data.expiresAt), ...(requiresPayment ? { razorpay: { keyId: process.env.RAZORPAY_KEY_ID, orderId: data.razorpayOrderId as string, amount: data.payableNowPaise as number, currency: data.currency as string, name: "Helpkey" } } : {}) };
 }
@@ -588,11 +590,12 @@ export async function verifyBookingPayment(uid: string, bookingId: string, raw: 
     orderId: input.razorpay_order_id,
     paymentId: input.razorpay_payment_id,
     source: "customer_verify",
+    checkoutAttemptId: input.checkoutAttemptId,
   });
   if (!confirmed) throw new Error("PAYMENT_REFUND_PENDING");
 }
 
-export async function confirmPaidBooking(bookingId: string, input: { actorId: string; orderId: string; paymentId: string; source: string }) {
+export async function confirmPaidBooking(bookingId: string, input: { actorId: string; orderId: string; paymentId: string; source: string; checkoutAttemptId?: string }) {
   const initial = await adminDb.collection("bookings").doc(bookingId).get();
   if (!initial.exists || (input.source === "customer_verify" && initial.data()?.guestId !== input.actorId)) throw new Error("BOOKING_NOT_FOUND");
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) throw new Error("ONLINE_PAYMENT_NOT_CONFIGURED");
@@ -606,6 +609,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
     const data = snap.data();
     if (!snap.exists || !data) throw new Error("BOOKING_NOT_FOUND");
     if (input.source === "customer_verify" && data.guestId !== input.actorId) throw new Error("BOOKING_NOT_FOUND");
+    if (input.checkoutAttemptId && data.checkoutAttempt?.id !== input.checkoutAttemptId) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     if (data.razorpayOrderId !== input.orderId || payment.amount !== data.payableNowPaise || payment.currency !== data.currency) throw new Error("PAYMENT_MISMATCH");
     const receiptRef = adminDb.collection("paymentAttempts").doc(input.paymentId);
     const receipt = await tx.get(receiptRef);

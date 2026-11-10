@@ -39,6 +39,9 @@ import { BookingReceiptModal, type BookingReceiptData } from "./booking-receipt-
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { SiteHeader } from "@/components/shared/site-header";
 
+const HOTEL_FALLBACK =
+  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80";
+
 type CancellationPolicy = {
   name: string;
   description: string;
@@ -508,29 +511,21 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
         >
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-4">
-              <div
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                  status.tone === "pine"
-                    ? "bg-[#183b2b] text-white"
-                    : status.tone === "slate"
-                    ? "bg-stone-800 text-white"
-                    : "bg-stone-800 text-white"
-                }`}
-              >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0b1f3a] text-white shadow-xs">
                 {status.tone === "pine" ? (
-                  <CheckCircle2 className="h-5 w-5 stroke-[2]" />
+                  <CheckCircle2 className="h-5 w-5 stroke-[2] text-[#b48a3c]" />
                 ) : (
-                  <Clock3 className="h-5 w-5 stroke-[2]" />
+                  <Clock3 className="h-5 w-5 stroke-[2] text-[#b48a3c]" />
                 )}
               </div>
 
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-md border border-stone-200/80 bg-stone-100/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-700">
-                    <ShieldCheck className="h-3 w-3 text-stone-600" />
+                  <span className="inline-flex items-center gap-1 rounded-md border border-[#e8d9b5] bg-[#fbf7ee] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#785d1c]">
+                    <ShieldCheck className="h-3 w-3 text-[#b48a3c]" />
                     Helpkey Guaranteed
                   </span>
-                  <span className="inline-flex items-center rounded-md border border-[#d6e2d9] bg-[#f0f4f1] px-2 py-0.5 text-[10px] font-bold text-[#183b2b]">
+                  <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
                     {timing.pill}
                   </span>
                 </div>
@@ -570,37 +565,38 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* LEFT / PRIMARY COLUMN */}
           <section className="space-y-6">
-            <PreCheckinPanel booking={booking} />
             {/* DIGITAL HOTEL CHECK-IN PASS (BOARDING CARD) */}
             <article className="overflow-hidden rounded-2xl border border-[#e7e4dc] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               {/* Hotel Featured Cover Image */}
-              {booking.propertyCoverImageUrl && (
-                <div className="relative h-52 w-full sm:h-64 overflow-hidden bg-stone-900">
-                  <PublicMediaImage
-                    src={booking.propertyCoverImageUrl}
-                    alt={booking.propertyName}
-                    className="h-full w-full object-cover transition duration-300 hover:scale-[1.01]"
-                  />
-                  <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent" />
-                  <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between">
-                    <div>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-stone-900 shadow-sm backdrop-blur-xs">
-                        <Hotel className="h-3.5 w-3.5 text-stone-700" />
-                        Helpkey Verified Hotel
-                      </span>
-                    </div>
-                    {booking.propertySlug && (
-                      <Link
-                        href={`/hotel/${booking.propertySlug}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-black/55 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm backdrop-blur-md transition hover:bg-black/75"
-                      >
-                        <span>View Hotel Page</span>
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    )}
+              <div className="relative h-52 w-full sm:h-64 overflow-hidden bg-stone-900">
+                <img
+                  src={booking.propertyCoverImageUrl || HOTEL_FALLBACK}
+                  alt={booking.propertyName}
+                  className="h-full w-full object-cover transition duration-300 hover:scale-[1.01]"
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.src !== HOTEL_FALLBACK) img.src = HOTEL_FALLBACK;
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+                <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-stone-900 shadow-sm backdrop-blur-xs">
+                      <Hotel className="h-3.5 w-3.5 text-stone-700" />
+                      Helpkey Verified Hotel
+                    </span>
                   </div>
+                  {booking.propertySlug && (
+                    <Link
+                      href={`/hotel/${booking.propertySlug}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-black/55 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm backdrop-blur-md transition hover:bg-black/75"
+                    >
+                      <span>View Hotel Page</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* Pass Header: Executive Midnight Navy */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 bg-[#0b1f3a] px-6 py-3.5 text-white">
@@ -662,8 +658,8 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                           >
                             {codeCopied ? (
                               <>
-                                <Check className="h-3 w-3 text-[#183b2b]" />
-                                <span className="text-[#183b2b]">Copied</span>
+                                <Check className="h-3 w-3 text-[#785d1c]" />
+                                <span className="text-[#785d1c]">Copied</span>
                               </>
                             ) : (
                               <>
@@ -759,15 +755,15 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                     </a>
                   )}
 
-                  {/* WhatsApp Front Desk - Forest Pine Outline */}
+                  {/* WhatsApp Front Desk */}
                   {whatsappUrl && (
                     <a
                       href={whatsappUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#d6e2d9] bg-[#f0f4f1] px-3.5 py-2 text-xs font-bold text-[#183b2b] shadow-2xs transition hover:bg-[#e6efe9]"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#e7e4dc] bg-white px-3.5 py-2 text-xs font-bold text-stone-800 shadow-2xs transition hover:bg-stone-50 hover:text-[#0b1f3a]"
                     >
-                      <MessageSquare className="h-3.5 w-3.5 text-[#183b2b]" />
+                      <MessageSquare className="h-3.5 w-3.5 text-[#25D366]" />
                       <span>WhatsApp Reception</span>
                     </a>
                   )}
@@ -815,10 +811,10 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 {/* Check-in Node */}
                 <div className="rounded-2xl border border-[#e7e4dc] bg-stone-50/60 p-4.5">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#f0f4f1] text-[#183b2b]">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#fbf7ee] text-[#785d1c] border border-[#e8d9b5]">
                       <Clock className="h-4 w-4" />
                     </span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#183b2b]">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#785d1c]">
                       Check-In
                     </span>
                   </div>
@@ -894,6 +890,9 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
               </div>
             </article>
 
+            {/* PRE-CHECKIN & CUSTOMIZATION REQUESTS */}
+            <PreCheckinPanel booking={booking} />
+
             {/* Only show amenities promised with this booking, never generic hospitality claims. */}
             {bookedAmenities.length > 0 && <article className="overflow-hidden rounded-2xl border border-[#e7e4dc] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               <div className="flex items-center gap-2 border-b border-stone-100 pb-4">
@@ -902,7 +901,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-                {bookedAmenities.map((amenity) => <div key={`${amenity.group}-${amenity.code}`} className="rounded-xl border border-stone-100 bg-stone-50/60 p-4"><div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#183b2b]" /><p className="text-sm font-bold text-stone-800">{amenity.label}</p></div><p className="mt-1 text-[11px] text-stone-500">{amenity.group}</p></div>)}
+                {bookedAmenities.map((amenity) => <div key={`${amenity.group}-${amenity.code}`} className="rounded-xl border border-stone-100 bg-stone-50/60 p-4"><div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#b48a3c]" /><p className="text-sm font-bold text-stone-800">{amenity.label}</p></div><p className="mt-1 text-[11px] text-stone-500">{amenity.group}</p></div>)}
               </div>
 
               {booking.specialRequest && (
@@ -1026,6 +1025,34 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
 
           {/* RIGHT / SECONDARY STICKY ASIDE */}
           <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+            {/* HOTEL SNAPSHOT CARD */}
+            <section className="overflow-hidden rounded-2xl border border-[#e7e4dc] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+              <div className="flex items-center gap-3.5">
+                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-stone-900 border border-[#e5e1d8]">
+                  <img
+                    src={booking.propertyCoverImageUrl || HOTEL_FALLBACK}
+                    alt={booking.propertyName}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.src !== HOTEL_FALLBACK) img.src = HOTEL_FALLBACK;
+                    }}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-sm font-bold text-[#0f172a]">
+                    {booking.propertyName}
+                  </h4>
+                  <p className="truncate text-xs text-stone-500">
+                    {booking.roomName}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-stone-600">
+                    {prettyDateShort(booking.checkIn)} – {prettyDateShort(booking.checkOut)} · {booking.bookingMode === "hourly" ? `${Math.round((booking.durationMinutes ?? 0) / 60)}h` : `${booking.nights} night${booking.nights === 1 ? "" : "s"}`}
+                  </p>
+                </div>
+              </div>
+            </section>
+
             {/* PAYMENT & INVOICE SUMMARY CARD */}
             <section className="rounded-2xl border border-[#e7e4dc] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
               <div className="flex items-center justify-between border-b border-stone-100 pb-3">
@@ -1036,7 +1063,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
                     isPaidInFull
-                      ? "bg-[#f0f4f1] text-[#183b2b] border border-[#d6e2d9]"
+                      ? "bg-[#fbf7ee] text-[#785d1c] border border-[#e8d9b5]"
                       : "bg-stone-100 text-stone-800 border border-stone-200"
                   }`}
                 >
@@ -1083,7 +1110,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 <AmountRow
                   label="Amount Paid"
                   value={formatMoney(booking.paidPaise+supplemental.paidPaise, booking.currency)}
-                  tone="text-[#183b2b]"
+                  tone="text-[#0b1f3a]"
                 />
 
                 {balance > 0 ? (
@@ -1097,7 +1124,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                     </p>
                   </div>
                 ) : (
-                  <div className="mt-2 rounded-xl border border-[#d6e2d9] bg-[#f0f4f1] p-2.5 text-center text-xs font-bold text-[#183b2b]">
+                  <div className="mt-2 rounded-xl border border-[#e8d9b5] bg-[#fbf7ee] p-2.5 text-center text-xs font-bold text-[#785d1c]">
                     ✓ ₹0 Due at Check-in • Fully Paid
                   </div>
                 )}
@@ -1121,7 +1148,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-[#0f172a]">Cancellation Policy</h3>
                   {freeCancellationBadge && (
-                    <span className="rounded-md bg-[#f0f4f1] px-2 py-0.5 text-[11px] font-bold text-[#183b2b] border border-[#d6e2d9]">
+                    <span className="rounded-md bg-[#fbf7ee] px-2 py-0.5 text-[11px] font-bold text-[#785d1c] border border-[#e8d9b5]">
                       Free Cancellation
                     </span>
                   )}
@@ -1130,7 +1157,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 <p className="mt-2 text-xs font-bold text-stone-800">{booking.cancellationPolicy.name}</p>
 
                 {freeCancellationBadge ? (
-                  <p className="mt-1 text-xs text-[#183b2b] leading-relaxed font-semibold">
+                  <p className="mt-1 text-xs text-[#785d1c] leading-relaxed font-semibold">
                     {freeCancellationBadge}
                   </p>
                 ) : null}
@@ -1209,7 +1236,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
               </div>
               <div className="mt-2 border-t border-stone-200 pt-2 text-[11px] text-stone-600">
                 {freeCancellationBadge ? (
-                  <span className="font-bold text-[#183b2b]">
+                  <span className="font-bold text-[#785d1c]">
                     ✓ Eligible for 100% refund of your paid amount.
                   </span>
                 ) : (

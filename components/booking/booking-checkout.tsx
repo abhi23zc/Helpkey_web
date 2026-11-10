@@ -7,7 +7,10 @@ import {
   type CheckoutStep,
 } from "./checkout-journey";
 import { eligibleOffering } from "@/lib/stay/domain";
-import { UnlistedRequestForm, type UnlistedDraft } from "@/components/stay/unlisted-request";
+import {
+  UnlistedRequestForm,
+  type UnlistedDraft,
+} from "@/components/stay/unlisted-request";
 import { TravelerChips } from "@/components/stay/personalization-picker";
 import { CheckoutPersonalization } from "@/components/stay/checkout-personalization";
 import { getOfferingImageUrl } from "@/lib/stay/imagery";
@@ -340,10 +343,10 @@ export function BookingCheckout({
   // one now selected. Booking is blocked until the matching quote arrives.
   const quoteStale = Boolean(
     quote &&
-      input &&
-      (quote.adults !== input.adults ||
-        quote.children !== input.children ||
-        quote.infants !== input.infants),
+    input &&
+    (quote.adults !== input.adults ||
+      quote.children !== input.children ||
+      quote.infants !== input.infants),
   );
   const guestsPending = !sameGuests(guests, committedGuests) || quoteStale;
   // Remember the last guest count that priced successfully so a failed change
@@ -454,11 +457,11 @@ export function BookingCheckout({
     if (!showGstForm && !taxId) return false;
     return Boolean(
       taxId &&
-        (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(
-          taxId.toUpperCase(),
-        ) ||
-          !companyName.trim() ||
-          !Object.values(billingAddress).every(Boolean)),
+      (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(
+        taxId.toUpperCase(),
+      ) ||
+        !companyName.trim() ||
+        !Object.values(billingAddress).every(Boolean)),
     );
   }, [billingAddress, companyName, showGstForm, taxId]);
 
@@ -878,15 +881,15 @@ export function BookingCheckout({
       )}
 
       {holdSeconds !== null && (
-        <div className="bg-emerald-50 border-b border-emerald-200/80 px-4 py-2.5">
-          <div className="mx-auto max-w-[1280px] flex items-center justify-between text-xs font-bold text-emerald-900">
+        <div className="bg-[#fbf7ee] border-b border-[#e8d9b5] px-4 py-2.5">
+          <div className="mx-auto max-w-[1280px] flex items-center justify-between text-xs font-bold text-[#785d1c]">
             <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-emerald-600" />
+              <Clock className="h-3.5 w-3.5 text-[#b48a3c]" />
               {holdSeconds > 0
                 ? `Room reserved temporarily for ${Math.floor(holdSeconds / 60)}:${String(holdSeconds % 60).padStart(2, "0")}`
                 : "Your payment hold has expired. Check Trips for status."}
             </span>
-            <span className="text-[11px] font-medium text-emerald-700">
+            <span className="text-[11px] font-medium text-[#785d1c]/80">
               Guaranteed availability
             </span>
           </div>
@@ -922,8 +925,8 @@ export function BookingCheckout({
                 : "Everything in one place. Take a moment to make sure it’s right."}
           </p>
 
-          {/* Stepper directly below title, nicely proportioned */}
-          <div className="mt-5 max-w-2xl">
+          {/* Stepper directly below title, matching user design cards */}
+          <div className="mt-5 max-w-3xl">
             <CheckoutProgress
               furthestStep={furthestStep}
               step={step}
@@ -978,9 +981,12 @@ export function BookingCheckout({
                 {/* Trip Context Card */}
                 <div className="rounded-2xl border border-[#e5e1d8] bg-white p-5 sm:p-6 shadow-xs space-y-3">
                   <div>
-                    <h3 className="text-sm font-bold text-[#141b2b]">Trip context (optional)</h3>
+                    <h3 className="text-sm font-bold text-[#141b2b]">
+                      Trip context (optional)
+                    </h3>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Helps the hotel personalize your stay additions and room preparation.
+                      Helps the hotel personalize your stay additions and room
+                      preparation.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -990,9 +996,15 @@ export function BookingCheckout({
                       { id: "Business", label: "Business", icon: Briefcase },
                       { id: "Friends / Group", label: "Friends", icon: Users },
                       { id: "Solo", label: "Solo", icon: User },
-                      { id: "Special occasion", label: "Special occasion", icon: Cake },
+                      {
+                        id: "Special occasion",
+                        label: "Special occasion",
+                        icon: Cake,
+                      },
                     ].map(({ id, label, icon: Icon }) => {
-                      const isSelected = preferences.includes(id as TravelerCategory);
+                      const isSelected = preferences.includes(
+                        id as TravelerCategory,
+                      );
                       return (
                         <button
                           key={id}
@@ -1000,9 +1012,14 @@ export function BookingCheckout({
                           disabled={guestsLocked}
                           onClick={() => {
                             if (isSelected) {
-                              setPreferences(preferences.filter((p) => p !== id));
+                              setPreferences(
+                                preferences.filter((p) => p !== id),
+                              );
                             } else {
-                              setPreferences([...preferences.filter((p) => p !== id), id as TravelerCategory]);
+                              setPreferences([
+                                ...preferences.filter((p) => p !== id),
+                                id as TravelerCategory,
+                              ]);
                             }
                           }}
                           className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
@@ -1398,8 +1415,9 @@ export function BookingCheckout({
                                   <span className="text-rose-500">*</span>
                                 </label>
                                 {isAadhaarComplete && (
-                                  <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                                    <Check className="h-3.5 w-3.5" /> 12 digits
+                                  <span className="text-[11px] font-semibold text-[#0b1f3a] flex items-center gap-1">
+                                    <Check className="h-3.5 w-3.5 text-[#b48a3c]" />{" "}
+                                    12 digits
                                   </span>
                                 )}
                               </div>
@@ -1701,7 +1719,9 @@ export function BookingCheckout({
                       disabled={guestsLocked}
                       className="text-xs font-semibold text-slate-500 underline hover:text-rose-600"
                       onClick={() =>
-                        setUnlistedRequests((old) => old.filter((_, j) => i !== j))
+                        setUnlistedRequests((old) =>
+                          old.filter((_, j) => i !== j),
+                        )
                       }
                     >
                       Remove
@@ -1758,6 +1778,9 @@ export function BookingCheckout({
                   locked={guestsLocked}
                   propertyName={initialDisplay?.propertyName ?? "Your hotel"}
                   roomName={initialDisplay?.roomType.name ?? "Your room"}
+                  propertyCoverImageUrl={
+                    initialDisplay?.propertyCoverImageUrl ?? null
+                  }
                   stayLabel={`${initialDisplay ? shortDate(initialDisplay.checkIn) : ""} · ${initialDisplay?.arrivalTime ?? ""} → ${initialDisplay ? shortDate(initialDisplay.checkOut) : ""} · ${initialDisplay?.departureTime ?? ""} · ${guests.adults + guests.children + guests.infants} guests`}
                   amenities={[
                     ...(quote?.includedAmenities.roomAmenities ?? []),
@@ -1785,32 +1808,73 @@ export function BookingCheckout({
                     <PriceBreakdown quote={quote} />
                   </div>
                 )}
-                {/* CARD 4: Policies & Confirmation Agreement */}
-                <div className="rounded-2xl border border-[#c4c6ce]/40 bg-white p-6 sm:p-7 shadow-[0_4px_20px_rgba(11,31,58,0.04)] space-y-6">
-                  <h2 className="text-lg font-bold text-[#000615]">
-                    Booking Terms &amp; Policies
-                  </h2>
+                {/* Confirmation Agreement Card */}
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white shadow-xs overflow-hidden">
+                  {/* Header */}
+                  <div className="border-b border-[#e5e1d8] bg-[#fbf7ee] px-5 py-3.5">
+                    <h2 className="text-sm font-bold text-[#141b2b] flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-[#b48a3c]" />
+                      Confirm & agree to continue
+                    </h2>
+                  </div>
 
-                  <div className="space-y-4 pt-1">
+                  <div className="p-5 space-y-3">
+                    {/* Trust badges row */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {[
+                        { icon: ShieldCheck, text: "Secure payment" },
+                        { icon: Lock, text: "Data encrypted" },
+                        { icon: UserCheck, text: "Verified hotel" },
+                      ].map(({ icon: Icon, text }) => (
+                        <div
+                          key={text}
+                          className="flex flex-col items-center gap-1.5 rounded-xl border border-[#e5e1d8] bg-slate-50/60 py-3 text-center"
+                        >
+                          <Icon className="h-4 w-4 text-[#b48a3c]" />
+                          <span className="text-[10px] font-semibold text-slate-600">
+                            {text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Checkbox 1: Terms */}
                     <label
-                      className={`flex items-start gap-4 rounded-2xl p-4 cursor-pointer transition-all duration-200 ${
+                      className={`flex items-start gap-3 rounded-xl p-3.5 cursor-pointer transition-all duration-200 border ${
                         hasAttemptedSubmit && !termsAccepted
-                          ? "border border-rose-300 bg-rose-50/20"
-                          : "hover:bg-slate-50/80"
+                          ? "border-rose-300 bg-rose-50/30"
+                          : termsAccepted
+                            ? "border-[#0b1f3a]/30 bg-[#fbf7ee]/60"
+                            : "border-[#e5e1d8] bg-white hover:bg-slate-50/80"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={termsAccepted}
-                        onChange={(e) => setTermsAccepted(e.target.checked)}
-                        className="mt-0.5 h-5 w-5 accent-[#000615] rounded border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      <div className="relative mt-0.5 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={termsAccepted}
+                          onChange={(e) => setTermsAccepted(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                            termsAccepted
+                              ? "border-[#0b1f3a] bg-[#0b1f3a]"
+                              : hasAttemptedSubmit
+                                ? "border-rose-400 bg-white"
+                                : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {termsAccepted && (
+                            <Check className="h-3 w-3 stroke-[3] text-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-700 leading-relaxed">
                         I agree to the Helpkey{" "}
                         <Link
                           href="/help"
                           target="_blank"
-                          className="font-bold text-[#000615] underline hover:text-slate-900"
+                          className="font-bold text-[#0b1f3a] underline hover:text-[#b48a3c]"
                         >
                           Terms of Service and Privacy Policy
                         </Link>{" "}
@@ -1818,43 +1882,56 @@ export function BookingCheckout({
                       </span>
                     </label>
 
+                    {/* Checkbox 2: House rules */}
                     <label
-                      className={`flex items-start gap-4 rounded-2xl p-4 cursor-pointer transition-all duration-200 ${
+                      className={`flex items-start gap-3 rounded-xl p-3.5 cursor-pointer transition-all duration-200 border ${
                         hasAttemptedSubmit && !rulesAccepted
-                          ? "border border-rose-300 bg-rose-50/20"
-                          : "hover:bg-slate-50/80"
+                          ? "border-rose-300 bg-rose-50/30"
+                          : rulesAccepted
+                            ? "border-[#0b1f3a]/30 bg-[#fbf7ee]/60"
+                            : "border-[#e5e1d8] bg-white hover:bg-slate-50/80"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={rulesAccepted}
-                        onChange={(e) => setRulesAccepted(e.target.checked)}
-                        className="mt-0.5 h-5 w-5 accent-[#000615] rounded border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      <div className="relative mt-0.5 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={rulesAccepted}
+                          onChange={(e) => setRulesAccepted(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                            rulesAccepted
+                              ? "border-[#0b1f3a] bg-[#0b1f3a]"
+                              : hasAttemptedSubmit
+                                ? "border-rose-400 bg-white"
+                                : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {rulesAccepted && (
+                            <Check className="h-3 w-3 stroke-[3] text-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-700 leading-relaxed">
                         I confirm that all staying guests meet the
                         property&apos;s check-in age, ID verification, and
                         house-rule requirements.
                       </span>
                     </label>
+
+                    {/* Validation error */}
+                    {hasAttemptedSubmit && formError && !error && (
+                      <div
+                        role="alert"
+                        className="flex items-center gap-2.5 rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-800"
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-rose-600" />
+                        <span>{formError}</span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Validation Banner if attempted submit */}
-                  {hasAttemptedSubmit && formError && !error && (
-                    <div
-                      role="alert"
-                      className="flex items-center gap-2.5 rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs sm:text-sm font-bold text-rose-800"
-                    >
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-rose-600" />
-                      <span>{formError}</span>
-                    </div>
-                  )}
                 </div>
-
-                <p className="flex items-center justify-center gap-2 text-xs text-[var(--hk-muted)]">
-                  <Lock className="h-3.5 w-3.5" />
-                  Secure payment · Clear prices · Your booking in My Trips
-                </p>
               </>
             )}
             {step !== "details" && (
@@ -1944,10 +2021,18 @@ function PriceBreakdown({ quote }: { quote: Quote }) {
         <span>
           {quote.extrasTotalPaise
             ? money(quote.extrasTotalPaise, quote.currency)
-            : quote.customizations.some(r=>r.settlement==="pending_hotel") ? "Pending requests" : "Free"}
+            : quote.customizations.some((r) => r.settlement === "pending_hotel")
+              ? "Pending requests"
+              : "Free"}
         </span>
       </div>
-      {quote.customizations.some(r=>r.settlement==="pending_hotel") && <p className="text-xs">Pending requests are excluded from the total and need hotel approval. You will review any final quote before paying.</p>}
+      {quote.customizations.some((r) => r.settlement === "pending_hotel") && (
+        <p className="text-xs">
+          Pending extras are not charged at checkout. After hotel approval,
+          review and accept any final price, then pay separately from your
+          booking. Free extras require no payment.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3 border-t border-[var(--hk-border)] pt-4 font-bold text-[var(--hk-navy)]">
         <span>Booking total</span>
         <span className="text-xl">
@@ -2085,13 +2170,14 @@ function BookingSummary({
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold text-[#000615] truncate">
                           {r.name}
-                          {r.variantName ? ` · ${r.variantName}` : ""} × {r.quantity}
+                          {r.variantName ? ` · ${r.variantName}` : ""} ×{" "}
+                          {r.quantity}
                         </p>
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium mt-0.5 ${
                             isApproval
                               ? "bg-amber-50 text-amber-800"
-                              : "bg-emerald-50 text-emerald-800"
+                              : "bg-[#fbf7ee] text-[#785d1c] border border-[#e8d9b5]"
                           }`}
                         >
                           {isApproval ? (
@@ -2118,10 +2204,6 @@ function BookingSummary({
                   );
                 })}
               </div>
-              <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
-                <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span>Pending requests are not charged.</span>
-              </p>
             </div>
           )}
 
@@ -2138,7 +2220,10 @@ function BookingSummary({
                 <div className="flex justify-between gap-3">
                   <span>Room &amp; taxes</span>
                   <span className="font-semibold text-[#000615]">
-                    {money(quote.subtotalPaise + quote.taxPaise, quote.currency)}
+                    {money(
+                      quote.subtotalPaise + quote.taxPaise,
+                      quote.currency,
+                    )}
                   </span>
                 </div>
                 {Boolean(quote.extrasTotalPaise) && (

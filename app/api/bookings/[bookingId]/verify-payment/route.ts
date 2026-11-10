@@ -1,3 +1,4 @@
+import { bookingFailure } from "@/lib/booking/api-error";
 import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { adminDb } from "@/lib/firebase/admin";
@@ -13,7 +14,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     await verifyBookingPayment(user.uid, bookingId, await request.json());
     return Response.json({ ok: true });
   } catch (error) {
-    return Response.json({ error: bookingError(error) }, { status: 422 });
+    return Response.json(bookingFailure(error, bookingError(error)), { status: 422 });
   }
 }
 

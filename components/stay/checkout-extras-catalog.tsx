@@ -449,8 +449,8 @@ export function CheckoutExtrasCatalog({
                         Hotel approval required
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                        <Check className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ee] border border-[#e8d9b5] px-2 py-0.5 text-[10px] font-medium text-[#785d1c]">
+                        <Check className="h-2.5 w-2.5 text-[#b48a3c] shrink-0" />
                         Instant confirmation
                       </span>
                     )}
@@ -474,11 +474,7 @@ export function CheckoutExtrasCatalog({
                       <button
                         type="button"
                         onClick={() => setSelectedModalOffering(o)}
-                        className={`w-full h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                          o.confirmation === "approval"
-                            ? "border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c] hover:bg-[#f5ebd8]"
-                            : "border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                        }`}
+                        className="w-full h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c] hover:bg-[#f5ebd8]"
                       >
                         <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                         <span>
@@ -507,13 +503,7 @@ export function CheckoutExtrasCatalog({
                     </button>
                   ) : o.maxQuantity === 1 || resolveResponse(o).responseType === "single" ? (
                     <div className="flex items-center gap-1.5 h-10">
-                      <div
-                        className={`flex-1 h-full rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 ${
-                          o.confirmation === "approval"
-                            ? "border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]"
-                            : "border border-emerald-300 bg-emerald-50 text-emerald-800"
-                        }`}
-                      >
+                      <div className="flex-1 h-full rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]">
                         <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                         <span>{o.confirmation === "approval" ? "Requested" : "Added"}</span>
                       </div>
@@ -529,13 +519,7 @@ export function CheckoutExtrasCatalog({
                       </button>
                     </div>
                   ) : (
-                    <div
-                      className={`w-full h-10 rounded-xl flex items-center justify-between px-2 text-xs font-semibold ${
-                        o.confirmation === "approval"
-                          ? "border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]"
-                          : "border border-emerald-300 bg-emerald-50 text-emerald-800"
-                      }`}
-                    >
+                    <div className="w-full h-10 rounded-xl flex items-center justify-between px-2 text-xs font-semibold border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]">
                       <button
                         type="button"
                         disabled={disabled}
@@ -611,7 +595,7 @@ export function CheckoutExtrasCatalog({
                       Hotel approval required
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/80 backdrop-blur-md px-2 py-0.5 text-[10px] font-medium text-white">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-semibold text-white border border-white/20">
                       <Check className="h-2.5 w-2.5" />
                       Instant confirmation
                     </span>

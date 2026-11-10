@@ -8,7 +8,6 @@ async function get(request: Request) {
   await enforceRateLimit({ bucket: "suggestions-ip", identifier: privateFingerprint(clientIp(request)), limit: 120, windowSeconds: 60 });
   const q = new URL(request.url).searchParams.get("q") ?? "";
   if (q.trim().length < 2) return Response.json({ suggestions: [] });
-  try { return Response.json({ suggestions: await cachedPublic(["suggestions", q.trim().toLocaleLowerCase()], () => searchSuggestions(q)) }); }
-  catch { return Response.json({ suggestions: [] }, { status: 200 }); }
+  return Response.json({ suggestions: await cachedPublic(["suggestions", q.trim().toLocaleLowerCase()], () => searchSuggestions(q)) });
 }
 export const GET = withApiHandler(get, { route: "/api/search/suggestions", cache: "none" });

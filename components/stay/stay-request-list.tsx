@@ -1,4 +1,5 @@
 "use client";
+import { ExtrasOffers } from "./extras-offers";
 import {
   ChevronDown,
   MessageSquare,
@@ -9,6 +10,7 @@ import {
 import { RequestSelectionEditor } from "./request-selection-editor";
 import { requestLabel, requestAmountLabel } from "@/lib/stay/agreements";
 import { requestPriceBreakdown } from "@/lib/stay/pricing";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 import {
   RequestAgreementControls,
   type RequestActor,
@@ -79,6 +81,7 @@ export function StayRequestList({
   }
   return (
     <div className="space-y-3">
+      {(staff || guest) && <ExtrasOffers actor={(staff ?? guest)!} staff={Boolean(staff)} requests={requests} currency={currency} timezone={timezone} />}
       {!requests.length && (
         <p className="text-sm text-slate-500">No customizations requested.</p>
       )}
@@ -94,12 +97,21 @@ export function StayRequestList({
               : Package;
         const summary = (
           <>
-            {compactStaff && (
+            {compactStaff ? (
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fbf5e8] text-[#c89b3c] shadow-2xs">
                 <Icon size={18} strokeWidth={1.5} />
               </span>
+            ) : (
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100 border border-[#e5e1d8]">
+                <img
+                  src={getOfferingImageUrl(r)}
+                  alt={r.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </div>
             )}
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-32">
               <h4 className="break-words text-sm font-bold text-[#061224]">
                 {r.name}
                 {!compactStaff && r.variantName ? ` · ${r.variantName}` : ""}
@@ -108,18 +120,18 @@ export function StayRequestList({
                   : ""}
               </h4>
               {compactStaff && r.variantName && (
-                <p className="mt-0.5 text-xs font-semibold text-[#8b96aa]">{r.variantName}</p>
+                <p className="mt-0.5 break-words text-xs font-semibold text-[#8b96aa]">{r.variantName}</p>
               )}
             </div>
             <span
-              className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold capitalize border ${
+              className={`max-w-full sm:max-w-[50%] whitespace-normal break-words rounded-full px-2.5 py-0.5 text-xs font-bold capitalize border ${
                 ["ready", "fulfilled", "confirmed"].includes(r.status)
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  ? "border-slate-200 bg-slate-100 text-[#141b2b]"
                   : r.status === "preparing"
                     ? "border-blue-200 bg-blue-50 text-blue-800"
                     : ["declined", "cancelled"].includes(r.status)
                       ? "border-slate-200 bg-slate-100 text-slate-600"
-                      : "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-[#e8d9b5] bg-[#fbf7ee] text-[#785d1c]"
               }`}
             >
               {requestLabel(r) ?? statusLabels[r.status]}
@@ -219,7 +231,7 @@ export function StayRequestList({
             }
           >
             <Summary
-              className={`flex ${compactStaff ? "items-start gap-3" : "cursor-pointer flex-wrap items-center justify-between gap-2"}`}
+              className={`flex ${compactStaff ? "flex-wrap items-start gap-3" : "cursor-pointer flex-wrap items-center justify-between gap-2"}`}
             >
               {summary}
             </Summary>
@@ -239,7 +251,7 @@ export function StayRequestList({
               <span
                 className={`text-xs ${
                   r.totalPaise === 0 && !r.quote && r.source !== "unlisted" && !r.priceOnRequest
-                    ? "inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60"
+                    ? "inline-flex items-center gap-1 font-bold text-[#785d1c] bg-[#fbf7ee] px-2.5 py-1 rounded-lg border border-[#e8d9b5]"
                     : "inline-flex items-center gap-1 font-bold text-[#061224] bg-[#f4f2ee] px-2.5 py-1 rounded-lg"
                 }`}
               >
@@ -268,6 +280,8 @@ export function StayRequestList({
             {!compactStaff && details}
             {r.agreementVersion === 2 &&
               r.settlement !== "included" &&
+              !(guest && (r.offerId || r.offerDraft)) &&
+              !(staff && r.offerId) &&
               (staff || guest) && (
                 <RequestAgreementControls
                   request={r}

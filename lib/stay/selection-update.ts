@@ -21,6 +21,7 @@ export async function patchRequestSelection(uid: string, bookingId: string, raw:
     if (!bounds || !["confirmed", "checked_in"].includes(b.bookingStatus) || now >= Date.parse(bounds.endAt)) throw new Error("This booking is closed for requests.");
     const requests: StayRequest[] = b.customizations ?? [], r = requests.find(r => r.id === input.requestId);
     if (!r) throw new Error("NOT_FOUND");
+    if (r.offerId || r.offerDraft) throw new Error("Manage this item through its offer.");
     if (!canEditRequest(r, now) || r.settlement === "paid" || r.totalPaise > 0) throw new Error("This request is locked. Contact the hotel for changes.");
     const s = input.selection;
     let updated: StayRequest;

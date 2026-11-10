@@ -1,5 +1,6 @@
 import "server-only";
 
+import { legacyApiError } from "@/lib/api/legacy-error";
 import { randomUUID } from "node:crypto";
 import type { AppUser } from "@/types/auth";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -67,8 +68,7 @@ async function decorateResponse(response: Response, context: ApiRequestContext, 
         responseBytes = Buffer.byteLength(JSON.stringify(body));
         output = Response.json(body, { status: response.status, statusText: response.statusText, headers });
       } else if (typeof record.error !== "object") {
-        const code = typeof record.error === "string" ? record.error : `HTTP_${response.status}`;
-        const standard = { code, message: typeof record.message === "string" ? record.message : code };
+        const standard = legacyApiError(record, response.status);
         const body = options.legacyShape === false
           ? { error: standard, requestId: context.requestId }
           : { ...record, apiError: standard, requestId: context.requestId };

@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 import { localParts, resolveLocal } from "@/lib/booking/domain";
 import type { StayBookingData } from "@/lib/stay/contracts";
-import { CalendarDays, Check, Clock3, Info, Mail, Phone, UserRound } from "lucide-react";
+import { CalendarDays, Check, Clock3, Info, Mail, Phone, UserRound, Sparkles } from "lucide-react";
 import { PartnerDatePicker } from "@/components/partner/dashboard/partner-date-picker";
 import { Drawer } from "@/components/partner/dashboard/drawer";
 import { StayRequestList } from "./stay-request-list";
@@ -21,21 +21,52 @@ export function PreCheckinPanel({ booking }: { booking: Booking }) {
   const editable = booking.bookingStatus === "confirmed" && q.data?.editable;
   const p = booking.preCheckin;
   const supplemental = supplementalFinancials(booking.customizations ?? [], booking.stayPaymentReceipts);
-  return <div className="my-5 space-y-4">
-    <section className="rounded-2xl border border-[#e7e4dc] bg-white p-5 sm:p-6">
-      <div className="flex flex-wrap justify-between gap-2"><h2 className="text-lg font-bold">Arrival details</h2><span className="text-sm">{p?.status === "submitted" ? "Pre-check-in confirmed" : "Pre-check-in incomplete"}</span></div>
-      <p className="mt-3 text-sm">{p?.arrivalChoice === "unknown" ? "Arrival time: Not sure yet. You can update it later." : p?.expectedArrivalAt ? `Expected arrival: ${new Date(p.expectedArrivalAt).toLocaleString("en-IN", { timeZone: booking.timezone })} (${booking.timezone})` : "Share your arrival plan to help the hotel prepare."}</p>
-      {p?.notes && <p className="mt-2 text-sm">Arrival note: {p.notes}</p>}
-      <p className="mt-2 text-xs text-slate-500">Online pre-check-in does not guarantee early room access. The hotel completes check-in on arrival.</p>
-      {success && <p role="status" className="mt-3 text-sm text-green-800">{success}</p>}
-      {editable && <button className={`${button} mt-4 bg-[#061224] text-white`} onClick={() => setEditing(true)}>{p?.status === "submitted" ? "Update arrival details" : "Start pre-check-in"}</button>}
-      {q.isPending && booking.bookingStatus === "confirmed" && <p className="mt-3 text-sm">Loading arrival details…</p>}
-      {q.isError && <p role="alert" className="mt-3 text-sm">Arrival details could not load. <button className="underline" onClick={() => void q.refetch()}>Retry</button></p>}
-      {!editable && !q.isPending && !q.isError && <p className="mt-3 text-sm">Online changes are closed. Contact the hotel for assistance. {booking.propertyPublicPhone}</p>}
+  return <div className="space-y-6">
+    <section className="rounded-2xl border border-[#e7e4dc] bg-white p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-[#fbf7ee] border border-[#e8d9b5] text-[#b48a3c]">
+            <Clock3 className="h-4 w-4" />
+          </div>
+          <h2 className="text-base font-bold text-[#061224]">Arrival coordination</h2>
+        </div>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
+          p?.status === "submitted"
+            ? "border-slate-200 bg-slate-100 text-[#0b1f3a]"
+            : "border-[#e8d9b5] bg-[#fbf7ee] text-[#785d1c]"
+        }`}>
+          {p?.status === "submitted" ? "Arrival time shared" : "Optional · Share arrival time"}
+        </span>
+      </div>
+      <p className="mt-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        {p?.arrivalChoice === "unknown"
+          ? "Arrival time: Not sure yet. You can update it whenever your plans are set."
+          : p?.expectedArrivalAt
+            ? `Expected arrival: ${new Date(p.expectedArrivalAt).toLocaleString("en-IN", { timeZone: booking.timezone })} (${booking.timezone})`
+            : "Let the front desk know when you expect to arrive so they can prepare your room keys."}
+      </p>
+      {p?.notes && <p className="mt-2 text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-100 p-2.5">Arrival note: {p.notes}</p>}
+      <p className="mt-2 text-[11px] text-slate-400">Online pre-check-in helps the front desk prepare. Standard check-in starts at the official hotel check-in time.</p>
+      {success && <p role="status" className="mt-3 text-xs font-semibold text-[#785d1c] bg-[#fbf7ee] p-2.5 rounded-lg border border-[#e8d9b5]">{success}</p>}
+      {editable && <button className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-[#0b1f3a] px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#152e4d] transition" onClick={() => setEditing(true)}>{p?.status === "submitted" ? "Update arrival time" : "Set estimated arrival time"}</button>}
+      {q.isPending && booking.bookingStatus === "confirmed" && <p className="mt-3 text-xs text-slate-500">Loading arrival details…</p>}
+      {q.isError && <p role="alert" className="mt-3 text-xs text-rose-600">Arrival details could not load. <button className="underline font-bold" onClick={() => void q.refetch()}>Retry</button></p>}
+      {!editable && !q.isPending && !q.isError && <p className="mt-3 text-xs text-slate-500">Online changes are closed. Contact the hotel for assistance. {booking.propertyPublicPhone}</p>}
     </section>
-    <section className="rounded-2xl border border-[#e7e4dc] bg-white p-5 sm:p-6"><h2 className="mb-4 text-lg font-bold">Your requests</h2>
+    <section className="rounded-2xl border border-[#e7e4dc] bg-white p-5 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-[#fbf7ee] border border-[#e8d9b5] text-[#b48a3c]">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-[#061224]">Your requested additions</h2>
+            <p className="text-[11px] text-slate-500">Personalized touches arranged with the hotel</p>
+          </div>
+        </div>
+      </div>
       <StayRequestList requests={booking.customizations ?? []} currency={booking.currency} timezone={booking.timezone} guest={{ bookingId: booking.id, revision: booking.stayRevision ?? 0, enabled: ["confirmed", "checked_in"].includes(booking.bookingStatus), refresh }} />
-      {supplemental.paidPaise > 0 && <p className="mt-3 text-sm">Extras paid separately: {formatMoney(supplemental.paidPaise, booking.currency)}{supplemental.refundDuePaise > 0 ? ` · Refund pending: ${formatMoney(supplemental.refundDuePaise, booking.currency)}` : ""}{supplemental.refundedPaise > 0 ? ` · Refunded: ${formatMoney(supplemental.refundedPaise, booking.currency)}` : ""}</p>}
+      {supplemental.paidPaise > 0 && <p className="mt-3 text-xs text-slate-500">Extras paid separately: {formatMoney(supplemental.paidPaise, booking.currency)}{supplemental.refundDuePaise > 0 ? ` · Refund pending: ${formatMoney(supplemental.refundDuePaise, booking.currency)}` : ""}{supplemental.refundedPaise > 0 ? ` · Refunded: ${formatMoney(supplemental.refundedPaise, booking.currency)}` : ""}</p>}
       {["confirmed", "checked_in"].includes(booking.bookingStatus) && <div className="mt-4"><UnlistedRequestForm timezone={booking.timezone} disabled={false} onAdd={async request => { try { await apiFetch(`/api/bookings/${encodeURIComponent(booking.id)}/stay-requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create", revision: booking.stayRevision ?? 0, request }) }); } finally { refresh(); } }} /></div>}
     </section>
     {editing && <ArrivalEditor booking={{ ...booking, startAt: booking.startAt ?? q.data?.startAt ?? null }} close={() => setEditing(false)} saved={submitted => { setSuccess(submitted ? "Pre-check-in confirmed. Your arrival plan and guest information have been saved." : "Arrival draft saved. Resume pre-check-in whenever you’re ready."); refresh(); }} />}

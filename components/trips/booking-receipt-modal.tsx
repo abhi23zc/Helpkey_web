@@ -22,6 +22,7 @@ export type BookingReceiptData = {
   id: string;
   confirmationCode: string;
   propertyName: string;
+  propertyCoverImageUrl?: string | null;
   propertyAddress?: string | null;
   propertyCity?: string | null;
   propertyState?: string | null;
@@ -81,6 +82,8 @@ export type BookingReceiptData = {
 };
 
 type Props = { booking: BookingReceiptData | null; onClose: () => void };
+const HOTEL_FALLBACK =
+  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
 const money = (paise = 0, currency = "INR") =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -331,32 +334,32 @@ function Receipt({
         aria-label="Booking payment receipt"
         className="booking-receipt-print flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
       >
-        <div className="booking-receipt-controls flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
-          <span className="flex items-center gap-2 font-bold text-slate-800">
-            <FileText size={17} strokeWidth={1.75} />
-            Receipt
+        <div className="booking-receipt-controls flex shrink-0 items-center justify-between gap-3 border-b border-[#e7e4dc] px-5 py-3.5 bg-stone-50/50">
+          <span className="flex items-center gap-2 font-bold text-[#0f172a]">
+            <FileText size={17} strokeWidth={1.75} className="text-[#0b1f3a]" />
+            Booking Receipt
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0b1f3a] px-3 text-xs font-semibold text-white sm:px-4 sm:text-sm"
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#0b1f3a] px-3.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#152e4d] sm:px-4"
             >
-              <Printer size={16} />
+              <Printer size={15} />
               Print / Save PDF
             </button>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close receipt"
-              className="grid h-11 w-11 place-items-center rounded-xl text-slate-500 hover:bg-slate-100"
+              className="grid h-10 w-10 place-items-center rounded-xl text-stone-500 hover:bg-stone-100 transition"
             >
               <X size={19} />
             </button>
           </div>
         </div>
         <div className="booking-receipt-body min-h-0 overflow-y-auto">
-          <article className="p-5 text-sm text-slate-700 sm:p-8">
+          <article className="p-5 text-sm text-stone-700 sm:p-8">
             <header className="receipt-keep-together flex items-start justify-between gap-4 border-b-2 border-[#0b1f3a] pb-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-[#0b1f3a]">
@@ -365,76 +368,97 @@ function Receipt({
                   </span>
                   Helpkey
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Booking payment receipt
+                <p className="mt-1 text-xs text-stone-500 font-medium">
+                  Official Booking Payment Receipt
                 </p>
               </div>
               <div className="max-w-[50%] text-right text-[11px] leading-relaxed">
-                <p className="font-semibold text-slate-500">
+                <p className="font-bold uppercase tracking-wider text-stone-400 text-[10px]">
                   Booking reference
                 </p>
-                <p className="mt-0.5 break-all font-mono font-bold text-slate-900">
+                <p className="mt-0.5 break-all font-mono text-sm font-extrabold text-[#0b1f3a]">
                   {booking.confirmationCode}
                 </p>
                 {bookedOn && (
-                  <p className="mt-1 text-slate-500">Booked on {bookedOn}</p>
+                  <p className="mt-0.5 text-stone-500 font-medium">Booked on {bookedOn}</p>
                 )}
-                <p
-                  className={`mt-1 inline-flex flex-wrap items-center justify-end gap-1 font-semibold ${fullyPaid ? "text-emerald-700" : "text-slate-600"}`}
-                >
-                  {fullyPaid && <CheckCircle2 size={13} />}
-                  <span>{status}</span>
-                  <span>· {human(booking.bookingStatus)}</span>
-                </p>
+                <div className="mt-1.5 flex justify-end">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
+                      fullyPaid
+                        ? "border-[#e8d9b5] bg-[#fbf7ee] text-[#785d1c]"
+                        : "border-stone-200 bg-stone-100 text-stone-700"
+                    }`}
+                  >
+                    {fullyPaid && <CheckCircle2 size={12} className="text-[#b48a3c]" />}
+                    <span>{status}</span>
+                    <span>· {human(booking.bookingStatus)}</span>
+                  </span>
+                </div>
               </div>
             </header>
             <section
               aria-label="Hotel details"
-              className="receipt-keep-together mt-4 grid items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-[1fr_auto]"
+              className="receipt-keep-together mt-5 grid items-center gap-4 rounded-2xl border border-[#e7e4dc] bg-stone-50/70 p-4.5 sm:grid-cols-[1fr_auto]"
             >
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Your stay
-                </p>
-                <h2 className="mt-0.5 text-base font-extrabold text-slate-900">
-                  {booking.propertyName}
-                </h2>
-                {address && (
-                  <p className="mt-1 flex gap-1 text-xs leading-relaxed text-slate-600">
-                    <MapPin
-                      size={14}
-                      className="mt-0.5 shrink-0 text-[#0b1f3a]"
-                    />
-                    {address}
+              <div className="flex items-start gap-3.5 min-w-0">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-stone-900 border border-[#e5e1d8]">
+                  <img
+                    src={booking.propertyCoverImageUrl || HOTEL_FALLBACK}
+                    alt={booking.propertyName}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.src !== HOTEL_FALLBACK) img.src = HOTEL_FALLBACK;
+                    }}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                    Your stay
                   </p>
-                )}
-                {(booking.propertyPublicPhone ||
-                  booking.propertyPublicEmail) && (
-                  <p className="mt-1.5 break-words text-xs leading-relaxed text-slate-500">
-                    {[booking.propertyPublicPhone, booking.propertyPublicEmail]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
+                  <h2 className="mt-0.5 text-base font-extrabold text-[#0f172a]">
+                    {booking.propertyName}
+                  </h2>
+                  {address && (
+                    <p className="mt-1 flex items-start gap-1 text-xs leading-relaxed text-stone-600">
+                      <MapPin
+                        size={14}
+                        className="mt-0.5 shrink-0 text-[#0b1f3a]"
+                      />
+                      <span>{address}</span>
+                    </p>
+                  )}
+                  {(booking.propertyPublicPhone ||
+                    booking.propertyPublicEmail) && (
+                    <p className="mt-1 break-words text-xs leading-relaxed text-stone-500">
+                      {[booking.propertyPublicPhone, booking.propertyPublicEmail]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-3 border-t border-slate-200 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
-                <QRCodeSVG
-                  value={booking.confirmationCode}
-                  size={68}
-                  level="M"
-                  marginSize={4}
-                  title="Booking reference QR code"
-                />
-                <p className="max-w-[4.5rem] text-[10px] font-bold uppercase leading-snug tracking-wide text-slate-500">
+              <div className="flex items-center gap-3 border-t border-stone-200/80 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                <div className="rounded-xl border border-stone-200/60 bg-white p-1.5 shadow-2xs">
+                  <QRCodeSVG
+                    value={booking.confirmationCode}
+                    size={64}
+                    level="M"
+                    fgColor="#0b1f3a"
+                    title="Booking reference QR code"
+                  />
+                </div>
+                <p className="max-w-[4.5rem] text-[10px] font-bold uppercase leading-snug tracking-wide text-stone-500">
                   Present at check-in
                 </p>
               </div>
             </section>
             <section
               aria-label="Stay details"
-              className="receipt-keep-together mt-4 border-y border-slate-200 py-4"
+              className="receipt-keep-together mt-5"
             >
-              <dl className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Detail
                   label="Room & rate"
                   value={`${booking.roomName}${booking.ratePlanName ? ` · ${booking.ratePlanName}` : ""}`}
@@ -471,10 +495,10 @@ function Receipt({
                 booking.amenitySnapshot.rateInclusions.length >
                 0 && (
                 <section className="mt-5">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">
                     Amenities & inclusions
                   </h3>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-2.5 grid gap-3 sm:grid-cols-3">
                     <AmenityGroup
                       title="In your room"
                       values={booking.amenitySnapshot.roomAmenities}
@@ -493,11 +517,11 @@ function Receipt({
             <section aria-labelledby="receipt-payment-heading" className="mt-6">
               <h3
                 id="receipt-payment-heading"
-                className="text-xs font-bold uppercase tracking-wider text-slate-500"
+                className="text-xs font-bold uppercase tracking-wider text-stone-500"
               >
                 Payment details
               </h3>
-              <dl className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 px-4">
+              <dl className="mt-2.5 divide-y divide-stone-100 rounded-2xl border border-[#e7e4dc] bg-stone-50/30 px-4 py-1">
                 {typeof booking.subtotalPaise === "number" && (
                   <Amount
                     label={`Room charges · ${duration}`}
@@ -506,13 +530,13 @@ function Receipt({
                 )}
                 {(booking.taxPaise ?? 0) > 0 && (
                   <Amount
-                    label="Taxes"
+                    label="Taxes & GST"
                     value={money(booking.taxPaise, booking.currency)}
                   />
                 )}
                 {(booking.customerFeePaise ?? 0) > 0 && (
                   <Amount
-                    label="Booking fee"
+                    label="Platform fee"
                     value={money(booking.customerFeePaise, booking.currency)}
                   />
                 )}
@@ -548,12 +572,21 @@ function Receipt({
                 <Amount
                   label="Amount paid"
                   value={money(booking.paidPaise, booking.currency)}
+                  highlight
                 />
-                <Amount
-                  label="Balance due"
-                  value={money(balance, booking.currency)}
-                  strong
-                />
+
+                {fullyPaid ? (
+                  <div className="my-2.5 rounded-xl border border-[#e8d9b5] bg-[#fbf7ee] p-2.5 text-center text-xs font-bold text-[#785d1c]">
+                    ✓ Paid in full • ₹0 Due at check-in
+                  </div>
+                ) : (
+                  <Amount
+                    label="Balance due at check-in"
+                    value={money(balance, booking.currency)}
+                    strong
+                  />
+                )}
+
                 {(booking.refundDuePaise ?? 0) > 0 && (
                   <Amount
                     label="Refund pending"
@@ -584,11 +617,11 @@ function Receipt({
                 )}
             </section>
             {extraPayments.length > 0 && (
-              <section className="mt-5 rounded-xl border border-slate-200 p-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <section className="mt-5 rounded-2xl border border-[#e7e4dc] bg-stone-50/50 p-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   Additional payments
                 </h3>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-stone-500">
                   Extras paid separately from your booking.
                 </p>
                 {extraPayments.map((r) => (
@@ -599,14 +632,14 @@ function Receipt({
                         value={money(r.amount, booking.currency)}
                       />
                     </dl>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-stone-500">
                       {r.status === "refund_pending"
                         ? "Refund pending"
                         : r.status === "refunded"
                           ? "Refunded"
                           : "Paid"}
                     </p>
-                    <p className="mt-1 break-all text-[11px] text-slate-500">
+                    <p className="mt-1 break-all text-[11px] text-stone-500">
                       Payment reference: {r.reference}
                     </p>
                   </div>
@@ -636,16 +669,16 @@ function Receipt({
             {booking.billing && (
               <section
                 aria-label="Billing details"
-                className="receipt-keep-together mt-6 rounded-lg bg-slate-50 p-4"
+                className="receipt-keep-together mt-5 rounded-2xl border border-[#e7e4dc] bg-stone-50/60 p-4"
               >
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   Billing details
                 </h3>
-                <p className="mt-1 font-semibold text-slate-900">
+                <p className="mt-1 font-bold text-[#0f172a]">
                   {booking.billing.legalName}
                 </p>
-                <p className="text-xs">GSTIN: {booking.billing.gstin}</p>
-                <p className="text-xs">
+                <p className="text-xs text-stone-600 mt-0.5">GSTIN: {booking.billing.gstin}</p>
+                <p className="text-xs text-stone-500 mt-0.5">
                   {[
                     booking.billing.address.line1,
                     booking.billing.address.city,
@@ -658,22 +691,22 @@ function Receipt({
               </section>
             )}
             {booking.cancellationPolicy && (
-              <section className="mt-6 text-xs">
-                <h3 className="font-bold text-slate-700">
+              <section className="mt-5 rounded-2xl border border-[#e7e4dc] bg-stone-50/50 p-4 text-xs">
+                <h3 className="font-bold text-[#0f172a]">
                   Cancellation policy: {booking.cancellationPolicy.name}
                 </h3>
-                <p className="mt-1 leading-relaxed">
+                <p className="mt-1 leading-relaxed text-stone-600">
                   {booking.cancellationPolicy.description ||
                     `Cancellation fee: ${booking.cancellationPolicy.cancellationFeePercent}%.`}
                 </p>
               </section>
             )}
-            <footer className="mt-6 border-t border-slate-200 pt-4 text-xs leading-relaxed text-slate-500">
+            <footer className="mt-6 border-t border-[#e7e4dc] pt-4 text-xs leading-relaxed text-stone-500">
               This payment receipt is not a tax invoice. Please contact the
               property for a tax invoice. Need help?{" "}
               <Link
                 href="/help"
-                className="font-semibold text-[#0b1f3a] underline"
+                className="font-bold text-[#0b1f3a] underline"
               >
                 Contact Helpkey support
               </Link>
@@ -696,15 +729,15 @@ function Detail({
   extra?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+    <div className="min-w-0 rounded-xl border border-[#e7e4dc] bg-stone-50/60 p-3">
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
         {label}
       </dt>
-      <dd className="mt-1 break-words text-xs font-medium leading-relaxed text-slate-800">
+      <dd className="mt-1 break-words text-xs font-bold leading-relaxed text-[#0f172a]">
         {value}
       </dd>
       {extra && (
-        <dd className="mt-1 break-words text-xs text-slate-500">{extra}</dd>
+        <dd className="mt-0.5 break-words text-[11px] font-medium text-stone-500">{extra}</dd>
       )}
     </div>
   );
@@ -714,34 +747,48 @@ function Amount({
   value,
   description,
   strong = false,
+  highlight = false,
 }: {
   label: ReactNode;
   value: string;
   description?: string;
   strong?: boolean;
+  highlight?: boolean;
 }) {
   return (
     <div
-      className={`receipt-line-item flex items-start justify-between gap-4 py-2 text-xs ${strong ? "font-bold text-slate-900" : ""}`}
+      className={`receipt-line-item flex items-start justify-between gap-4 py-2.5 text-xs ${
+        strong
+          ? "font-bold text-[#0f172a]"
+          : highlight
+            ? "font-bold text-[#0b1f3a]"
+            : "text-stone-700"
+      }`}
     >
       <dt className="min-w-0">
         {label}
         {description && (
-          <span className="mt-1 block text-xs leading-5 text-slate-500">
+          <span className="mt-1 block text-[11px] leading-5 text-stone-500">
             {description}
           </span>
         )}
       </dt>
-      <dd className="shrink-0 text-right font-medium tabular-nums">{value}</dd>
+      <dd
+        className={`shrink-0 text-right tabular-nums ${
+          strong || highlight ? "font-bold text-[#0f172a]" : "font-medium"
+        }`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
 
 function AmenityGroup({ title, values }: { title: string; values: Amenity[] }) {
   return values.length ? (
-    <div className="rounded-lg bg-slate-50 p-3 text-xs">
-      <p className="font-semibold text-slate-700">{title}</p>
-      <p className="mt-1 leading-relaxed">
+    <div className="rounded-xl border border-[#e7e4dc] bg-stone-50/60 p-3.5 text-xs">
+      <p className="font-bold text-[#0f172a]">{title}</p>
+      <p className="mt-1.5 leading-relaxed text-stone-600">
         {values.map((value) => value.label).join(" · ")}
       </p>
     </div>

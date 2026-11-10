@@ -46,7 +46,7 @@ export function browserSearchPage(snapshot: ClientSearchSnapshot, query: string,
     return card;
   });
   const hasMore = offset + properties.length < derived.properties.length;
-  return { properties, total: derived.properties.length, hasMore,
+  return { properties, serverNow: Date.now(), availablePropertyTypes: derived.availablePropertyTypes, total: derived.properties.length, hasMore,
     nextCursor: hasMore ? `local:${offset + properties.length}` : null,
     evaluatedAt: snapshot.evaluatedAt,
     expiresAt: Date.now() + Math.max(0, (deadlines.get(snapshot) ?? 0) - performance.now()),

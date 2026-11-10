@@ -242,7 +242,7 @@ export function RequestAgreementControls({
               (hotel time){!compact && ` · Version ${q.version}`}
             </p>
             {q.acceptedAt && (
-              <p className="text-emerald-700 font-semibold">
+              <p className="text-[#785d1c] font-bold">
                 Price accepted{" "}
                 {new Date(q.acceptedAt).toLocaleString("en-IN", {
                   timeZone: timezone,
@@ -280,12 +280,12 @@ export function RequestAgreementControls({
                       )
                     }
                   >
-                    <Check size={14} className="text-emerald-400 shrink-0" />
+                    <Check size={14} className="text-[#b48a3c] shrink-0" />
                     <span>
                       {r.source !== "unlisted" &&
                       !r.priceOnRequest &&
                       r.totalPaise > 0
-                        ? `Offer saved price · ${formatMoney(r.totalPaise, currency)}`
+                        ? `Approve at listed price · ${formatMoney(r.totalPaise, currency)}`
                         : "Approve for free"}
                     </span>
                   </button>
@@ -326,7 +326,7 @@ export function RequestAgreementControls({
                         className={buttonPrimary}
                         onClick={() => void act("approve_free")}
                       >
-                        <Check size={14} className="text-emerald-400 shrink-0" />
+                        <Check size={14} className="text-[#b48a3c] shrink-0" />
                         <span>Approve for free</span>
                       </button>
                     )}
@@ -340,7 +340,7 @@ export function RequestAgreementControls({
                           className={buttonPrimary}
                           onClick={() => void act("approve_price")}
                         >
-                          Offer saved price ·{" "}
+                          Approve at listed price ·{" "}
                           {formatMoney(r.totalPaise, currency)}
                         </button>
                       )}
@@ -421,7 +421,7 @@ export function RequestAgreementControls({
                         className={buttonPrimary}
                         onClick={() => void act("quote")}
                       >
-                        Send for customer acceptance
+                        Save final price for review
                       </button>
                     </div>
                   )}
@@ -456,7 +456,7 @@ export function RequestAgreementControls({
                   <button
                     type="button"
                     disabled={busy}
-                    className={button}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#0b1f3a] px-5 py-2.5 text-xs font-bold text-white shadow-2xs hover:bg-[#152e4d] transition disabled:opacity-50"
                     onClick={() => void pay()}
                   >
                     {busy

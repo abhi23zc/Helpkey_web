@@ -283,6 +283,8 @@ export type RequestQuote = {
 };
 export type RequestRules = Pick<OfferingInput, "formType" | "responseConfig" | "maxQuantity" | "noteRequired" | "noteLabel" | "peopleRequired" | "timeRequired" | "choiceGroups">;
 export type StayRequest = {
+  offerId?: string;
+  offerDraft?: boolean;
   requestRules?: RequestRules;
   agreementVersion?: 2;
   priceOnRequest?: boolean;

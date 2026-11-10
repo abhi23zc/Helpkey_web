@@ -1,4 +1,5 @@
 import "server-only";
+import { offersEnabled } from "./offers";
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -105,6 +106,8 @@ export async function decideRequest(
     const r = requests.find((r) => r.id === input.requestId);
     if (!r || r.agreementVersion !== 2 || r.settlement === "included")
       throw new Error("NOT_FOUND");
+    if (!staff && r.offerDraft) throw new Error("Wait for the hotel to send the combined offer.");
+    if (r.offerId) throw new Error("Manage this request through its combined offer.");
     if (r.status !== "requested" || r.preparationStarted || r.quote?.paymentId)
       throw new Error(
         "This request is already agreed or closed. Refresh before updating it.",
@@ -201,6 +204,7 @@ export async function decideRequest(
         status: "offered",
       });
     }
+    if (["approve_price", "quote"].includes(input.action) && offersEnabled()) next = { ...next, offerDraft: true };
     const revision = (b.stayRevision ?? 0) + 1;
     tx.update(ref, {
       customizations: requests.map((r) => (r.id === next.id ? next : r)),
@@ -217,7 +221,7 @@ export async function decideRequest(
       agreed: next,
       createdAt: FieldValue.serverTimestamp(),
     });
-    enqueueStayNotification(
+    if (!next.offerDraft) enqueueStayNotification(
       tx,
       bookingId,
       b.propertyId,
@@ -227,8 +231,8 @@ export async function decideRequest(
     );
   });
 }
-export function quoteRefundId(paymentId: string) {
-  return `stay_${createHash("sha256").update(paymentId).digest("hex")}`;
+export function quoteRefundId(paymentId: string, allocationId?: string) {
+  return `stay_${createHash("sha256").update(allocationId ? `${paymentId}:${allocationId}` : paymentId).digest("hex")}`;
 }
 export function queueQuoteRefund(
   tx: FirebaseFirestore.Transaction,
@@ -237,12 +241,14 @@ export function queueQuoteRefund(
   requestId: string,
   paymentId: string,
   amountPaise: number,
+  allocationId?: string,
 ) {
-  tx.create(adminDb.collection("refunds").doc(quoteRefundId(paymentId)), {
+  tx.create(adminDb.collection("refunds").doc(quoteRefundId(paymentId, allocationId)), {
     bookingId,
     propertyId,
     requestId,
     stayQuote: true,
+    ...(allocationId ? { allocationId } : {}),
     paymentId,
     amountPaise,
     status: "pending",
@@ -272,6 +278,7 @@ export function cancelQuotePayments(
       r.id,
       r.quote.paymentId,
       r.quote.amountPaise,
+      r.offerId ? r.id : undefined,
     );
     return {
       ...r,
