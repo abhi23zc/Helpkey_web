@@ -24,32 +24,39 @@ export function TravelerChips({
 }) {
   return (
     <div>
-      <p className="mb-2 text-sm text-slate-600">
+      <p className="mb-2 text-xs text-slate-500">
         {single
           ? "Trip type (optional) · Helps us suggest relevant extras"
-          : "Trip preferences · Choose any, or skip."}
+          : "Trip preferences · Choose target travelers, or leave blank to show to everyone."}
       </p>
       <div className="flex flex-wrap gap-2">
-        {travelerCategories.map((t) => (
-          <button
-            key={t}
-            type="button"
-            disabled={disabled}
-            aria-pressed={value.includes(t)}
-            onClick={() =>
-              onChange(
-                value.includes(t)
-                  ? value.filter((v) => v !== t)
-                  : single
-                    ? [t]
-                    : [...value, t],
-              )
-            }
-            className={`rounded-full border px-4 py-2 text-sm disabled:opacity-50 ${value.includes(t) ? "border-[#061224] bg-[#061224] text-white" : "border-slate-200 bg-white text-slate-700"}`}
-          >
-            {travelerLabels[t] ?? t}
-          </button>
-        ))}
+        {travelerCategories.map((t) => {
+          const isSelected = value.includes(t);
+          return (
+            <button
+              key={t}
+              type="button"
+              disabled={disabled}
+              aria-pressed={isSelected}
+              onClick={() =>
+                onChange(
+                  isSelected
+                    ? value.filter((v) => v !== t)
+                    : single
+                      ? [t]
+                      : [...value, t],
+                )
+              }
+              className={`h-8 inline-flex items-center justify-center rounded-lg border px-3 text-xs font-semibold transition-all disabled:opacity-50 ${
+                isSelected
+                  ? "border-[#061224] bg-[#061224] text-white shadow-2xs"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+              }`}
+            >
+              <span>{travelerLabels[t] ?? t}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

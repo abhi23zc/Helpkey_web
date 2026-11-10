@@ -23,6 +23,9 @@ import {
   Gift,
   PauseCircle,
   IndianRupee,
+  Building2,
+  Moon,
+  Clock,
 } from "lucide-react";
 import { Drawer } from "@/components/partner/dashboard/drawer";
 import { CategoryIcon } from "./category-icon";
@@ -992,7 +995,7 @@ function OfferingEditor({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, uploading]);
   const field =
-    "mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm";
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all";
   const issueFor = (path: string) =>
     issues.find((i) => i.path === path || i.path.startsWith(`${path}.`))?.message;
   function patch(v: Partial<OfferingInput>) {
@@ -1241,7 +1244,7 @@ function OfferingEditor({
             </div>
 
             {/* 3. Delivery Rules & Availability Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">3</span>
                 <div>
@@ -1250,50 +1253,63 @@ function OfferingEditor({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Required Advance Notice
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min={0}
-                    max={525600}
-                    aria-invalid={Boolean(issueFor("advanceNoticeMinutes"))}
-                    aria-describedby={
-                      issueFor("advanceNoticeMinutes")
-                        ? "offering-error-advanceNoticeMinutes"
-                        : undefined
-                    }
-                    value={value.advanceNoticeMinutes}
-                    onChange={(e) =>
-                      patch({ advanceNoticeMinutes: Number(e.target.value) })
-                    }
-                    className={field}
-                  />
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {[
-                      { label: "⚡ Instant (0m)", value: 0 },
-                      { label: "30 min", value: 30 },
-                      { label: "1 hour", value: 60 },
-                      { label: "2 hours", value: 120 },
-                      { label: "4 hours", value: 240 },
-                      { label: "24 hours", value: 1440 },
-                    ].map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() => patch({ advanceNoticeMinutes: preset.value })}
-                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
-                          value.advanceNoticeMinutes === preset.value
-                            ? "bg-[#061224] text-white shadow-xs"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+              <div className="grid gap-5 sm:grid-cols-2">
+                {/* Advance Notice Section */}
+                <div className="sm:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Required Advance Notice
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      Minimum notice time guests must provide before fulfillment
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="relative sm:w-48 shrink-0">
+                      <input
+                        required
+                        type="number"
+                        min={0}
+                        max={525600}
+                        aria-invalid={Boolean(issueFor("advanceNoticeMinutes"))}
+                        aria-describedby={
+                          issueFor("advanceNoticeMinutes")
+                            ? "offering-error-advanceNoticeMinutes"
+                            : undefined
+                        }
+                        value={value.advanceNoticeMinutes}
+                        onChange={(e) =>
+                          patch({ advanceNoticeMinutes: Number(e.target.value) })
+                        }
+                        className={`${field} pr-14`}
+                      />
+                      <span className="pointer-events-none absolute right-3.5 top-[calc(50%+3px)] -translate-y-1/2 text-xs font-semibold text-slate-400">
+                        min
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
+                      {[
+                        { label: "⚡ Instant (0m)", value: 0 },
+                        { label: "30 min", value: 30 },
+                        { label: "1 hour", value: 60 },
+                        { label: "2 hours", value: 120 },
+                        { label: "4 hours", value: 240 },
+                        { label: "24 hours", value: 1440 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => patch({ advanceNoticeMinutes: preset.value })}
+                          className={`h-8 px-2.5 text-xs font-semibold rounded-lg transition-all border ${
+                            value.advanceNoticeMinutes === preset.value
+                              ? "bg-[#061224] text-white border-[#061224] shadow-2xs"
+                              : "bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100 hover:text-slate-900"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {issueFor("advanceNoticeMinutes") && (
                     <span
@@ -1305,9 +1321,10 @@ function OfferingEditor({
                   )}
                 </div>
 
+                {/* Confirmation Workflow */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Confirmation Mode
+                    Confirmation Workflow
                   </label>
                   <select
                     aria-label="Confirmation"
@@ -1320,8 +1337,8 @@ function OfferingEditor({
                     }
                     className={field}
                   >
-                    <option value="immediate">Immediate confirmation</option>
-                    <option value="approval">Hotel approval required</option>
+                    <option value="immediate">⚡ Immediate confirmation</option>
+                    <option value="approval">🛎 Hotel approval required</option>
                   </select>
                   <p className="mt-1.5 text-xs text-slate-500">
                     {value.confirmation === "approval"
@@ -1330,6 +1347,7 @@ function OfferingEditor({
                   </p>
                 </div>
 
+                {/* Catalog Publishing Status */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Publishing Status
@@ -1345,10 +1363,16 @@ function OfferingEditor({
                     <option value="active">Active (Visible to guests)</option>
                     <option value="paused">Paused (Hidden from guests)</option>
                   </select>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {value.status === "active"
+                      ? "Guests can view and request this extra in the app."
+                      : "Temporarily hidden from guest view."}
+                  </p>
                 </div>
 
-                <div className="sm:col-span-2 pt-2 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                {/* Target Traveler Categories */}
+                <div className="sm:col-span-2 pt-3 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Target Traveler Categories
                   </label>
                   <TravelerChips
@@ -1358,64 +1382,129 @@ function OfferingEditor({
                   />
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                  <p className="mb-2 text-xs font-bold text-slate-700 uppercase tracking-wider">Eligible Room Types</p>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer mb-2">
+                {/* Eligible Room Types */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Eligible Room Types
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Select which room types can request this extra.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                      {!value.roomTypeIds.length ? "All Rooms" : `${value.roomTypeIds.length} Selected`}
+                    </span>
+                  </div>
+
+                  <label className={`flex items-center justify-between rounded-xl p-3 border cursor-pointer transition-all ${
+                    !value.roomTypeIds.length
+                      ? "border-[#061224] bg-[#061224] text-white shadow-2xs"
+                      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <Building2 className={`h-4 w-4 ${!value.roomTypeIds.length ? "text-amber-400" : "text-slate-500"}`} />
+                      <span className="text-xs font-bold">All room types eligible</span>
+                    </div>
                     <input
                       type="checkbox"
-                      className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
+                      className="h-4 w-4 rounded accent-amber-400"
                       checked={!value.roomTypeIds.length}
                       onChange={() => patch({ roomTypeIds: [] })}
                     />
-                    <span>All room types</span>
                   </label>
-                  <div className="max-h-40 overflow-y-auto space-y-1.5 pl-1">
-                    {rooms.map((r) => (
-                      <label
-                        key={r.id}
-                        className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
-                          checked={value.roomTypeIds.includes(r.id)}
-                          onChange={(e) =>
-                            patch({
-                              roomTypeIds: e.target.checked
-                                ? [...value.roomTypeIds, r.id]
-                                : value.roomTypeIds.filter((id) => id !== r.id),
-                            })
-                          }
-                        />
-                        <span>{r.name}</span>
-                      </label>
-                    ))}
-                  </div>
+
+                  {rooms.length > 0 && (
+                    <div className="max-h-44 overflow-y-auto space-y-1 rounded-xl border border-slate-200/70 bg-white p-2">
+                      {rooms.map((r) => {
+                        const isChecked = value.roomTypeIds.includes(r.id);
+                        return (
+                          <label
+                            key={r.id}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                              isChecked ? "bg-amber-50 text-amber-950 font-semibold" : "text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>{r.name}</span>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded accent-[#061224]"
+                              checked={isChecked}
+                              onChange={(e) =>
+                                patch({
+                                  roomTypeIds: e.target.checked
+                                    ? [...value.roomTypeIds, r.id]
+                                    : value.roomTypeIds.filter((id) => id !== r.id),
+                                })
+                              }
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                  <p className="mb-2 text-xs font-bold text-slate-700 uppercase tracking-wider">Eligible Stay Types</p>
-                  <div className="space-y-2">
-                    {(["overnight", "hourly"] as const).map((m) => (
-                      <label
-                        key={m}
-                        className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 accent-[#061224]"
-                          checked={value.bookingModes.includes(m)}
-                          onChange={(e) =>
-                            patch({
-                              bookingModes: e.target.checked
-                                ? [...value.bookingModes, m]
-                                : value.bookingModes.filter((v) => v !== m),
-                            })
-                          }
-                        />
-                        <span className="font-medium">{m === "overnight" ? "Overnight stays" : "Hourly day-use stays"}</span>
-                      </label>
-                    ))}
+                {/* Eligible Stay Types */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Eligible Stay Types
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Enable for overnight reservations, hourly stays, or both.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-0.5">
+                    {[
+                      {
+                        id: "overnight",
+                        label: "Overnight Stays",
+                        desc: "Standard nightly and multi-day hotel bookings",
+                        icon: Moon,
+                      },
+                      {
+                        id: "hourly",
+                        label: "Hourly Day-Use Stays",
+                        desc: "Short duration and daytime transit room stays",
+                        icon: Clock,
+                      },
+                    ].map((m) => {
+                      const isChecked = value.bookingModes.includes(m.id as any);
+                      const Icon = m.icon;
+                      return (
+                        <label
+                          key={m.id}
+                          className={`flex items-start gap-3 rounded-xl p-3 border cursor-pointer transition-all ${
+                            isChecked
+                              ? "border-slate-300 bg-white shadow-2xs"
+                              : "border-slate-200 bg-slate-100/60 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded accent-[#061224]"
+                            checked={isChecked}
+                            onChange={(e) =>
+                              patch({
+                                bookingModes: e.target.checked
+                                  ? [...value.bookingModes, m.id as any]
+                                  : value.bookingModes.filter((v) => v !== m.id),
+                              })
+                            }
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Icon className="h-3.5 w-3.5 text-slate-500" />
+                              <span className="text-xs font-bold text-slate-900">{m.label}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{m.desc}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
