@@ -1160,211 +1160,35 @@ function OfferingEditor({
               </div>
             </div>
 
-            {/* 2. Pricing & Ordering Format Card */}
+            {/* 2. Pricing & Guest Selection Card */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">2</span>
-                <h3 className="font-bold text-slate-900 text-sm">Pricing & Guest Selection</h3>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Pricing & Guest Selection</h3>
+                  <p className="text-xs text-slate-500">Choose the extra type, set your prices, and configure guest choices.</p>
+                </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-            <OfferingFields
-              value={value}
-              patch={patch}
-              propertyId={propertyId}
-              disabled={busy}
-              onUploading={setUploading}
-              paid={paid}
-              onPaidChange={(nextPaid) => {
-                if (!nextPaid) {
-                  savedPrices.current = { unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit };
-                  patch({ unitPricePaise: 0, pricingUnit: "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: null })) });
-                } else {
-                  patch({ unitPricePaise: savedPrices.current.unitPricePaise, pricingUnit: savedPrices.current.pricingUnit ?? "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: savedPrices.current.variants.find(old => old.id === v.id)?.unitPricePaise ?? null })) });
-                }
-                setPaid(nextPaid);
-              }}
-            >
-            {paid && value.formType !== "custom" && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Default price (₹, 0 = Free)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  aria-invalid={Boolean(issueFor("unitPricePaise"))}
-                  aria-describedby={
-                    issueFor("unitPricePaise")
-                      ? "offering-error-unitPricePaise"
-                      : undefined
+              <OfferingFields
+                value={value}
+                patch={patch}
+                propertyId={propertyId}
+                disabled={busy}
+                onUploading={setUploading}
+                paid={paid}
+                onPaidChange={(nextPaid) => {
+                  if (!nextPaid) {
+                    savedPrices.current = { unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit };
+                    patch({ unitPricePaise: 0, pricingUnit: value.formType === "package" ? "package" : "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: null })) });
+                  } else {
+                    patch({ unitPricePaise: savedPrices.current.unitPricePaise, pricingUnit: savedPrices.current.pricingUnit ?? (value.formType === "package" ? "package" : "item"), variants: value.variants.map(v => ({ ...v, unitPricePaise: savedPrices.current.variants.find(old => old.id === v.id)?.unitPricePaise ?? null })) });
                   }
-                  value={value.unitPricePaise / 100}
-                  onChange={(e) =>
-                    patch({
-                      unitPricePaise: Math.round(Number(e.target.value) * 100),
-                    })
-                  }
-                  className={field}
-                />
-                {issueFor("unitPricePaise") && (
-                  <span
-                    id="offering-error-unitPricePaise"
-                    className="mt-1 block text-xs text-red-700"
-                  >
-                    {issueFor("unitPricePaise")}
-                  </span>
-                )}
-              </div>
-            )}
-            {(resolveResponse(value).quantityEnabled || resolveResponse(value).responseType === "multiple") && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  {resolveResponse(value).quantityEnabled ? "Maximum quantity per booking" : "Maximum choices per booking"}
-                </label>
-                <input
-                  required
-                  type="number"
-                  min={1}
-                  max={100}
-                  aria-invalid={Boolean(issueFor("maxQuantity"))}
-                  aria-describedby={
-                    issueFor("maxQuantity")
-                      ? "offering-error-maxQuantity"
-                      : undefined
-                  }
-                  value={value.maxQuantity}
-                  onChange={(e) =>
-                    patch({ maxQuantity: Number(e.target.value) })
-                  }
-                  className={field}
-                />
-                {issueFor("maxQuantity") && (
-                  <span
-                    id="offering-error-maxQuantity"
-                    className="mt-1 block text-xs text-red-700"
-                  >
-                    {issueFor("maxQuantity")}
-                  </span>
-                )}
-              </div>
-            )}
-            {(value.formType === "package" || ["single", "multiple"].includes(resolveResponse(value).responseType)) && (
-              <div className="sm:col-span-2 pt-2 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  {value.formType === "package" ? "Package Tiers & Inclusions" : "Options guests can choose from"}
-                </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  {value.formType === "package"
-                    ? "Add package tiers (e.g. Basic, Premium, Luxury) and specify what is included in each."
-                    : "Define the available choices (e.g. Lavender, Rose or Small, Medium)."}
-                </p>
-                {issueFor("variants") && <p role="alert" className="text-xs text-red-700">{issueFor("variants")}</p>}
-                {value.variants.map((v, i) => (
-                  <div
-                    key={v.id}
-                    className="mt-2 flex flex-wrap items-center gap-2"
-                  >
-                    <input
-                      aria-label={`Variant ${i + 1}`}
-                      value={v.name}
-                      onChange={(e) =>
-                        patch({
-                          variants: value.variants.map((n) =>
-                            n.id === v.id ? { ...n, name: e.target.value } : n,
-                          ),
-                        })
-                      }
-                      className={field}
-                    />
-                    {paid && value.formType !== "custom" && <label className="w-full text-sm sm:w-56">
-                      Custom price (₹, 0 = Free)
-                      <input
-                        aria-label={`Variant ${i + 1} custom price`}
-                        type="number"
-                        min={0}
-                        max={1000000}
-                        step="0.01"
-                                placeholder={`Default: ${formatMoney(value.unitPricePaise, currency)}`}
-                        value={
-                          v.unitPricePaise == null ? "" : v.unitPricePaise / 100
-                        }
-                        onChange={(e) =>
-                          patch({
-                            variants: value.variants.map((n) =>
-                              n.id === v.id
-                                ? {
-                                    ...n,
-                                    unitPricePaise:
-                                      e.target.value === ""
-                                        ? null
-                                        : Math.round(
-                                            Number(e.target.value) * 100,
-                                          ),
-                                  }
-                                : n,
-                            ),
-                          })
-                        }
-                        className={field}
-                      />
-                      <span className="text-xs text-slate-500">
-                        Blank uses the default price.
-                      </span>
-                    </label>}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          variants: value.variants.filter((n) => n.id !== v.id),
-                        })
-                      }
-                      className="text-sm underline"
-                    >
-                      Remove
-                    </button>
-                    {value.formType === "package" && (
-                      <label className="w-full text-sm">
-                        Package inclusions
-                        <textarea
-                          value={v.inclusions ?? ""}
-                          maxLength={500}
-                          required
-                          onChange={(e) =>
-                            patch({
-                              variants: value.variants.map((n) =>
-                                n.id === v.id
-                                  ? { ...n, inclusions: e.target.value }
-                                  : n,
-                              ),
-                            })
-                          }
-                          className={field}
-                        />
-                      </label>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  disabled={value.variants.length >= 20}
-                  onClick={() =>
-                    patch({
-                      variants: [
-                        ...value.variants,
-                        { id: crypto.randomUUID(), name: "", inclusions: value.formType === "package" ? "" : undefined },
-                      ],
-                    })
-                  }
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
-                >
-                  {value.formType === "package" ? "+ Add another package tier" : "+ Add another choice"}
-                </button>
-              </div>
-            )}
-            </OfferingFields>
-              </div>
+                  setPaid(nextPaid);
+                }}
+                issueFor={issueFor}
+                currency={currency}
+              />
             </div>
 
             {/* 3. Delivery Rules & Availability Card */}
