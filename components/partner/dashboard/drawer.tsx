@@ -22,8 +22,10 @@ export function Drawer({
   children,
   footer,
   spacious = false,
+  contentClassName,
 }: {
   spacious?: boolean;
+  contentClassName?: string;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -134,7 +136,7 @@ export function Drawer({
         </header>
 
         <div
-          className={`min-h-0 flex-1 overflow-y-auto ${spacious ? "px-6 py-6" : "px-5 py-5"}`}
+          className={`min-h-0 flex-1 overflow-y-auto ${spacious ? "px-6 py-6" : "px-5 py-5"} ${contentClassName ?? ""}`}
         >
           {children}
         </div>

@@ -966,6 +966,7 @@ function OfferingEditor({
     <Drawer
       open
       spacious
+      contentClassName="flex flex-col"
       title={offering ? "Edit Extra" : "Create Extra"}
       description="Configure how this extra appears to guests and set its availability rules."
       onClose={requestClose}
@@ -1018,33 +1019,38 @@ function OfferingEditor({
           setError("");
           onSave(parsed.data);
         }}
-        className="space-y-4"
+        className={!started ? "flex flex-1 flex-col min-h-0" : "space-y-4"}
       >
         {!started && (
-          <TemplateLibrary
-            scratch={() => {
-              setReviewed(false);
-              setValue({
-                ...initial,
-                formType: "simple",
-                responseConfig: { responseType: "yes_no", quantityEnabled: false },
-                pricingUnit: "item",
-              });
-              setStarted(true);
-            }}
-            choose={(t) => {
-              setPaid((t.draft.unitPricePaise ?? 0) > 0 || !!t.draft.variants?.some(v => (v.unitPricePaise ?? 0) > 0));
-              setReviewed(false);
-              setValue({
-                ...initial,
-                confirmation: "approval",
-                formType: "quantity",
-                pricingUnit: "item",
-                ...t.draft,
-              });
-              setStarted(true);
-            }}
-          />
+          <div className="flex flex-1 flex-col min-h-0 pb-1">
+            <TemplateLibrary
+              scratch={() => {
+                setReviewed(false);
+                setValue({
+                  ...initial,
+                  formType: "simple",
+                  responseConfig: { responseType: "yes_no", quantityEnabled: false },
+                  pricingUnit: "item",
+                });
+                setStarted(true);
+              }}
+              choose={(t) => {
+                setPaid((t.draft.unitPricePaise ?? 0) > 0 || !!t.draft.variants?.some(v => (v.unitPricePaise ?? 0) > 0));
+                setReviewed(false);
+                setValue({
+                  ...initial,
+                  confirmation: "approval",
+                  formType: "quantity",
+                  pricingUnit: "item",
+                  ...t.draft,
+                });
+                setStarted(true);
+              }}
+            />
+            <p className="mt-3 text-xs text-slate-400 shrink-0">
+              💡 All extras include applicable taxes and service charges. You can edit availability anytime.
+            </p>
+          </div>
         )}
         {started && (
           <fieldset disabled={busy} className="space-y-5">
@@ -1396,9 +1402,11 @@ function OfferingEditor({
             </div>
           </fieldset>
         )}
-        <p className="text-xs text-slate-400">
-          💡 All extras include applicable taxes and service charges. You can edit availability anytime.
-        </p>
+        {started && (
+          <p className="text-xs text-slate-400">
+            💡 All extras include applicable taxes and service charges. You can edit availability anytime.
+          </p>
+        )}
         <div ref={feedbackRef} className="space-y-3">
           {discard && (
             <div
