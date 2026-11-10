@@ -18,6 +18,11 @@ import {
   Zap,
   Copy,
   Pencil,
+  Pause,
+  Play,
+  Gift,
+  PauseCircle,
+  IndianRupee,
 } from "lucide-react";
 import { Drawer } from "@/components/partner/dashboard/drawer";
 import { CategoryIcon } from "./category-icon";
@@ -233,32 +238,32 @@ function Customizations({
         </div>
         <div className="flex items-center gap-3">
           {tab === "offerings" && (
-            <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1 shadow-xs">
+            <div className="flex h-10 items-center rounded-xl border border-slate-200 bg-white p-1 shadow-xs">
               <button
                 type="button"
                 onClick={() => setViewMode("grid")}
                 aria-pressed={viewMode === "grid"}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                className={`h-8 flex items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${
                   viewMode === "grid"
-                    ? "bg-[#061224] text-white shadow-xs"
+                    ? "bg-[#061224] text-white shadow-2xs"
                     : "text-slate-600 hover:text-[#061224]"
                 }`}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                Cards
+                <span>Cards</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("table")}
                 aria-pressed={viewMode === "table"}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                className={`h-8 flex items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${
                   viewMode === "table"
-                    ? "bg-[#061224] text-white shadow-xs"
+                    ? "bg-[#061224] text-white shadow-2xs"
                     : "text-slate-600 hover:text-[#061224]"
                 }`}
               >
                 <List className="h-3.5 w-3.5" />
-                Table
+                <span>Table</span>
               </button>
             </div>
           )}
@@ -269,7 +274,7 @@ function Customizations({
             </span>
           )}
           {query.isPending ? (
-            <div aria-hidden="true" className="h-11 w-36 rounded-xl bg-slate-200/60 motion-safe:animate-pulse" />
+            <div aria-hidden="true" className="h-10 w-32 rounded-xl bg-slate-200/60 motion-safe:animate-pulse" />
           ) : canManage && (
             <button
               type="button"
@@ -280,7 +285,7 @@ function Customizations({
                 setEditing("new");
                 setConflict(false);
               }}
-              className="flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-slate-800 transition-all disabled:opacity-50"
+              className="h-10 inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-slate-800 transition-all disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               <span>Add Extra</span>
@@ -341,39 +346,39 @@ function Customizations({
           {query.data && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 font-bold">
-                  ✓
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-lg font-bold text-[#061224]">{activeCount}</div>
-                  <div className="text-xs text-slate-500">Active Extras</div>
+                  <div className="text-xs font-medium text-slate-500">Active Extras</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 font-bold">
-                  ⏸
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <PauseCircle className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-lg font-bold text-[#061224]">{pausedCount}</div>
-                  <div className="text-xs text-slate-500">Paused Extras</div>
+                  <div className="text-xs font-medium text-slate-500">Paused Extras</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
-                  🎁
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Gift className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-lg font-bold text-[#061224]">{freeCount}</div>
-                  <div className="text-xs text-slate-500">Free Amenities</div>
+                  <div className="text-xs font-medium text-slate-500">Free Amenities</div>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 font-bold">
-                  ₹
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                  <IndianRupee className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-lg font-bold text-[#061224]">{paidCount}</div>
-                  <div className="text-xs text-slate-500">Paid Add-ons</div>
+                  <div className="text-xs font-medium text-slate-500">Paid Add-ons</div>
                 </div>
               </div>
             </div>
@@ -390,7 +395,7 @@ function Customizations({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search bathrobes, chargers, cake, pillows…"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-10 pr-4 text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-xs sm:text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
                 />
               </div>
               <label className="text-xs font-medium text-slate-500">
@@ -399,7 +404,7 @@ function Customizations({
                   aria-label="Offering category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <option value="all">All categories</option>
                   {offeringCategories.map((c) => (
@@ -415,7 +420,7 @@ function Customizations({
                   aria-label="Sort offerings"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <option value="name">Sort: Name (A–Z)</option>
                   <option value="price_low">Price: Low to High</option>
@@ -425,7 +430,7 @@ function Customizations({
               {(search || status !== "all" || category !== "all" || sort !== "name") && (
                 <button
                   type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  className="h-10 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                   onClick={() => {
                     setSearch("");
                     setStatus("all");
@@ -440,7 +445,7 @@ function Customizations({
 
             {/* Quick Status & Category Pills */}
             <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
-              <div className="flex items-center gap-1 pr-2 border-r border-slate-200 mr-1">
+              <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-200 mr-1">
                 {[
                   ["all", "All"],
                   ["active", "Active"],
@@ -451,14 +456,14 @@ function Customizations({
                     type="button"
                     aria-pressed={status === id}
                     onClick={() => setStatus(id)}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                    className={`h-8 inline-flex items-center justify-center rounded-lg px-3 text-xs font-semibold transition-all ${
                       status === id
-                        ? "bg-[#061224] text-white"
+                        ? "bg-[#061224] text-white shadow-2xs"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
-                    {label}{" "}
-                    <span className="ml-1 opacity-75">
+                    <span>{label}</span>
+                    <span className="ml-1.5 text-[11px] opacity-75">
                       {query.data
                         ? rows.filter((o) => id === "all" || o.status === id).length
                         : "—"}
@@ -470,10 +475,10 @@ function Customizations({
               <button
                 type="button"
                 onClick={() => setCategory("all")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                className={`h-8 inline-flex items-center justify-center rounded-lg px-3 text-xs font-medium transition-all ${
                   category === "all"
-                    ? "bg-amber-100 font-semibold text-amber-900"
-                    : "text-slate-600 hover:bg-slate-100"
+                    ? "bg-amber-100 font-semibold text-amber-900 border border-amber-300 shadow-2xs"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
                 }`}
               >
                 All Categories
@@ -487,15 +492,15 @@ function Customizations({
                     key={catKey}
                     type="button"
                     onClick={() => setCategory(isSelected ? "all" : catKey)}
-                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                    className={`h-8 inline-flex items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
                       isSelected
-                        ? "bg-amber-100 font-semibold text-amber-900 border border-amber-300"
+                        ? "bg-amber-100 font-semibold text-amber-900 border border-amber-300 shadow-2xs"
                         : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
                     }`}
                   >
                     <CategoryIcon category={catKey} className="h-3.5 w-3.5 text-slate-500" />
                     <span>{offeringCategoryLabels[catKey]}</span>
-                    <span className="opacity-70">({count})</span>
+                    <span className="text-[11px] opacity-70">({count})</span>
                   </button>
                 );
               })}
@@ -556,7 +561,7 @@ function Customizations({
                     <div>
                       {/* Top Bar: Icon + Category + Active Status Toggle */}
                       <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                        <span className="h-7 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs font-medium text-slate-700">
                           <CategoryIcon category={cat} className="h-3.5 w-3.5 text-slate-500" />
                           <span>{offeringCategoryLabels[cat]}</span>
                         </span>
@@ -575,10 +580,10 @@ function Customizations({
                               )
                             }
                             title="Click to toggle active status"
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                            className={`h-7 inline-flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-all border ${
                               o.status === "active"
-                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 hover:bg-emerald-100"
+                                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
                             }`}
                           >
                             <span
@@ -617,7 +622,7 @@ function Customizations({
                       <div className="mt-3.5 flex items-center justify-between border-t border-slate-100/80 pt-3">
                         <div className="flex items-center gap-1.5">
                           {isFree ? (
-                            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200/50">
+                            <span className="h-6 inline-flex items-center rounded-md bg-emerald-50 px-2.5 text-xs font-bold text-emerald-700 border border-emerald-200/60">
                               FREE
                             </span>
                           ) : (
@@ -637,20 +642,20 @@ function Customizations({
 
                       {/* Attribute Chips */}
                       <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                        <span className="h-6 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 font-medium text-slate-600">
                           <Clock3 className="h-3 w-3 text-slate-400" />
                           {noticeLabel(o.advanceNoticeMinutes)}
                         </span>
                         <span
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium ${
+                          className={`h-6 inline-flex items-center gap-1 rounded-md px-2 font-medium border ${
                             o.confirmation === "approval"
-                              ? "bg-amber-50 text-amber-800 border border-amber-200/40"
-                              : "bg-blue-50 text-blue-700 border border-blue-200/40"
+                              ? "bg-amber-50 text-amber-800 border-amber-200/60"
+                              : "bg-blue-50 text-blue-700 border-blue-200/60"
                           }`}
                         >
                           {o.confirmation === "approval" ? "🛎 Hotel Approval" : "⚡ Instant"}
                         </span>
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                        <span className="h-6 inline-flex items-center rounded-md bg-slate-100 px-2 font-medium text-slate-500">
                           {o.roomTypeIds.length
                             ? `${o.roomTypeIds.length} rooms`
                             : "All rooms"}
@@ -664,11 +669,11 @@ function Customizations({
 
                     {/* Action Row */}
                     {canManage && (
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
                         <button
                           type="button"
                           disabled={busy}
-                          className="flex items-center gap-1.5 rounded-xl bg-[#061224] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition-all"
+                          className="h-8 inline-flex items-center gap-1.5 rounded-lg bg-[#061224] px-3.5 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-all disabled:opacity-50"
                           onClick={() => {
                             setError("");
                             setConflict(false);
@@ -676,14 +681,14 @@ function Customizations({
                             setEditing(o);
                           }}
                         >
-                          <Pencil className="h-3 w-3" />
-                          Edit
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span>Edit</span>
                         </button>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             disabled={busy}
-                            className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs disabled:opacity-50"
                             onClick={() => {
                               setError("");
                               setConflict(false);
@@ -695,14 +700,16 @@ function Customizations({
                               setEditing("new");
                             }}
                           >
-                            Duplicate
+                            <Copy className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Duplicate</span>
                           </button>
-                          <span className="text-slate-300">·</span>
                           <button
                             type="button"
                             disabled={busy}
-                            className={`text-xs font-semibold hover:underline ${
-                              o.status === "active" ? "text-amber-600" : "text-emerald-700"
+                            className={`h-8 inline-flex items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 ${
+                              o.status === "active"
+                                ? "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-100"
+                                : "border-emerald-200 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-100"
                             }`}
                             onClick={() =>
                               void save(
@@ -715,7 +722,17 @@ function Customizations({
                               )
                             }
                           >
-                            {o.status === "active" ? "Pause" : "Activate"}
+                            {o.status === "active" ? (
+                              <>
+                                <Pause className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Pause</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>Activate</span>
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -804,29 +821,55 @@ function Customizations({
                                   false,
                                 )
                               }
-                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-all ${
+                              className={`h-7 inline-flex items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-all border ${
                                 o.status === "active"
-                                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 hover:bg-emerald-100"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
                               }`}
                             >
-                              {o.status === "active" ? "Active" : "Paused"}
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  o.status === "active" ? "bg-emerald-500" : "bg-slate-400"
+                                }`}
+                              />
+                              <span>{o.status === "active" ? "Active" : "Paused"}</span>
                             </button>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <button
-                              type="button"
-                              disabled={busy || !canManage}
-                              onClick={() => {
-                                setError("");
-                                setConflict(false);
-                                setDuplicate(undefined);
-                                setEditing(o);
-                              }}
-                              className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 mr-1"
-                            >
-                              Edit
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                disabled={busy || !canManage}
+                                onClick={() => {
+                                  setError("");
+                                  setConflict(false);
+                                  setDuplicate(undefined);
+                                  setEditing(o);
+                                }}
+                                className="h-7 inline-flex items-center gap-1 rounded-md bg-[#061224] px-2.5 text-[11px] font-semibold text-white hover:bg-slate-800 transition-colors shadow-2xs"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy || !canManage}
+                                onClick={() => {
+                                  setError("");
+                                  setConflict(false);
+                                  setDuplicate({
+                                    ...oInput(o),
+                                    name: `${o.name.slice(0, 111)} (copy)`,
+                                    status: "paused",
+                                  });
+                                  setEditing("new");
+                                }}
+                                className="h-7 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-2xs"
+                              >
+                                <Copy className="h-3 w-3 text-slate-400" />
+                                <span>Duplicate</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -976,7 +1019,7 @@ function OfferingEditor({
             type="submit"
             form={formId}
             disabled={busy || uploading || !started}
-            className="rounded-xl bg-[#061224] px-4 py-3 text-sm text-white disabled:opacity-50 font-semibold shadow-xs hover:bg-slate-800 transition-all"
+            className="h-11 inline-flex items-center justify-center rounded-xl bg-[#061224] px-5 text-sm font-semibold text-white disabled:opacity-50 shadow-xs hover:bg-slate-800 transition-all"
           >
             {busy ? "Saving…" : offering ? "Save Changes" : "Publish Extra"}
           </button>
@@ -984,7 +1027,7 @@ function OfferingEditor({
             type="button"
             disabled={busy}
             onClick={requestClose}
-            className="min-h-11 text-sm underline text-slate-500 hover:text-slate-800"
+            className="h-11 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
           >
             Cancel
           </button>

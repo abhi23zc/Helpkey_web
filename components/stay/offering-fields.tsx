@@ -88,7 +88,7 @@ export function TemplateLibrary({
         <button
           type="button"
           onClick={scratch}
-          className="self-start sm:self-auto text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors shrink-0"
+          className="h-8 inline-flex items-center justify-center self-start sm:self-auto text-xs font-semibold px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors shrink-0 shadow-2xs"
         >
           Create from scratch
         </button>
@@ -99,7 +99,7 @@ export function TemplateLibrary({
           placeholder="Search templates (e.g. cake, charger, pillow, bathrobes)…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#061224] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+          className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-[#061224] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
         />
       </div>
       <div className="grid flex-1 min-h-[340px] gap-2.5 overflow-y-auto sm:grid-cols-2 pr-1 content-start auto-rows-max">
