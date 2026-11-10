@@ -23,9 +23,11 @@ export function Drawer({
   footer,
   spacious = false,
   contentClassName,
+  closeOnOutsideClick = true,
 }: {
   spacious?: boolean;
   contentClassName?: string;
+  closeOnOutsideClick?: boolean;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -102,12 +104,19 @@ export function Drawer({
       aria-modal="true"
       aria-label={title}
     >
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className="absolute inset-0 bg-[#061224]/50 backdrop-blur-xs hk-overlay-fade transition-opacity"
-      />
+      {closeOnOutsideClick ? (
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          className="absolute inset-0 bg-[#061224]/50 backdrop-blur-xs hk-overlay-fade transition-opacity"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-[#061224]/50 backdrop-blur-xs hk-overlay-fade transition-opacity"
+        />
+      )}
 
       <div className={panelClass}>
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-[#ede7dc] bg-white px-6 py-4">

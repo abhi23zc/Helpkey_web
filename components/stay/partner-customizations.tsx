@@ -968,21 +968,19 @@ function OfferingEditor({
   const [reviewed, setReviewed] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [issues, setIssues] = useState<{ path: string; message: string }[]>([]);
-  const [discard, setDiscard] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (discard || error || serverError)
+    if (error || serverError)
       feedbackRef.current?.scrollIntoView({
         block: "center",
         behavior: "smooth",
       });
-  }, [discard, error, serverError]);
+  }, [error, serverError]);
   const base = draft ?? (offering ? oInput(offering) : initial);
   const dirty = JSON.stringify(value) !== JSON.stringify(base);
   const requestClose = () => {
     if (busy || uploading) return;
-    if (dirty) setDiscard(true);
-    else close();
+    close();
   };
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -1012,6 +1010,7 @@ function OfferingEditor({
     <Drawer
       open
       spacious
+      closeOnOutsideClick={false}
       contentClassName="flex flex-col"
       title={offering ? "Edit Extra" : "Create Extra"}
       description="Configure how this extra appears to guests and set its availability rules."
@@ -1243,19 +1242,19 @@ function OfferingEditor({
               />
             </div>
 
-            {/* 3. Delivery Rules & Availability Card */}
+            {/* 3. Delivery & Fulfillment Rules Card */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">3</span>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Delivery Rules & Availability</h3>
-                  <p className="text-xs text-slate-500">Configure advance notice, confirmation type, and eligible rooms.</p>
+                  <h3 className="font-bold text-slate-900 text-sm">Delivery & Fulfillment Rules</h3>
+                  <p className="text-xs text-slate-500">Set lead times, order confirmation workflows, and catalog visibility.</p>
                 </div>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-4">
                 {/* Advance Notice Section */}
-                <div className="sm:col-span-2">
+                <div>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                       Required Advance Notice
@@ -1321,67 +1320,69 @@ function OfferingEditor({
                   )}
                 </div>
 
-                {/* Confirmation Workflow */}
+                {/* Confirmation Workflow & Publishing Status in 2 columns */}
+                <div className="grid gap-4 sm:grid-cols-2 pt-2 border-t border-slate-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Confirmation Workflow
+                    </label>
+                    <select
+                      aria-label="Confirmation"
+                      value={value.confirmation}
+                      onChange={(e) =>
+                        patch({
+                          confirmation: e.target
+                            .value as OfferingInput["confirmation"],
+                        })
+                      }
+                      className={field}
+                    >
+                      <option value="immediate">⚡ Immediate confirmation</option>
+                      <option value="approval">🛎 Hotel approval required</option>
+                    </select>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {value.confirmation === "approval"
+                        ? "Requires staff approval before confirmation."
+                        : "Automatically confirmed upon guest request."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Publishing Status
+                    </label>
+                    <select
+                      aria-label="Status"
+                      value={value.status}
+                      onChange={(e) =>
+                        patch({ status: e.target.value as OfferingInput["status"] })
+                      }
+                      className={field}
+                    >
+                      <option value="active">Active (Visible to guests)</option>
+                      <option value="paused">Paused (Hidden from guests)</option>
+                    </select>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {value.status === "active"
+                        ? "Guests can view and request this extra in the app."
+                        : "Temporarily hidden from guest view."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Availability & Eligibility Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">4</span>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Confirmation Workflow
-                  </label>
-                  <select
-                    aria-label="Confirmation"
-                    value={value.confirmation}
-                    onChange={(e) =>
-                      patch({
-                        confirmation: e.target
-                          .value as OfferingInput["confirmation"],
-                      })
-                    }
-                    className={field}
-                  >
-                    <option value="immediate">⚡ Immediate confirmation</option>
-                    <option value="approval">🛎 Hotel approval required</option>
-                  </select>
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    {value.confirmation === "approval"
-                      ? "Requires staff approval before confirmation."
-                      : "Automatically confirmed upon guest request."}
-                  </p>
+                  <h3 className="font-bold text-slate-900 text-sm">Availability & Eligibility</h3>
+                  <p className="text-xs text-slate-500">Control which rooms, stay modes, and traveler types can access this extra.</p>
                 </div>
+              </div>
 
-                {/* Catalog Publishing Status */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Publishing Status
-                  </label>
-                  <select
-                    aria-label="Status"
-                    value={value.status}
-                    onChange={(e) =>
-                      patch({ status: e.target.value as OfferingInput["status"] })
-                    }
-                    className={field}
-                  >
-                    <option value="active">Active (Visible to guests)</option>
-                    <option value="paused">Paused (Hidden from guests)</option>
-                  </select>
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    {value.status === "active"
-                      ? "Guests can view and request this extra in the app."
-                      : "Temporarily hidden from guest view."}
-                  </p>
-                </div>
-
-                {/* Target Traveler Categories */}
-                <div className="sm:col-span-2 pt-3 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Target Traveler Categories
-                  </label>
-                  <TravelerChips
-                    value={value.travelerCategories}
-                    onChange={(travelerCategories) => patch({ travelerCategories })}
-                    disabled={busy}
-                  />
-                </div>
-
+              <div className="grid gap-4 sm:grid-cols-2">
                 {/* Eligible Room Types */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
                   <div className="flex items-center justify-between">
@@ -1507,13 +1508,25 @@ function OfferingEditor({
                     })}
                   </div>
                 </div>
+
+                {/* Target Traveler Categories */}
+                <div className="sm:col-span-2 pt-3 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Target Traveler Categories
+                  </label>
+                  <TravelerChips
+                    value={value.travelerCategories}
+                    onChange={(travelerCategories) => patch({ travelerCategories })}
+                    disabled={busy}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* 4. Live Guest App Preview & Review */}
+            {/* 5. Live Guest App Preview & Review */}
             <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-xs space-y-4">
               <div className="flex items-center gap-2.5 pb-3 border-b border-amber-200/60">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-white text-xs font-bold">4</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-white text-xs font-bold">5</span>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">Live Guest App Preview</h3>
                   <p className="text-xs text-slate-500">Preview exactly how guests will see and interact with this extra.</p>
@@ -1540,30 +1553,6 @@ function OfferingEditor({
           </p>
         )}
         <div ref={feedbackRef} className="space-y-3">
-          {discard && (
-            <div
-              role="alert"
-              className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"
-            >
-              <p>Discard your unsaved changes?</p>
-              <div className="mt-3 flex gap-3">
-                <button
-                  type="button"
-                  onClick={close}
-                  className="min-h-11 rounded-lg border bg-white px-3"
-                >
-                  Discard changes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDiscard(false)}
-                  className="min-h-11 px-3 font-semibold"
-                >
-                  Keep editing
-                </button>
-              </div>
-            </div>
-          )}
           {serverError && (
             <div
               role="alert"
