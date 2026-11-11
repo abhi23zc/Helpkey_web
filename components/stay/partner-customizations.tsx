@@ -1459,7 +1459,7 @@ function OfferingEditor({
                   </div>
 
                   <div className="space-y-2 pt-0.5">
-                    {[
+                    {([
                       {
                         id: "overnight",
                         label: "Overnight Stays",
@@ -1472,8 +1472,8 @@ function OfferingEditor({
                         desc: "Short duration and daytime transit room stays",
                         icon: Clock,
                       },
-                    ].map((m) => {
-                      const isChecked = value.bookingModes.includes(m.id as any);
+                    ] as const).map((m) => {
+                      const isChecked = value.bookingModes.includes(m.id);
                       const Icon = m.icon;
                       return (
                         <label
@@ -1491,7 +1491,7 @@ function OfferingEditor({
                             onChange={(e) =>
                               patch({
                                 bookingModes: e.target.checked
-                                  ? [...value.bookingModes, m.id as any]
+                                  ? [...value.bookingModes, m.id]
                                   : value.bookingModes.filter((v) => v !== m.id),
                               })
                             }

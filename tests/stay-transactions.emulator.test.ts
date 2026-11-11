@@ -610,7 +610,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           ),
       ).toBe(true);
     }, 30000);
-    it("preserves omitted variant prices and clears overrides explicitly or on preference conversion", async () => {
+    it("preserves omitted variant prices and preference conversions, and clears explicit null overrides", async () => {
       const { id, free } = await fixture();
       const input = Object.fromEntries(
         Object.entries(free).filter(
@@ -670,7 +670,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       });
       expect(
         (await catalog.get()).get("variants")[0].unitPricePaise,
-      ).toBeNull();
+      ).toBe(12345);
     }, 30000);
     it("lets an owner edit offerings while rejecting cross-property rooms and stale versions", async () => {
       const { id, free } = await fixture();

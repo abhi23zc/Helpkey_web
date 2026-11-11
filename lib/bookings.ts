@@ -1,3 +1,4 @@
+import { guestReservationDetails } from "@/lib/booking/guest-details";
 import { withDatePrices } from "@/lib/booking/date-prices";
 import { publicGuestPolicies } from "@/lib/partner/guest-policies";
 import "server-only";
@@ -842,8 +843,17 @@ export async function serializeBookingWithResolvedMedia(id: string, data: Fireba
 export async function bookingForGuest(uid: string, bookingId: string) {
   const snap = await adminDb.collection("bookings").doc(bookingId).get();
   if (!snap.exists || snap.data()?.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
-  const { razorpayOrderId: _orderId, razorpayPaymentId: _paymentId, ...booking } = await serializeBookingWithResolvedMedia(snap.id, snap.data()!);
-  return booking;
+  const data = snap.data()!;
+  const [media, online, propertyPayments] = await Promise.allSettled([
+    serializeBookingWithResolvedMedia(snap.id, data),
+    adminDb.collection("paymentAttempts").where("bookingId", "==", bookingId).get(),
+    adminDb.collection("propertyPayments").where("bookingId", "==", bookingId).get(),
+  ]);
+  // Missing or unavailable optional media must not hide the saved reservation.
+  const serialized = media.status === "fulfilled" ? media.value : serializeBooking(snap.id, { ...data, propertyCoverImageUrl: null, customizations: [], stayPaymentReceipts: [] });
+  const { razorpayOrderId: _orderId, razorpayPaymentId: _paymentId, ...booking } = serialized;
+  const records = [online, propertyPayments].flatMap(result => result.status === "fulfilled" ? result.value.docs.map(doc => doc.data()) : []);
+  return { ...booking, ...guestReservationDetails(data, records) };
 }
 
 /** Resolves booking covers with two getAll calls, independent of page size. */

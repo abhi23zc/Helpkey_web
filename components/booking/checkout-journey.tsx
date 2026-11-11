@@ -239,7 +239,7 @@ export function CheckoutReview({
             <details className="mt-4 border-t border-[#e5e1d8] pt-3">
               <summary className="flex cursor-pointer items-center gap-1.5 py-1 text-xs font-semibold text-[#141b2b] hover:text-[#b48a3c] transition list-none">
                 <Info className="h-3.5 w-3.5 text-[#b48a3c]" />
-                What's included with your room
+                What&apos;s included with your room
               </summary>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {amenities.map((a, i) => (
