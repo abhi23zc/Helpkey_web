@@ -280,3 +280,9 @@ describe("customer saved reservation projection", () => {
     expect(JSON.stringify(r)).not.toContain("do-not-copy");
   });
 });
+
+it("preserves saved service choice values, charging basis and pending-quote meaning", () => {
+  const result = guestReservationDetails({ customizations: [{ name: "Aroma", source: "catalog", pricingUnit: "stay", priceOnRequest: false, settlement: "included", billableQuantity: 1, choiceLabels: { scent: "Scent" }, inputs: { choices: { scent: "Rose" } } }, { name: "Custom", source: "unlisted", priceOnRequest: true, settlement: "pending_hotel", totalPaise: 0 }] });
+  expect(result.savedDetails.requests[0]).toMatchObject({ choices: [{ label: "Scent", value: "Rose" }], pricingUnit: "stay", billableQuantity: 1 });
+  expect(result.savedDetails.requests[1]).toMatchObject({ source: "unlisted", priceOnRequest: true, settlement: "pending_hotel" });
+});

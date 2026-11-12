@@ -273,6 +273,11 @@ export function guestReservationDetails(
           variantName: text(r.variantName),
           variantInclusions: text(r.variantInclusions),
           choiceLabels: strings(Object.values(record(r.choiceLabels))),
+          choices: Object.entries(record(record(r.inputs).choices)).flatMap(([id, value]) => text(value) ? [{ label: text(record(r.choiceLabels)[id]) ?? "Option", value: text(value) }] : []),
+          pricingUnit: text(r.pricingUnit),
+          billableQuantity: amount(r.billableQuantity),
+          source: text(r.source),
+          priceOnRequest: r.priceOnRequest === true,
           inputs: {
             note: text(record(r.inputs).note),
             serviceAt: text(record(r.inputs).serviceAt),

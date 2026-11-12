@@ -70,13 +70,19 @@ export async function reconcilePaymentForGuest(uid: string, bookingId: string, r
     } catch { reconciled = false; providerSafe = false; }
   }
   const data = (await ref.get()).data()!;
+  const now = Date.now();
   const terminal = ["paid", "partially_paid", "pay_at_property", "paid_at_property", "refund_pending", "refunded", "partially_refunded"].includes(data.paymentStatus);
+  const eligible = reconciled && paymentEligibility(data, now, providerSafe);
+  const closed = data.bookingStatus !== "pending_payment" || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() <= now;
   return {
+    paymentAction: terminal || closed ? "none" : eligible ? "pay" : "check_status",
+    reasonCode: terminal ? "PAYMENT_SETTLED" : closed ? "BOOKING_CLOSED" : !reconciled ? "PROVIDER_UNAVAILABLE" : data.checkoutAttempt ? "PAYMENT_ATTEMPT_UNRESOLVED" : eligible ? "PAYMENT_ELIGIBLE" : "PAYMENT_PROCESSING",
+    nextCheckAfterMs: terminal || closed ? 0 : 5000,
     bookingId, confirmationCode: String(data.confirmationCode), bookingStatus: String(data.bookingStatus), paymentStatus: String(data.paymentStatus),
     reconciliationState: terminal ? "settled" : reconciled && !data.checkoutAttempt && providerSafe ? "checked" : "awaiting_verification",
-    paymentEligible: reconciled && paymentEligibility(data, Date.now(), providerSafe),
+    paymentEligible: eligible,
     holdExpiresAt: data.expiresAt instanceof Timestamp ? data.expiresAt.toDate().toISOString() : null,
-    serverTime: new Date().toISOString(), attemptId: data.checkoutAttempt?.id ?? null,
+    serverTime: new Date(now).toISOString(), attemptId: data.checkoutAttempt?.id ?? null,
     // Internal only; routes strip these fields.
     paymentIds, orderId: data.razorpayOrderId as string | undefined,
   };

@@ -48,9 +48,39 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     await db.collection("properties").doc(propertyId).set({ slug: propertyId, name: "Test", status: "active", approvalStatus: "approved", isBookable: true, currency: "INR", timezone: "Asia/Kolkata", bookingModes: ["overnight", "hourly"], inventoryEngine: "interval_v1" });
     await db.collection("roomTypes").doc(roomTypeId).set({ propertyId, status: "active", name: "Test room", totalInventory: 1, maxAdults: 2, maxChildren: 0 });
     await db.collection("ratePlans").doc(ratePlanId).set({ propertyId, roomTypeId, status: "active", bookingMode: "hourly", pricingModel: "duration", durationPrices: [{ hours: 2, pricePaise: 30000 }, { hours: 3, pricePaise: 120000 }], paymentMode: online ? "full" : "pay_at_property" });
-    const input = { propertySlug: propertyId, roomTypeId, ratePlanId, checkIn, arrivalTime: "10:00", durationMinutes: 180, bookingMode: "hourly", adults: 1, children: 0, infants: 0, paymentMethod: online ? "online" : "pay_at_property", leadEmail: "guest@example.com", leadPhone: "+919876543210", adultGuestNames: ["Test Guest"] };
+    const input = { propertySlug: propertyId, roomTypeId, ratePlanId, checkIn, arrivalTime: "10:00", durationMinutes: 180, bookingMode: "hourly" as const, adults: 1, children: 0, infants: 0, paymentMethod: online ? "online" : "pay_at_property", leadEmail: "guest@example.com", leadPhone: "+919876543210", adultGuestNames: ["Test Guest"] };
     return { propertyId, input };
   }
+  it.each(["full", "deposit", "pay_at_property"])("retains reviewed hourly amount, fingerprint and payment split for %s", async paymentMode => {
+    const { input } = await fixture(paymentMode !== "pay_at_property");
+    await db.collection("ratePlans").doc(input.ratePlanId).update({ paymentMode, depositBasisPoints: 2500, taxBasisPoints: 1200, customerFeePaise: 99 });
+    const quoted = await bookings.quote(input);
+    expect(quoted.nights).toBe(0);
+    const online = paymentMode !== "pay_at_property";
+    const reviewed = { ...input, expectedTotalPaise: quoted.totalPaise, quoteFingerprint: quoted.fingerprint };
+    if (online) providerFetch.mockResolvedValueOnce(Response.json({ id: `order_${paymentMode}` }));
+    const created = await bookings.createBooking("guest", reviewed, `reviewed-${paymentMode}`);
+    expect(created.requiresPayment).toBe(online);
+    expect((await bookings.createBooking("guest", reviewed, `reviewed-${paymentMode}`)).bookingId).toBe(created.bookingId);
+    if (online) {
+      expect(created.razorpay?.amount).toBe(quoted.payableNowPaise);
+      providerFetch.mockResolvedValueOnce(Response.json({ id: `pay_${paymentMode}`, order_id: `order_${paymentMode}`, amount: quoted.payableNowPaise, currency: "INR", status: "captured", captured: true }));
+      await bookings.confirmPaidBooking(created.bookingId, { actorId: "system", orderId: `order_${paymentMode}`, paymentId: `pay_${paymentMode}`, source: "reconciliation" });
+    }
+    const saved = (await db.collection("bookings").doc(created.bookingId).get()).data()!;
+    expect(saved.bookingMode).toBe("hourly"); expect(saved.durationMinutes).toBe(180); expect(saved.nights).toBe(0);
+    expect(saved.totalPaise).toBe(quoted.totalPaise); expect(saved.paidPaise).toBe(online ? quoted.payableNowPaise : 0);
+    expect(saved.startAt).toBe(quoted.startAt); expect(saved.endAt).toBe(quoted.endAt);
+  }, 30000);
+  it("requires a new review when hourly price or terms change and respects cleaning buffers", async () => {
+    const { input } = await fixture();
+    const quoted = await bookings.quote(input);
+    await db.collection("ratePlans").doc(input.ratePlanId).update({ customerFeePaise: 1000 });
+    await expect(bookings.createBooking("guest", { ...input, expectedTotalPaise: quoted.totalPaise, quoteFingerprint: quoted.fingerprint }, "stale-hourly")).rejects.toThrow("QUOTE_CHANGED");
+    await bookings.createBooking("guest", input, "morning");
+    await expect(bookings.createBooking("guest", { ...input, arrivalTime: "13:15" }, "cleaning-conflict")).rejects.toThrow("SOLD_OUT_FOR_DATES");
+    await expect(bookings.createBooking("guest", { ...input, arrivalTime: "13:30" }, "after-cleaning")).resolves.toMatchObject({ requiresPayment: false });
+  }, 30000);
   it("permits exactly one concurrent reservation of the final room", async () => {
     const { input, propertyId } = await fixture();
     const results = await Promise.allSettled([bookings.createBooking("guest", input, "one"), bookings.createBooking("guest", input, "two")]);
@@ -413,10 +443,10 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     expect(claims.filter(r => r.status === "fulfilled")).toHaveLength(1);
     const attempt = claims.find(r => r.status === "fulfilled")! as PromiseFulfilledResult<Awaited<ReturnType<typeof claimCheckoutAttempt>>>;
     expect(attempt.value.razorpay.orderId).toBe(f.orderId);
-    expect(await reconcilePaymentForGuest("guest", f.bookingId, { attemptId: attempt.value.razorpay.attemptId, nativeResult: "cancelled" })).toMatchObject({ paymentEligible: false, reconciliationState: "awaiting_verification" });
+    expect(await reconcilePaymentForGuest("guest", f.bookingId, { attemptId: attempt.value.razorpay.attemptId, nativeResult: "cancelled" })).toMatchObject({ paymentEligible: false, reconciliationState: "awaiting_verification", paymentAction: "check_status", reasonCode: "PAYMENT_ATTEMPT_UNRESOLVED", nextCheckAfterMs: 5000 });
     await expect(claimCheckoutAttempt("guest", f.bookingId)).rejects.toThrow("PAYMENT_ATTEMPT_ACTIVE");
     f.payments([{ id: `failed_${f.propertyId}`, order_id: f.orderId, status: "failed", amount: 120000, currency: "INR" }]);
-    expect(await reconcilePaymentForGuest("guest", f.bookingId, { attemptId: attempt.value.razorpay.attemptId, nativeResult: "cancelled" })).toMatchObject({ paymentEligible: true });
+    expect(await reconcilePaymentForGuest("guest", f.bookingId, { attemptId: attempt.value.razorpay.attemptId, nativeResult: "cancelled" })).toMatchObject({ paymentEligible: true, paymentAction: "pay", reasonCode: "PAYMENT_ELIGIBLE", nextCheckAfterMs: 5000 });
     expect((await claimCheckoutAttempt("guest", f.bookingId)).razorpay.orderId).toBe(f.orderId);
     // A previous failed payment cannot release the new unresolved attempt.
     const latest = (await db.collection("bookings").doc(f.bookingId).get()).data()!.checkoutAttempt.id;
@@ -426,21 +456,27 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     const f = await recoveryFixture();
     const { reconcilePaymentForGuest, claimCheckoutAttempt } = await import("@/lib/booking/recovery");
     f.payments([{ id: `auth_${f.propertyId}`, order_id: f.orderId, status: "authorized", amount: 120000, currency: "INR" }]);
-    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false });
+    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false, paymentAction: "check_status", reasonCode: "PAYMENT_PROCESSING", nextCheckAfterMs: 5000 });
     await expect(claimCheckoutAttempt("guest", f.bookingId)).rejects.toThrow("PAYMENT_ATTEMPT_ACTIVE");
     await expect(reconcilePaymentForGuest("other", f.bookingId)).rejects.toThrow("BOOKING_NOT_FOUND");
     f.payments([]);
     await db.collection("bookings").doc(f.bookingId).update({ expiresAt: Timestamp.fromMillis(Date.now() - 1) });
-    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false });
+    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false, paymentAction: "none", reasonCode: "BOOKING_CLOSED", nextCheckAfterMs: 0 });
     f.unavailable();
     expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false, reconciliationState: "awaiting_verification" });
+  }, 30000);
+  it("asks guests to check again when the payment provider is unavailable", async () => {
+    const f = await recoveryFixture();
+    const { reconcilePaymentForGuest } = await import("@/lib/booking/recovery");
+    f.unavailable();
+    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ paymentEligible: false, paymentAction: "check_status", reasonCode: "PROVIDER_UNAVAILABLE", nextCheckAfterMs: 5000 });
   }, 30000);
   it("reconciles late captures through the existing inventory release and refund-pending path", async () => {
     const f = await recoveryFixture();
     const { reconcilePaymentForGuest } = await import("@/lib/booking/recovery");
     await db.collection("bookings").doc(f.bookingId).update({ expiresAt: Timestamp.fromMillis(Date.now() - 1) });
     f.payments([{ id: `late_${f.propertyId}`, order_id: f.orderId, status: "captured", captured: true, amount: 120000, currency: "INR" }]);
-    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ bookingStatus: "expired", paymentStatus: "refund_pending", reconciliationState: "settled", paymentEligible: false });
+    expect(await reconcilePaymentForGuest("guest", f.bookingId)).toMatchObject({ bookingStatus: "expired", paymentStatus: "refund_pending", reconciliationState: "settled", paymentEligible: false, paymentAction: "none", reasonCode: "PAYMENT_SETTLED", nextCheckAfterMs: 0 });
     expect((await db.collection("refunds").where("bookingId", "==", f.bookingId).get()).size).toBe(1);
     await reconcilePaymentForGuest("guest", f.bookingId);
     expect((await db.collection("refunds").where("bookingId", "==", f.bookingId).get()).size).toBe(1);

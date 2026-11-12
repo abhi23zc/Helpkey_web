@@ -1,3 +1,4 @@
+import { datePriceId } from "@/lib/booking/date-prices";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { evaluateStay } from "@/lib/booking/domain";
 import { guestPoliciesSchema, publicGuestPolicies } from "@/lib/partner/guest-policies";
@@ -133,5 +134,71 @@ describe("guest policy validation and public isolation", () => {
     for (const age of [17, 101, 18.5, "21"]) expect(guestPoliciesSchema.safeParse({ minimumCheckInAge: age }).success).toBe(false);
     expect(guestPoliciesSchema.safeParse({ additionalHouseRules: "x".repeat(2001) }).success).toBe(false);
     expect(guestPoliciesSchema.safeParse({ childrenPolicy: { allowed: true, internal: "secret" } }).success).toBe(false);
+  });
+});
+
+describe("Category 9 hourly public availability", () => {
+  const hourly = { ...stay, bookingMode: "hourly" as const, checkOut: undefined, arrivalTime: "10:00", durationMinutes: 180 };
+  const hourlyRate = { ...rate, bookingMode: "hourly", pricingModel: "duration" as const, durationPrices: [{ hours: 3, pricePaise: 55000 }, { hours: 6, pricePaise: 80000 }] };
+  beforeEach(() => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2027-01-01"));
+    fixture.records.clear(); fixture.cache.clear(); fixture.failReads = false; fixture.reads = []; fixture.queries = [];
+    for (const [path, value] of Object.entries({ "properties/hotel": settings, "roomTypes/room": room, "ratePlans/hourly": hourlyRate, "cancellationPolicies/policy": { propertyId: "hotel", status: "active", name: "Flexible", refundableUntilHours: 24, cancellationFeePercent: 0 } })) fixture.records.set(path, value);
+  });
+  afterEach(() => vi.useRealTimers());
+  it.each(["full", "deposit", "pay_at_property"])("returns exact zero-night totals and split for %s", async paymentMode => {
+    fixture.records.set("ratePlans/hourly", { ...hourlyRate, paymentMode });
+    const result = (await loadBookableProperty("garden", hourly))!;
+    const expected = evaluateStay(hourly, settings, room, { ...hourlyRate, paymentMode });
+    expect(result.rooms[0].rates[0]).toMatchObject({ nights: 0, durationMinutes: 180, totalPaise: expected.totalPaise, payableNowPaise: expected.payableNowPaise, balanceDuePaise: expected.balanceDuePaise, endAt: expected.endAt });
+    expect(result.arrivalStepMinutes).toBe(15);
+    expect(result.hourlyDurations[0].prices).toEqual(hourlyRate.durationPrices);
+  });
+  it("returns choices for incomplete inputs without claiming availability or a total", async () => {
+    const result = (await loadBookableProperty("garden", { bookingMode: "hourly", adults: 2, children: 0, infants: 0 }))!;
+    expect(result.hourlyDurations).toHaveLength(1);
+    expect(result.rooms[0].rates[0].totalPaise).toBeNull();
+    expect(fixture.reads.flat().some(path => path.startsWith("inventoryCalendars/"))).toBe(false);
+  });
+  it("preserves date-specific durations for both configuration and complete arrivals", async () => {
+    fixture.records.set("ratePlans/hourly", { ...hourlyRate, datePricingEnabled: true });
+    fixture.records.set(`rateDatePrices/${datePriceId("hotel", "hourly", hourly.checkIn)}`, { durationPrices: [{ hours: 4, pricePaise: 70000 }] });
+    const config = (await loadBookableProperty("garden", { bookingMode: "hourly", adults: 2, children: 0, infants: 0 }, hourly.checkIn))!;
+    expect(config.hourlyDurations[0].prices).toEqual([{ hours: 4, pricePaise: 70000 }]);
+    const result = (await loadBookableProperty("garden", { ...hourly, durationMinutes: 240 }))!;
+    expect(result.hourlyDurations[0].prices).toEqual([{ hours: 4, pricePaise: 70000 }]);
+    expect(result.rooms[0].rates[0].subtotalPaise).toBe(70000);
+    expect((await loadBookableProperty("garden", hourly))!.rooms).toEqual([]);
+  });
+  it("keeps valid configuration when an unpriced duration yields no offer", async () => {
+    const result = (await loadBookableProperty("garden", { ...hourly, durationMinutes: 240 }))!;
+    expect(result.rooms).toEqual([]);
+    expect(result.hourlyDurations[0].prices.map(row => row.hours)).toEqual([3, 6]);
+  });
+  it("retains configurable alternatives when operating or arrival windows reject this stay", async () => {
+    for (const restriction of [{ arrivalWindow: { start: "11:00", end: "18:00" } }, { operatingWindow: { start: "09:00", end: "12:00" } }, { stayRules: { minimumAdvanceMinutes: 30000 } }]) {
+      fixture.cache.clear(); fixture.records.set("ratePlans/hourly", { ...hourlyRate, ...restriction });
+      const result = (await loadBookableProperty("garden", hourly))!;
+      expect(result.rooms).toEqual([]); expect(result.hourlyDurations).toHaveLength(1);
+    }
+  });
+  it("confirms next-day departure only when midnight crossing is allowed", async () => {
+    expect((await loadBookableProperty("garden", { ...hourly, arrivalTime: "23:00" }))!.rooms).toEqual([]);
+    fixture.cache.clear(); fixture.records.set("ratePlans/hourly", { ...hourlyRate, allowMidnightCrossing: true });
+    const result = (await loadBookableProperty("garden", { ...hourly, arrivalTime: "23:00" }))!;
+    expect(result.rooms[0].rates[0].endAt).toBe("2027-01-15T20:30:00.000Z");
+    expect(result.rooms[0].rates[0].nights).toBe(0);
+  });
+  it("does not offer modes or malformed package tables unsupported by property or room", async () => {
+    for (const patch of [{ bookingModes: ["overnight"] }, { inventoryEngine: "legacy" }]) {
+      fixture.cache.clear(); fixture.records.set("properties/hotel", { ...settings, ...patch });
+      expect((await loadBookableProperty("garden", hourly))!.hourlyDurations).toEqual([]);
+    }
+    fixture.records.set("properties/hotel", settings);
+    fixture.cache.clear(); fixture.records.set("roomTypes/room", { ...room, bookingModes: ["overnight"] });
+    expect((await loadBookableProperty("garden", hourly))!.hourlyDurations).toEqual([]);
+    fixture.records.set("roomTypes/room", room);
+    fixture.cache.clear(); fixture.records.set("ratePlans/hourly", { ...hourlyRate, durationPrices: [{ hours: 1.5, pricePaise: 10000 }] });
+    expect((await loadBookableProperty("garden", hourly))!.hourlyDurations).toEqual([]);
   });
 });

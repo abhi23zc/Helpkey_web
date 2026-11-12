@@ -122,7 +122,9 @@ export function selectedRequests(
       )
         throw new StaySelectionError("This request can only be selected once.");
       validateResponseInputs(o, s.inputs, startAt, now, context);
-      const units = billableUnits(o, s.quantity, s.inputs, context);
+      let units: number;
+      try { units = billableUnits(o, s.quantity, s.inputs, context); }
+      catch (error) { throw new StaySelectionError(error instanceof Error ? error.message : "Review the service duration and people count."); }
       if (resolveResponse(o).responseType === "single" && quantities.has(o.id)) throw new StaySelectionError("Choose only one option for this offering.");
       const quantity = (quantities.get(o.id) ?? 0) + s.quantity;
       quantities.set(o.id, quantity);

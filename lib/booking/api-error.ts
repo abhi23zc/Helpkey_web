@@ -1,7 +1,9 @@
+import { StaySelectionError } from "@/lib/stay/domain";
 import { ZodError } from "zod";
 
 // Only documented customer-facing domain identifiers may become response metadata.
 const codes = new Set([
+  "BOOKING_MODE_NOT_AVAILABLE", "OUTSIDE_ARRIVAL_WINDOW", "OUTSIDE_OPERATING_WINDOW", "MIDNIGHT_CROSSING_NOT_ALLOWED", "ARRIVAL_TOO_FAR_AHEAD", "ARRIVAL_WEEKDAY_NOT_ALLOWED", "ARRIVAL_MUST_BE_QUARTER_HOUR", "AMBIGUOUS_LOCAL_TIME", "NONEXISTENT_LOCAL_TIME",
   "SUBMISSION_CLOSED", "PAYMENT_ATTEMPT_ACTIVE", "IDEMPOTENCY_CONFLICT", "IDEMPOTENCY_IN_PROGRESS", "QUOTE_CHANGED",
   "PAYMENT_ORDER_RECONCILIATION_REQUIRED", "PAYMENT_NOT_CAPTURED", "PAYMENT_REFUND_PENDING", "PAYMENT_MISMATCH",
   "DURATION_NOT_PRICED", "WHOLE_HOUR_DURATION_REQUIRED", "INVENTORY_CUTOVER_REQUIRED", "INVALID_LOCAL_TIME",
@@ -15,6 +17,7 @@ const codes = new Set([
 
 /** Add metadata without removing the legacy sentence consumed by deployed clients. */
 export function bookingFailure(error: unknown, legacyMessage: string) {
+  if (error instanceof StaySelectionError) return { error: legacyMessage, code: "STAY_SELECTION_INVALID" };
   if (error instanceof ZodError) {
     const fieldErrors: Record<string, string[]> = {};
     for (const issue of error.issues) {

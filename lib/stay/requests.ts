@@ -1,3 +1,4 @@
+import { StaySelectionError } from "./domain";
 import "server-only";
 import { offersEnabled } from "./offers";
 import { createHash } from "node:crypto";
@@ -18,7 +19,7 @@ export function unlistedSnapshots(
   return input.map((v, i) => {
     const when = Date.parse(v.neededAt);
     if (when < Math.max(now, Date.parse(startAt)) || when >= Date.parse(endAt))
-      throw new Error(
+      throw new StaySelectionError(
         "Choose an upcoming request time within your booked stay.",
       );
     return {
