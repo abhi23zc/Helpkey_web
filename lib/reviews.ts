@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -46,8 +47,8 @@ export async function refreshPropertyReviewSummary(propertyId: string) {
 
 /** A guest can review a property once a stay booked through Helpkey is completed. */
 export async function hasCompletedStay(userId: string, propertyId: string) {
-  const bookings = await adminDb.collection("bookings").where("guestId", "==", userId).where("propertyId", "==", propertyId).where("bookingStatus", "in", ["completed", "checked_out"]).limit(1).get();
-  return !bookings.empty;
+  const bookings = await adminDb.collection("bookings").where("guestId", "==", userId).where("propertyId", "==", propertyId).where("bookingStatus", "in", ["completed", "checked_out"]).limit(50).get();
+  return bookings.docs.some(d => customerOwnsBooking(d.data(), userId));
 }
 
 function asIso(value: unknown) { return value instanceof Timestamp ? value.toDate().toISOString() : typeof value === "string" ? value : null; }

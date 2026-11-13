@@ -52,7 +52,12 @@ describe.skipIf(!safe)(
             .collection(name)
             .where("propertyId", "==", id)
             .get();
-          for (const doc of docs.docs) await db.recursiveDelete(doc.ref);
+          for (let offset = 0; offset < docs.size; offset += 50)
+            await Promise.all(
+              docs.docs
+                .slice(offset, offset + 50)
+                .map((doc) => db.recursiveDelete(doc.ref)),
+            );
         }
         await db.recursiveDelete(db.collection("properties").doc(id));
       }
@@ -118,18 +123,15 @@ describe.skipIf(!safe)(
           status: "active",
           permissions: ["*"],
         });
-      await db
-        .collection("roomTypes")
-        .doc(`${id}-room`)
-        .set({
-          propertyId: id,
-          name: "Test room",
-          status: "active",
-          totalInventory: 1,
-          maxAdults: 2,
-          maxChildren: 0,
-          maxOccupancy: 2,
-        });
+      await db.collection("roomTypes").doc(`${id}-room`).set({
+        propertyId: id,
+        name: "Test room",
+        status: "active",
+        totalInventory: 1,
+        maxAdults: 2,
+        maxChildren: 0,
+        maxOccupancy: 2,
+      });
       await db
         .collection("ratePlans")
         .doc(`${id}-rate`)
@@ -200,6 +202,128 @@ describe.skipIf(!safe)(
           "totalInventory",
         ),
       ).toBe(1);
+    });
+    it("keeps large historical hotels usable and verifies drift explicitly", async () => {
+      const owner = await user("partner"),
+        id = await hotel(owner.uid);
+      for (let offset = 0; offset < 2001; offset += 200) {
+        const batch = db.batch();
+        for (let n = offset; n < Math.min(2001, offset + 200); n++) {
+          batch.set(db.collection("bookings").doc(`${id}-old-${n}`), {
+            propertyId: id,
+            bookingStatus: "checked_out",
+            inventoryReleased: true,
+            createdAt: Timestamp.fromMillis(n),
+          });
+          batch.set(db.collection("inventoryCalendars").doc(`${id}_old_${n}`), {
+            propertyId: id,
+            roomTypeId: `${id}-room`,
+            reserved: {},
+            blocked: {},
+          });
+        }
+        await batch.commit();
+      }
+      expect((await ready(owner.uid, id)).state).toBe("ready");
+      expect(
+        (await access.operationalAccess(owner.uid, id, "reservation.operate"))
+          .role,
+      ).toBe("owner");
+      const orphan = db.collection("inventoryCalendars").doc(`${id}_orphan`);
+      await orphan.set({
+        propertyId: id,
+        roomTypeId: `${id}-room`,
+        reserved: { "1": 1 },
+      });
+      // Normal authorization doesn't rescan history. Explicit verification detects it.
+      expect((await setup.setupStatus(owner.uid, id)).state).toBe("ready");
+      expect(
+        (await setup.updatePms(owner.uid, id, { action: "verify" })).state,
+      ).toBe("setup");
+      await expect(
+        access.operationalAccess(owner.uid, id, "reservation.create"),
+      ).rejects.toMatchObject({ status: 409 });
+      await orphan.delete();
+      expect(
+        (await setup.updatePms(owner.uid, id, { action: "verify" })).state,
+      ).toBe("ready");
+    }, 60000);
+    it("finds old cashier balances, pages paid candidates, and binds cursors to account and hotel", async () => {
+      const owner = await user("partner"),
+        cashier = await user("partner");
+      const id = await hotel(owner.uid),
+        foreign = await hotel(owner.uid);
+      await ready(owner.uid, id);
+      await db
+        .collection("propertyMemberships")
+        .doc(`${id}_${cashier.uid}`)
+        .set({
+          propertyId: id,
+          userId: cashier.uid,
+          role: "cashier",
+          status: "active",
+        });
+      const batch = db.batch();
+      for (let n = 0; n < 65; n++)
+        batch.set(db.collection("bookings").doc(`${id}-paid-${n}`), {
+          propertyId: id,
+          bookingStatus: "checked_out",
+          inventoryReleased: true,
+          totalPaise: 10000,
+          paidPaise: 10000,
+          createdAt: Timestamp.fromMillis(n + 2),
+        });
+      const old = `${id}-old-balance`;
+      batch.set(db.collection("bookings").doc(old), {
+        propertyId: id,
+        confirmationCode: "OLDCASH123",
+        bookingStatus: "checked_out",
+        inventoryReleased: true,
+        totalPaise: 10000,
+        paidPaise: 0,
+        createdAt: Timestamp.fromMillis(1),
+        leadGuest: { name: "Older guest", phone: "PRIVATE-PHONE" },
+      });
+      batch.set(db.collection("bookings").doc(`${foreign}-booking`), {
+        propertyId: foreign,
+        confirmationCode: "FOREIGN123",
+        totalPaise: 10000,
+      });
+      await batch.commit();
+      const { cashierBookings } = await import("@/lib/partner/pms/cashier");
+      const first = await cashierBookings(cashier.uid, id, {});
+      expect(first.bookings).toEqual([]);
+      expect(first.hasMore).toBe(true);
+      const second = await cashierBookings(cashier.uid, id, {
+        cursor: first.nextCursor,
+      });
+      expect(second.bookings.map((b) => b.id)).toEqual([old]);
+      expect(second.hasMore).toBe(false);
+      expect(
+        (
+          await cashierBookings(cashier.uid, id, { q: "oldcash123" })
+        ).bookings.map((b) => b.id),
+      ).toEqual([old]);
+      expect(
+        (await cashierBookings(cashier.uid, id, { q: old })).bookings.map(
+          (b) => b.id,
+        ),
+      ).toEqual([old]);
+      expect(
+        (await cashierBookings(cashier.uid, id, { q: "FOREIGN123" })).bookings,
+      ).toEqual([]);
+      expect(JSON.stringify(second)).not.toMatch(
+        /PRIVATE-PHONE|leadGuest|razorpay/,
+      );
+      await expect(
+        cashierBookings(cashier.uid, foreign, {}),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        cashierBookings(owner.uid, id, { cursor: first.nextCursor }),
+      ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
+      await expect(
+        cashierBookings(cashier.uid, id, { cursor: "tampered" }),
+      ).rejects.toMatchObject({ code: "INVALID_CURSOR" });
     });
     it("accepts email-bound invitations, discovers assigned hotels and enforces changed/revoked permissions", async () => {
       const owner = await user("partner"),
@@ -377,13 +501,10 @@ describe.skipIf(!safe)(
       await expect(
         access.operationalAccess(owner.uid, id, "reservation.operate"),
       ).rejects.toMatchObject({ status: 409 });
-      await db
-        .collection("properties")
-        .doc(id)
-        .update({
-          "pms.adminDisabled": true,
-          "pms.adminReason": "Test administrative block",
-        });
+      await db.collection("properties").doc(id).update({
+        "pms.adminDisabled": true,
+        "pms.adminReason": "Test administrative block",
+      });
       await expect(
         setup.updatePms(owner.uid, id, { action: "resume" }),
       ).rejects.toMatchObject({ status: 403 });

@@ -60,7 +60,7 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
       const amenityCodes = [...new Set([...(options.propertyAmenityCodes ?? []), ...resolveAmenityCodes(Array.isArray(roomData.amenityIds) ? roomData.amenityIds : [], options.codesById ?? new Map())])];
       if (!(options.amenities ?? []).every(code => amenityCodes.some(value => canonicalAmenityKey(value) === canonicalAmenityKey(code)))) return [];
       const cutoff = Date.parse(stay.startAt) - Number(rate.get("stayRules")?.minimumAdvanceMinutes ?? (stay.bookingMode === "hourly" ? 15 : 0)) * 60_000;
-      const validUntil = Math.min(now + 30_000, cutoff, terms.freeCancellation && terms.deadline ? Date.parse(terms.deadline) : Infinity);
+      const validUntil = Math.min(now + 300_000, cutoff, terms.freeCancellation && terms.deadline ? Date.parse(terms.deadline) : Infinity);
       const offer: SearchOffer = {
         roomTypeId: room.id, ratePlanId: rate.id, roomName: typeof roomData.name === "string" ? roomData.name : null,
         beds: Array.isArray(roomData.bedConfigurations) ? roomData.bedConfigurations.filter((bed: { bedType?: unknown; count?: unknown }) => typeof bed.bedType === "string" && Number.isInteger(bed.count) && Number(bed.count) > 0).map((bed: { bedType: string; count: number }) => ({ bedType: bed.bedType, count: bed.count })) : [],

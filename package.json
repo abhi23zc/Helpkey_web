@@ -42,6 +42,7 @@
     "test:e2e:partner": "playwright test --config playwright.partner.config.ts",
     "test:e2e:pms": "playwright test --config playwright.pms.config.ts",
     "test:pms:emulator": "vitest run tests/pms-foundation.emulator.test.ts",
+    "test:pms:ci": "vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000 tests/pms-foundation.emulator.test.ts tests/pms-walk-in.emulator.test.ts tests/bulk-room-numbers.emulator.test.ts tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts tests/stay-transactions.emulator.test.ts tests/stay-workspace.emulator.test.ts",
     "test:partner:emulator": "vitest run tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts"
   },
   "dependencies": {

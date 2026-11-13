@@ -6,7 +6,7 @@ import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import { housekeeping, maintenance } from "@/lib/partner/rooms/service";
 import { releaseCapacityBlock } from "@/lib/booking/blocks";
 import { performOperation } from "@/lib/partner/reservations/operations";
-import { netBalance } from "@/lib/partner/reservations/domain";
+import { cashierBookings } from "@/lib/partner/pms/cashier";
 type Context = { params: Promise<{ propertyId: string }> };
 const route = "/api/partner/properties/[propertyId]/pms/department";
 export const GET = reservationHandler<Context>(
@@ -16,52 +16,11 @@ export const GET = reservationHandler<Context>(
     const id = (await c.params).propertyId,
       a = await propertyAccess(uid, id);
     if (a.role === "cashier") {
-      await operationalAccess(uid, id, "payment.read");
-      const q =
-        new URL(r.url).searchParams.get("q")?.trim().toLowerCase() || "";
-      const bookings = await adminDb
-        .collection("bookings")
-        .where("propertyId", "==", id)
-        .orderBy("createdAt", "desc")
-        .limit(50)
-        .get();
-      const rows = bookings.docs.filter(
-        (d) =>
-          !q ||
-          [d.id, d.get("confirmationCode"), d.get("leadGuest.name")].some((v) =>
-            String(v || "")
-              .toLowerCase()
-              .includes(q),
-          ),
-      );
-      return Response.json({
-        role: a.role,
-        bookings: await Promise.all(
-          rows.map(async (d) => {
-            const b = d.data(),
-              payments = await adminDb
-                .collection("propertyPayments")
-                .where("bookingId", "==", d.id)
-                .get();
-            return {
-              id: d.id,
-              reference: b.confirmationCode,
-              guestName: b.leadGuest?.name || "Guest",
-              room: b.physicalUnitLabel || "Unassigned",
-              balancePaise: netBalance(b),
-              status: b.bookingStatus,
-              receipts: payments.docs
-                .filter((p) => p.get("type") === "collection")
-                .map((p) => ({
-                  id: p.id,
-                  amountPaise: p.get("amountPaise"),
-                  method: p.get("method"),
-                })),
-            };
-          }),
-        ),
-        limitedToRecent: true,
-      });
+      const params = new URL(r.url).searchParams;
+      return Response.json(await cashierBookings(uid, id, {
+        q: params.get("q") || "",
+        ...(params.get("cursor") ? { cursor: params.get("cursor") } : {}),
+      }));
     }
     await operationalAccess(
       uid,

@@ -8,7 +8,7 @@ type Settings = {
   childrenPolicy?: { allowed?: boolean | null };
   timezone?: string; bookingModes?: string[]; bookingMode?: string; pricingModel?: PricingModel;
   maxAdults?: number; maxChildren?: number; maxInfants?: number; maxOccupancy?: number;
-  checkInTime?: string; checkOutTime?: string; cleaningBufferMinutes?: number;
+  pms?: { allowEarlyWalkIns?: boolean }; checkInTime?: string; checkOutTime?: string; cleaningBufferMinutes?: number;
   basePricePaise?: number; durationPrices?: DurationPrice[];
   datePrices?: Record<string, { basePricePaise?: number; durationPrices?: DurationPrice[] }>;
   paymentMode?: string; depositBasisPoints?: number; taxBasisPoints?: number; customerFeePaise?: number;
@@ -69,7 +69,7 @@ export function calculateGuestPrice(subtotalPaise: number, rate: Pick<Settings, 
   const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Number((BigInt(totalPaise) * BigInt(depositBasisPoints) + BigInt(5000)) / BigInt(10000)) : totalPaise;
   return { subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, paymentMode, depositBasisPoints, payableNowPaise, balanceDuePaise: totalPaise - payableNowPaise };
 }
-export function evaluateStay(input: StayRequest, property: Settings, room: Settings, rate: Settings, now = Date.now()) {
+export function evaluateStay(input: StayRequest, property: Settings, room: Settings, rate: Settings, now = Date.now(), walkIn?: { arrivalTime: string }) {
   if (property.childrenPolicy?.allowed === false && (input.children > 0 || input.infants > 0)) throw new Error("CHILDREN_NOT_ALLOWED");
   const bookingMode = input.bookingMode ?? "overnight";
   if (bookingMode === "hourly" && rate.datePrices?.[input.checkIn]?.durationPrices) rate = { ...rate, durationPrices: rate.datePrices[input.checkIn].durationPrices };
@@ -83,7 +83,11 @@ export function evaluateStay(input: StayRequest, property: Settings, room: Setti
   let nights = 0;
   let durationMinutes: number;
   let end: number;
-  const start = resolveLocal(input.checkIn, bookingMode === "hourly" ? input.arrivalTime ?? "" : property.checkInTime ?? "14:00", timezone);
+  const start = resolveLocal(input.checkIn, walkIn ? walkIn.arrivalTime : bookingMode === "hourly" ? input.arrivalTime ?? "" : property.checkInTime ?? "14:00", timezone);
+  if (walkIn) {
+    if (input.checkIn !== localParts(now, timezone).date || start > now) throw new Error("WALK_IN_CURRENT_DATE_REQUIRED");
+    if (bookingMode === "overnight" && walkIn.arrivalTime < (property.checkInTime ?? "14:00") && property.pms?.allowEarlyWalkIns !== true) throw new Error("EARLY_WALK_IN_DISABLED");
+  }
   if (bookingMode === "overnight") {
     if (!input.checkOut || !validDate(input.checkOut)) throw new Error("INVALID_LOCAL_TIME");
     nights = (Date.parse(`${input.checkOut}T00:00Z`) - Date.parse(`${input.checkIn}T00:00Z`)) / 86400_000;
@@ -91,7 +95,7 @@ export function evaluateStay(input: StayRequest, property: Settings, room: Setti
     end = resolveLocal(input.checkOut, property.checkOutTime ?? "11:00", timezone);
     durationMinutes = (end - start) / 60_000;
   } else {
-    if (Number(input.arrivalTime?.slice(3)) % 15 !== 0) throw new Error("ARRIVAL_MUST_BE_QUARTER_HOUR");
+    if (!walkIn && Number(input.arrivalTime?.slice(3)) % 15 !== 0) throw new Error("ARRIVAL_MUST_BE_QUARTER_HOUR");
     durationMinutes = integer(input.durationMinutes, 0, 60, 1440);
     if (durationMinutes % 60 !== 0) throw new Error("WHOLE_HOUR_DURATION_REQUIRED");
     if (!validDurationPrices(rate.durationPrices)) throw new Error("INVALID_DURATION_PRICES");
@@ -101,7 +105,7 @@ export function evaluateStay(input: StayRequest, property: Settings, room: Setti
     const endLocal = localParts(end, timezone);
     if (rate.allowMidnightCrossing !== true && endLocal.date !== input.checkIn) throw new Error("MIDNIGHT_CROSSING_NOT_ALLOWED");
     const window = rate.arrivalWindow ?? { start: "00:00", end: "23:59" };
-    const arrival = input.arrivalTime!;
+    const arrival = walkIn?.arrivalTime || input.arrivalTime!;
     if (window.start > window.end || arrival < window.start || arrival > window.end) throw new Error("OUTSIDE_ARRIVAL_WINDOW");
     // After-midnight arrivals belong to the operating window opened the previous day.
     if (rate.operatingWindow && rate.operatingWindow.start !== rate.operatingWindow.end) {
@@ -116,7 +120,7 @@ export function evaluateStay(input: StayRequest, property: Settings, room: Setti
   }
   if (end <= start) throw new Error("CHECK_OUT_MUST_FOLLOW_CHECK_IN");
   const minimumNotice = integer(rules.minimumAdvanceMinutes, bookingMode === "hourly" ? 15 : 0, 0, 525600);
-  if (start < now + minimumNotice * 60_000) throw new Error("CHECK_IN_IN_PAST");
+  if (!walkIn && start < now + minimumNotice * 60_000) throw new Error("CHECK_IN_IN_PAST");
   if (start > now + Math.min(rules.maximumAdvanceDays ?? 365, 365) * 86400_000) throw new Error("ARRIVAL_TOO_FAR_AHEAD");
   const weekday = new Date(`${input.checkIn}T00:00Z`).getUTCDay();
   if (Array.isArray(rate.eligibleWeekdays) && !rate.eligibleWeekdays.includes(weekday)) throw new Error("ARRIVAL_WEEKDAY_NOT_ALLOWED");

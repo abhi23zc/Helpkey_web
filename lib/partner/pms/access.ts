@@ -77,8 +77,8 @@ export async function operationalAccess(
         409,
         "PMS is disabled. Ask the owner to enable it.",
       );
-    const { setupStatus } = await import("./setup");
-    const status = await setupStatus(uid, propertyId, tx);
+    const { setupStatusForAccess } = await import("./setup");
+    const status = await setupStatusForAccess(access, propertyId, tx);
     if (status.state !== "ready")
       throw new ApiException(
         "PMS_SETUP_REQUIRED",

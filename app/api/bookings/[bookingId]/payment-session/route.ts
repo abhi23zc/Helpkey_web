@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { ApiException } from "@/lib/api/errors";
 import { claimCheckoutAttempt, reconcilePaymentForGuest } from "@/lib/booking/recovery";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
@@ -19,7 +20,7 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
     }
     const snap = await adminDb.collection("bookings").doc(bookingId).get();
     const data = snap.data();
-    if (!snap.exists || data?.guestId !== user.uid) throw new Error("BOOKING_NOT_FOUND");
+    if (!snap.exists || !data || !customerOwnsBooking(data, user.uid)) throw new Error("BOOKING_NOT_FOUND");
     if (!(await reconcilePaymentForGuest(user.uid, bookingId)).paymentEligible) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     if (data.bookingStatus !== "pending_payment" || !data.razorpayOrderId) throw new Error("PAYMENT_NOT_EXPECTED");
     if (data.expiresAt instanceof Timestamp && data.expiresAt.toMillis() <= Date.now()) throw new Error("PAYMENT_NOT_EXPECTED");

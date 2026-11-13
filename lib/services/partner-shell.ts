@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AppUser } from "@/types/auth";
+import type { SetupItem } from "@/lib/partner/pms/domain";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireRole } from "@/lib/partner/service";
 import { resolvePublicImage } from "@/lib/media-resolver";
@@ -16,15 +17,15 @@ export async function loadPartnerShell(user: AppUser) {
   const ids = [...new Set(memberships.docs.map(d => d.get("propertyId")))].filter((id): id is string => typeof id === "string" && !id.includes("/"));
   const docs = ids.length ? await adminDb.getAll(...ids.map(id => adminDb.collection("properties").doc(id))) : [];
   const { propertyAccess } = await import("@/lib/partner/pms/access");
-  const { setupStatus } = await import("@/lib/partner/pms/setup");
-  const capabilities = new Map<string, { role: string; permissions: readonly string[]; accessRevision: number; pmsState: string; operationsReason: string | null }>();
+  const { setupStatusForAccess } = await import("@/lib/partner/pms/setup");
+  const capabilities = new Map<string, { role: string; permissions: readonly string[]; accessRevision: number; pmsState: string; operationsReason: string | null; operationsIssues: SetupItem[] }>();
   const accessible: typeof docs = [];
   for (const doc of docs) {
     if (!doc.exists) continue;
     try {
       const a = await propertyAccess(user.uid, doc.id);
-      const state = a.property.pms?.activatedAt ? await setupStatus(user.uid, doc.id) : null;
-      capabilities.set(doc.id, { role: a.role, permissions: a.permissions, accessRevision: a.revision, pmsState: state?.state || (a.block ? "disabled" : "not_activated"), operationsReason: a.block || (state && state.state !== "ready" ? "PMS setup is incomplete or disabled. Ask the owner to review Settings." : a.role !== "owner" && !state ? "The hotel owner needs to activate PMS." : null) });
+      const state = a.property.pms?.activatedAt ? await setupStatusForAccess(a, doc.id) : null;
+      capabilities.set(doc.id, { role: a.role, permissions: a.permissions, accessRevision: a.revision, pmsState: state?.state || (a.block ? "disabled" : "not_activated"), operationsReason: a.block || state?.reason || (state && state.state !== "ready" ? "Complete the setup checks below before using this hotel’s operations." : a.role !== "owner" && !state ? "The hotel owner needs to activate PMS before staff can use hotel operations." : null), operationsIssues: state?.state === "setup" ? state.items.filter(item => !item.complete) : [] });
       accessible.push(doc);
     } catch (error) {
       if (!(error && typeof error === "object" && "status" in error && error.status === 403)) throw error;

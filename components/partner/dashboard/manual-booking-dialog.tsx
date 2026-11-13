@@ -1,8 +1,12 @@
 "use client";
+import { localParts } from "@/lib/booking/domain";
 import { useHotelCapabilities } from "./hotel-capabilities";
 
 import { PartnerDatePicker } from "./partner-date-picker";
-import { eligiblePricing, type DurationPrice } from "@/lib/booking/duration-pricing";
+import {
+  eligiblePricing,
+  type DurationPrice,
+} from "@/lib/booking/duration-pricing";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +27,12 @@ import {
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
 type ManualBookingForm = {
+  reservationPurpose: "reservation" | "walk_in";
+  recordedArrivalTime: string;
+  accompanyingNames: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
   bookingMode: "overnight" | "hourly";
   arrivalTime: string;
   durationMinutes: number;
@@ -44,6 +54,12 @@ type ManualBookingForm = {
 };
 
 const EMPTY: ManualBookingForm = {
+  reservationPurpose: "reservation",
+  recordedArrivalTime: "",
+  accompanyingNames: "",
+  contactName: "",
+  contactEmail: "",
+  contactPhone: "",
   bookingMode: "overnight",
   arrivalTime: "10:00",
   durationMinutes: 180,
@@ -75,8 +91,10 @@ function calcNights(a: string, b: string) {
   return Math.max(
     0,
     Math.round(
-      (new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86_400_000
-    )
+      (new Date(`${b}T00:00:00Z`).getTime() -
+        new Date(`${a}T00:00:00Z`).getTime()) /
+        86_400_000,
+    ),
   );
 }
 
@@ -107,7 +125,9 @@ function SectionCard({
           <h3 className="text-xs font-bold uppercase tracking-[0.06em] text-[#061224]">
             {title}
           </h3>
-          {subtitle && <p className="text-[11px] font-medium text-[#8b96aa]">{subtitle}</p>}
+          {subtitle && (
+            <p className="text-[11px] font-medium text-[#8b96aa]">{subtitle}</p>
+          )}
         </div>
       </div>
       {children}
@@ -131,6 +151,13 @@ export function ManualBookingDialog({
   onCreated: (bookingId?: string) => void;
 }) {
   const permits = useHotelCapabilities();
+  const [timezone, setTimezone] = useState("");
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => setClock(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [open]);
   const [createdId, setCreatedId] = useState<string>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const requestKey = useRef("");
@@ -157,22 +184,37 @@ export function ManualBookingDialog({
   useEffect(() => {
     if (!open || !propertyId) return;
     const controller = new AbortController();
-    fetch(`/api/partner/properties/${encodeURIComponent(propertyId)}?view=rooms`, {
-      signal: controller.signal,
-    })
+    fetch(
+      `/api/partner/properties/${encodeURIComponent(propertyId)}?view=rooms`,
+      {
+        signal: controller.signal,
+      },
+    )
       .then(async (response) => {
         if (!response.ok) throw new Error("Unable to load rooms");
         return response.json();
       })
-      .then((body) => setChoices({ rooms: body.roomTypes ?? [], rates: body.ratePlans ?? [] }))
+      .then((body) => {
+        setTimezone(body.property?.timezone || "Asia/Kolkata");
+        setClock(Date.now());
+        setChoices({
+          rooms: body.roomTypes ?? [],
+          rates: body.ratePlans ?? [],
+        });
+      })
       .catch((err) => {
-        if (err.name !== "AbortError") setError("Unable to load room types and rates.");
+        if (err.name !== "AbortError")
+          setError("Unable to load room types and rates.");
       });
     return () => controller.abort();
   }, [open, propertyId]);
 
   const effectiveRate = choices.rates.find((r) => r.id === form.ratePlanId);
   const priceRequest = {
+    propertyId,
+    guestName: form.guestName || "Preview guest",
+    reservationPurpose: form.reservationPurpose,
+    recordedArrivalTime: form.recordedArrivalTime || undefined,
     roomTypeId: form.roomTypeId,
     ratePlanId: form.ratePlanId,
     bookingMode: form.bookingMode,
@@ -190,30 +232,36 @@ export function ManualBookingDialog({
     totalPaise: number;
     requestedDurationPriced: boolean;
     durationPrices: DurationPrice[];
+    startAt: string;
+    endAt: string;
+    timezone: string;
   }>({
     queryKey: ["partner", propertyId, "manual-date-price", priceRequest],
     enabled:
       open &&
       !!propertyId &&
-      !!effectiveRate?.datePricingEnabled &&
+      !!effectiveRate &&
       !!form.checkIn &&
       (form.bookingMode === "hourly" || !!form.checkOut),
     queryFn: async ({ signal }) => {
-      const r = await fetch(`/api/partner/properties/${propertyId}/rooms-workspace`, {
+      const r = await fetch("/api/partner/bookings/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal,
-        body: JSON.stringify({ action: "price-quote", input: priceRequest }),
+        body: JSON.stringify(priceRequest),
       });
       const b = await r.json();
-      if (!r.ok) throw new Error(b.error?.message || b.message || "Unable to quote date prices.");
+      if (!r.ok)
+        throw new Error(
+          b.error?.message || b.message || "Unable to quote date prices.",
+        );
       return b;
     },
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [createdCode, setCreatedCode] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = timezone ? localParts(clock, timezone).date : "";
 
   // Reset when closed
   useEffect(() => {
@@ -236,13 +284,15 @@ export function ManualBookingDialog({
   useEffect(() => {
     if (!open) return;
     const previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusable = () =>
       [
         ...(dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]'
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
         ) ?? []),
       ].filter((el) => el.getClientRects().length > 0);
     const frame = requestAnimationFrame(() => focusable()[1]?.focus());
@@ -275,42 +325,55 @@ export function ManualBookingDialog({
 
   if (!open) return null;
 
-  const set = <K extends keyof ManualBookingForm>(k: K, v: ManualBookingForm[K]) =>
-    setForm((p) => ({ ...p, [k]: v }));
+  const set = <K extends keyof ManualBookingForm>(
+    k: K,
+    v: ManualBookingForm[K],
+  ) => setForm((p) => ({ ...p, [k]: v }));
 
   const nights = calcNights(form.checkIn, form.checkOut);
-  const selectedRate = choices.rates.find((rate) => rate.id === form.ratePlanId);
+  const selectedRate = choices.rates.find(
+    (rate) => rate.id === form.ratePlanId,
+  );
   const publishedPrice =
     form.bookingMode === "hourly"
-      ? selectedRate?.durationPrices?.find((row) => row.hours * 60 === form.durationMinutes)
-          ?.pricePaise
+      ? selectedRate?.durationPrices?.find(
+          (row) => row.hours * 60 === form.durationMinutes,
+        )?.pricePaise
       : selectedRate?.basePricePaise;
   const negotiated = effectiveRate?.datePricingEnabled
     ? Boolean(form.negotiatedPriceReason.trim())
     : publishedPrice !== Math.round(form.nightlyRateRupees * 100);
   const offeredDurations =
-    effectiveRate?.datePricingEnabled && dateQuote.data
+    effectiveRate?.datePricingEnabled && dateQuote.data?.durationPrices
       ? dateQuote.data.durationPrices
       : selectedRate?.durationPrices;
-  const total = (form.bookingMode === "hourly" ? 1 : nights) * form.nightlyRateRupees;
+  const total =
+    (form.bookingMode === "hourly" ? 1 : nights) * form.nightlyRateRupees;
 
   const subtotalPaise =
-    !negotiated && effectiveRate?.datePricingEnabled && dateQuote.data
+    !negotiated && dateQuote.data
       ? dateQuote.data.subtotalPaise
       : Math.round(total * 100);
   const taxPaise = Number(
-    (BigInt(Number.isSafeInteger(subtotalPaise) && subtotalPaise >= 0 ? subtotalPaise : 0) *
+    (BigInt(
+      Number.isSafeInteger(subtotalPaise) && subtotalPaise >= 0
+        ? subtotalPaise
+        : 0,
+    ) *
       BigInt(selectedRate?.taxBasisPoints ?? 0) +
       BigInt(5000)) /
-      BigInt(10000)
+      BigInt(10000),
   );
-  const finalTotalPaise = subtotalPaise + taxPaise + (selectedRate?.customerFeePaise ?? 0);
+  const finalTotalPaise =
+    subtotalPaise + taxPaise + (selectedRate?.customerFeePaise ?? 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
-      effectiveRate?.datePricingEnabled &&
-      (!dateQuote.data || dateQuote.data.requestedDurationPriced === false)
+      !dateQuote.data ||
+      dateQuote.isFetching ||
+      dateQuote.isError ||
+      dateQuote.data.requestedDurationPriced === false
     ) {
       setError("Wait for the date-specific price or correct the stay details.");
       return;
@@ -329,10 +392,31 @@ export function ManualBookingDialog({
     }
     const requestBody = JSON.stringify({
       ...form,
+      accompanyingGuests: form.accompanyingNames
+        .split("\n")
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .map((name) => ({ name, ageGroup: "adult" })),
+      bookingContact: form.contactName.trim()
+        ? {
+            name: form.contactName,
+            email: form.contactEmail,
+            phone: form.contactPhone,
+          }
+        : undefined,
+      recordedArrivalTime:
+        form.reservationPurpose === "walk_in"
+          ? form.recordedArrivalTime
+          : undefined,
       propertyId,
       expectedTotalPaise: finalTotalPaise,
+      expectedStartAt: dateQuote.data?.startAt,
+      expectedEndAt: dateQuote.data?.endAt,
+      expectedTimezone: dateQuote.data?.timezone,
       negotiatedSubtotalPaise: negotiated ? subtotalPaise : undefined,
-      negotiatedPriceReason: negotiated ? form.negotiatedPriceReason : undefined,
+      negotiatedPriceReason: negotiated
+        ? form.negotiatedPriceReason
+        : undefined,
       checkOut: form.bookingMode === "hourly" ? undefined : form.checkOut,
     });
     if (lastRequest.current !== requestBody) {
@@ -346,26 +430,35 @@ export function ManualBookingDialog({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": requestKey.current || (requestKey.current = crypto.randomUUID()),
+          "Idempotency-Key":
+            requestKey.current || (requestKey.current = crypto.randomUUID()),
         },
         body: requestBody,
       });
       const body = (await res.json()) as {
-        error?: string | { message?: string };
+        error?: string | { message?: string; code?: string };
         confirmationCode?: string;
         bookingId?: string;
       };
       if (!res.ok) {
+        if (
+          typeof body.error === "object" &&
+          (body.error?.code === "QUOTE_CHANGED" ||
+            body.error?.message?.toLowerCase().includes("quote"))
+        )
+          void dateQuote.refetch();
         throw new Error(
           typeof body.error === "string"
             ? body.error
-            : body.error?.message ?? "Unable to create booking."
+            : (body.error?.message ?? "Unable to create booking."),
         );
       }
       setCreatedId(body.bookingId);
       setCreatedCode(body.confirmationCode ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create booking.");
+      setError(
+        err instanceof Error ? err.message : "Unable to create booking.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -399,7 +492,9 @@ export function ManualBookingDialog({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-[#061224]">Add Manual Booking</h2>
+                <h2 className="text-base font-bold text-[#061224]">
+                  Add Manual Booking
+                </h2>
                 <span className="rounded-md bg-[#fbf5e8] px-2 py-0.5 text-[10px] font-bold text-[#8a7044]">
                   Walk-in / Offline
                 </span>
@@ -430,9 +525,12 @@ export function ManualBookingDialog({
                 <CheckCircle2 className="h-10 w-10" strokeWidth={1.75} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-[#061224]">Booking Confirmed!</h3>
+                <h3 className="text-xl font-bold text-[#061224]">
+                  Booking Confirmed!
+                </h3>
                 <p className="mt-1 text-sm font-medium text-[#68758c]">
-                  The manual reservation has been recorded and confirmed.
+                  The reservation is confirmed, but the guest is not checked in.
+                  Open it below and explicitly select Check in.
                 </p>
               </div>
 
@@ -444,8 +542,16 @@ export function ManualBookingDialog({
                   {createdCode}
                 </p>
                 <div className="mt-4 flex items-center justify-between border-t border-[#f3efe8] pt-3 text-xs text-[#68758c]">
-                  <span>Guest: <strong className="text-[#061224]">{form.guestName}</strong></span>
-                  <span>Total: <strong className="text-[#061224]">{fmt.format(finalTotalPaise / 100)}</strong></span>
+                  <span>
+                    Guest:{" "}
+                    <strong className="text-[#061224]">{form.guestName}</strong>
+                  </span>
+                  <span>
+                    Total:{" "}
+                    <strong className="text-[#061224]">
+                      {fmt.format(finalTotalPaise / 100)}
+                    </strong>
+                  </span>
                 </div>
               </div>
 
@@ -460,7 +566,140 @@ export function ManualBookingDialog({
             </div>
           ) : (
             /* ── Booking Form ── */
-            <form id="mbf" onSubmit={handleSubmit} noValidate className="space-y-4">
+            <form
+              id="mbf"
+              onSubmit={handleSubmit}
+              noValidate
+              className="space-y-4"
+            >
+              <section className="rounded-2xl border border-[#ede7dc] bg-white p-4 space-y-3">
+                <label className={FIELD_LABEL_CLS}>
+                  Reservation purpose
+                  <select
+                    className={INPUT_CLS}
+                    value={form.reservationPurpose}
+                    disabled={!timezone}
+                    onChange={(e) => {
+                      const purpose = e.target.value as
+                        "reservation" | "walk_in";
+                      const local = localParts(Date.now(), timezone);
+                      setForm((f) => ({
+                        ...f,
+                        reservationPurpose: purpose,
+                        ...(purpose === "walk_in"
+                          ? {
+                              checkIn: local.date,
+                              recordedArrivalTime: local.time,
+                              arrivalTime: local.time,
+                              checkOut: new Date(
+                                Date.parse(`${local.date}T00:00Z`) + 86400000,
+                              )
+                                .toISOString()
+                                .slice(0, 10),
+                            }
+                          : {}),
+                      }));
+                    }}
+                  >
+                    <option value="reservation">
+                      Future reservation / telephone
+                    </option>
+                    <option value="walk_in">
+                      Guest arriving now — walk-in
+                    </option>
+                  </select>
+                </label>
+                <p className="text-xs text-slate-500">
+                  Hotel timezone: {timezone || "Loading…"}. Saving confirms the
+                  booking; check-in is a separate action. Walk-ins use today’s
+                  hotel date, never the previous night.
+                </p>
+                {form.reservationPurpose === "walk_in" && (
+                  <label className={FIELD_LABEL_CLS}>
+                    Recorded arrival time ({today})
+                    <input
+                      type="time"
+                      className={INPUT_CLS}
+                      value={form.recordedArrivalTime}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          recordedArrivalTime: e.target.value,
+                          arrivalTime: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+                <label className={FIELD_LABEL_CLS}>
+                  Accompanying adult names — one per line
+                  <textarea
+                    className={INPUT_CLS}
+                    value={form.accompanyingNames}
+                    onChange={(e) => set("accompanyingNames", e.target.value)}
+                  />
+                </label>
+                <p className="text-xs text-slate-500">
+                  Enter actual staying names. Missing adults or children remain
+                  visibly unregistered and can be completed in reservation
+                  details.
+                </p>
+                <details>
+                  <summary className="text-sm font-semibold">
+                    Someone else made this booking
+                  </summary>
+                  <label className={FIELD_LABEL_CLS}>
+                    Booking contact name
+                    <input
+                      className={INPUT_CLS}
+                      value={form.contactName}
+                      onChange={(e) => set("contactName", e.target.value)}
+                    />
+                  </label>
+                  <label className={FIELD_LABEL_CLS}>
+                    Booking contact email
+                    <input
+                      type="email"
+                      className={INPUT_CLS}
+                      value={form.contactEmail}
+                      onChange={(e) => set("contactEmail", e.target.value)}
+                    />
+                  </label>
+                  <label className={FIELD_LABEL_CLS}>
+                    Booking contact phone
+                    <input
+                      className={INPUT_CLS}
+                      value={form.contactPhone}
+                      onChange={(e) => set("contactPhone", e.target.value)}
+                    />
+                  </label>
+                </details>
+                {dateQuote.isFetching && (
+                  <p role="status">Checking hotel availability and price…</p>
+                )}
+                {dateQuote.error && (
+                  <p role="alert" className="text-sm text-red-700">
+                    {dateQuote.error.message}
+                  </p>
+                )}
+                {dateQuote.data &&
+                  !dateQuote.isError &&
+                  dateQuote.data.requestedDurationPriced !== false && (
+                    <p className="text-sm font-semibold">
+                      Review occupancy:{" "}
+                      {new Date(dateQuote.data.startAt).toLocaleString(
+                        "en-IN",
+                        { timeZone: timezone || "Asia/Kolkata" },
+                      )}{" "}
+                      →{" "}
+                      {new Date(dateQuote.data.endAt).toLocaleString("en-IN", {
+                        timeZone: timezone || "Asia/Kolkata",
+                      })}{" "}
+                      ({timezone}). Total {fmt.format(finalTotalPaise / 100)}.
+                      Full calendar-night pricing applies to overnight stays.
+                    </p>
+                  )}
+              </section>
               {/* Segmented Booking Mode Toggle */}
               <div className="rounded-2xl border border-[#ede7dc] bg-white p-2 shadow-xs">
                 <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#f4f2ee] p-1">
@@ -557,10 +796,13 @@ export function ManualBookingDialog({
                   {/* Check-in Date */}
                   <div className="sm:col-span-1">
                     <label className={FIELD_LABEL_CLS}>
-                      {form.bookingMode === "hourly" ? "Date of Stay" : "Check-in Date"}{" "}
+                      {form.bookingMode === "hourly"
+                        ? "Date of Stay"
+                        : "Check-in Date"}{" "}
                       <span className="text-rose-500">*</span>
                     </label>
                     <PartnerDatePicker
+                      timezone={timezone || undefined}
                       required
                       min={today}
                       aria-label="Check-in date"
@@ -577,6 +819,7 @@ export function ManualBookingDialog({
                         Check-out Date <span className="text-rose-500">*</span>
                       </label>
                       <PartnerDatePicker
+                        timezone={timezone || undefined}
                         required
                         min={form.checkIn || today}
                         aria-label="Check-out date"
@@ -597,6 +840,7 @@ export function ManualBookingDialog({
                           step={900}
                           required
                           value={form.arrivalTime}
+                          disabled={form.reservationPurpose === "walk_in"}
                           onChange={(e) => set("arrivalTime", e.target.value)}
                           className={INPUT_CLS}
                         />
@@ -608,7 +852,9 @@ export function ManualBookingDialog({
                         <select
                           required
                           value={
-                            offeredDurations?.some((row) => row.hours * 60 === form.durationMinutes)
+                            offeredDurations?.some(
+                              (row) => row.hours * 60 === form.durationMinutes,
+                            )
                               ? form.durationMinutes
                               : ""
                           }
@@ -617,8 +863,9 @@ export function ManualBookingDialog({
                             set("durationMinutes", minutes);
                             set(
                               "nightlyRateRupees",
-                              (offeredDurations?.find((row) => row.hours * 60 === minutes)
-                                ?.pricePaise ?? 0) / 100
+                              (offeredDurations?.find(
+                                (row) => row.hours * 60 === minutes,
+                              )?.pricePaise ?? 0) / 100,
                             );
                           }}
                           className={INPUT_CLS}
@@ -626,7 +873,8 @@ export function ManualBookingDialog({
                           <option value="">Choose a priced duration</option>
                           {offeredDurations?.map((row) => (
                             <option key={row.hours} value={row.hours * 60}>
-                              {row.hours} hours · {fmt.format(row.pricePaise / 100)}
+                              {row.hours} hours ·{" "}
+                              {fmt.format(row.pricePaise / 100)}
                             </option>
                           ))}
                         </select>
@@ -637,7 +885,9 @@ export function ManualBookingDialog({
                   {/* Nights summary badge */}
                   {form.bookingMode === "overnight" && nights > 0 && (
                     <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-[#e4ded2] bg-[#fbfbf9] px-3.5 py-2.5 text-xs">
-                      <span className="font-medium text-[#68758c]">Stay Length</span>
+                      <span className="font-medium text-[#68758c]">
+                        Stay Length
+                      </span>
                       <span className="rounded-md bg-[#061224] px-2.5 py-1 font-bold text-white shadow-xs">
                         {nights} night{nights !== 1 ? "s" : ""}
                       </span>
@@ -689,7 +939,9 @@ export function ManualBookingDialog({
                       disabled={!form.roomTypeId}
                       onChange={(e) => {
                         set("ratePlanId", e.target.value);
-                        const rate = choices.rates.find((r) => r.id === e.target.value);
+                        const rate = choices.rates.find(
+                          (r) => r.id === e.target.value,
+                        );
                         if (form.bookingMode === "hourly") {
                           set("durationMinutes", 0);
                           set("nightlyRateRupees", 0);
@@ -700,15 +952,18 @@ export function ManualBookingDialog({
                       className={INPUT_CLS}
                     >
                       <option value="">
-                        {form.roomTypeId ? "Choose a published rate" : "Select room first"}
+                        {form.roomTypeId
+                          ? "Choose a published rate"
+                          : "Select room first"}
                       </option>
                       {choices.rates
                         .filter(
                           (rate) =>
                             rate.roomTypeId === form.roomTypeId &&
-                            (rate.bookingMode ?? "overnight") === form.bookingMode &&
+                            (rate.bookingMode ?? "overnight") ===
+                              form.bookingMode &&
                             rate.status === "active" &&
-                            eligiblePricing(rate)
+                            eligiblePricing(rate),
                         )
                         .map((rate) => (
                           <option key={rate.id} value={rate.id}>
@@ -732,7 +987,9 @@ export function ManualBookingDialog({
                     />
                   </div>
                   <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>Children (Age 0-12)</label>
+                    <label className={FIELD_LABEL_CLS}>
+                      Children (Age 0-12)
+                    </label>
                     <input
                       type="number"
                       min={0}
@@ -771,7 +1028,8 @@ export function ManualBookingDialog({
                           <strong className="text-[#061224]">
                             {fmt.format(dateQuote.data.subtotalPaise / 100)}
                           </strong>
-                          . The field below overrides this price for negotiated walk-ins.
+                          . The field below overrides this price for negotiated
+                          walk-ins.
                         </div>
                       ) : (
                         <span className="text-[#8b96aa]">
@@ -801,7 +1059,9 @@ export function ManualBookingDialog({
                         placeholder="5000"
                         disabled={!permits("rates.manage")}
                         value={form.nightlyRateRupees || ""}
-                        onChange={(e) => set("nightlyRateRupees", Number(e.target.value))}
+                        onChange={(e) =>
+                          set("nightlyRateRupees", Number(e.target.value))
+                        }
                         className={`${INPUT_CLS} pl-8`}
                       />
                     </div>
@@ -813,50 +1073,69 @@ export function ManualBookingDialog({
                     <select
                       aria-label="Payment status"
                       disabled={!permits("payment.collect")}
-                      title={!permits("payment.collect") ? "Ask a cashier to record payment after creating the reservation." : undefined}
+                      title={
+                        !permits("payment.collect")
+                          ? "Ask a cashier to record payment after creating the reservation."
+                          : undefined
+                      }
                       value={form.paymentMethod}
                       onChange={(e) => set("paymentMethod", e.target.value)}
                       className={INPUT_CLS}
                     >
-                      <option value="pay_at_property">Pay at Property (Unpaid)</option>
-                      <option value="paid">Already Paid (Cash / UPI / Card)</option>
+                      <option value="pay_at_property">
+                        Pay at Property (Unpaid)
+                      </option>
+                      <option value="paid">
+                        Already Paid (Cash / UPI / Card)
+                      </option>
                     </select>
                   </div>
 
                   {/* Negotiated Price Reason */}
-                  {permits("rates.manage") && (negotiated || effectiveRate?.datePricingEnabled) && (
-                    <div className="sm:col-span-2">
-                      <label className={FIELD_LABEL_CLS}>
-                        Negotiated Price Reason{" "}
-                        {negotiated && <span className="text-rose-500">*</span>}
-                        <span className="text-[11px] font-normal text-[#8b96aa]">
-                          (leave empty to use published date prices)
-                        </span>
-                      </label>
-                      <input
-                        required={negotiated}
-                        minLength={3}
-                        placeholder="e.g. Corporate discount, repeat guest agreement"
-                        value={form.negotiatedPriceReason}
-                        onChange={(e) => set("negotiatedPriceReason", e.target.value)}
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                  )}
+                  {permits("rates.manage") &&
+                    (negotiated || effectiveRate?.datePricingEnabled) && (
+                      <div className="sm:col-span-2">
+                        <label className={FIELD_LABEL_CLS}>
+                          Negotiated Price Reason{" "}
+                          {negotiated && (
+                            <span className="text-rose-500">*</span>
+                          )}
+                          <span className="text-[11px] font-normal text-[#8b96aa]">
+                            (leave empty to use published date prices)
+                          </span>
+                        </label>
+                        <input
+                          required={negotiated}
+                          minLength={3}
+                          placeholder="e.g. Corporate discount, repeat guest agreement"
+                          value={form.negotiatedPriceReason}
+                          onChange={(e) =>
+                            set("negotiatedPriceReason", e.target.value)
+                          }
+                          className={INPUT_CLS}
+                        />
+                      </div>
+                    )}
 
                   {/* Already Paid Details */}
                   {form.paymentMethod === "paid" && (
                     <>
                       <div className="sm:col-span-1">
-                        <label className={FIELD_LABEL_CLS}>Payment Method</label>
+                        <label className={FIELD_LABEL_CLS}>
+                          Payment Method
+                        </label>
                         <select
                           className={INPUT_CLS}
                           value={form.collectionMethod}
-                          onChange={(e) => set("collectionMethod", e.target.value)}
+                          onChange={(e) =>
+                            set("collectionMethod", e.target.value)
+                          }
                         >
                           <option value="cash">Cash</option>
                           <option value="upi">UPI</option>
-                          <option value="card_terminal">Card Terminal (POS)</option>
+                          <option value="card_terminal">
+                            Card Terminal (POS)
+                          </option>
                         </select>
                       </div>
                       <div className="sm:col-span-1">
@@ -875,7 +1154,9 @@ export function ManualBookingDialog({
                           }
                           required={form.collectionMethod !== "cash"}
                           value={form.collectionReference}
-                          onChange={(e) => set("collectionReference", e.target.value)}
+                          onChange={(e) =>
+                            set("collectionReference", e.target.value)
+                          }
                           maxLength={180}
                         />
                       </div>
@@ -895,9 +1176,14 @@ export function ManualBookingDialog({
                                 : `${nights} nights × ${fmt.format(form.nightlyRateRupees)}`}
                           </p>
                           <p className="mt-1 text-xs font-medium text-[#705e40]">
-                            {form.paymentMethod === "paid" ? "Collected in full" : "Collect at property"} ·{" "}
-                            <span>Tax {fmt.format(taxPaise / 100)}</span> · Fees{" "}
-                            {fmt.format((selectedRate?.customerFeePaise ?? 0) / 100)}
+                            {form.paymentMethod === "paid"
+                              ? "Collected in full"
+                              : "Collect at property"}{" "}
+                            · <span>Tax {fmt.format(taxPaise / 100)}</span> ·
+                            Fees{" "}
+                            {fmt.format(
+                              (selectedRate?.customerFeePaise ?? 0) / 100,
+                            )}
                           </p>
                         </div>
                         <div className="text-left sm:text-right">

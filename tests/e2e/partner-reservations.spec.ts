@@ -72,6 +72,9 @@ async function fixture(
         body: '"Reference","Guest"\n"KNP123456","Ada Guest"',
       });
       return;
+    } else if (url.pathname === "/api/partner/bookings/quote") {
+      const input = route.request().postDataJSON();
+      body = { requestedDurationPriced: true, durationPrices: [], subtotalPaise: 100000, totalPaise: 123000, startAt: `${input.checkIn}T08:30:00Z`, endAt: `${input.checkOut}T05:30:00Z`, timezone: "Asia/Kolkata" };
     } else if (url.pathname === "/api/partner/bookings" && method === "POST")
       body = {
         bookingId: booking.id,

@@ -95,6 +95,7 @@ describe.skipIf(!enabled)("direct queue delivery (real Redis + Firestore emulato
     expect((await ref.get()).get("bookingStatus")).toBe("confirmed");
   });
   it("processes notifications by ID and preserves read state on duplicate delivery", async () => {
+    await db.collection("bookings").doc("booking").set({ propertyId: "hotel", guestId: "guest", source: "website", bookingStatus: "confirmed" });
     const ref = db.collection("bookingNotificationOutbox").doc("booking_confirmed");
     await db.batch().create(ref, { bookingId: "booking", propertyId: "hotel", guestId: "guest", bookingStatus: "confirmed", status: "pending", attempts: 0, nextAttemptAt: Timestamp.now() }).commit();
     const task = taskFromRecord("notifications", ref.id, (await ref.get()).data()!)!;
@@ -115,6 +116,7 @@ describe.skipIf(!enabled)("direct queue delivery (real Redis + Firestore emulato
     expect(bookingTaskId(taskFromRecord("expiry", ref.id, after)!)).toBe(bookingTaskId(taskFromRecord("expiry", ref.id, before)!));
   });
   it("executes a delayed notification through the real worker and authenticated HTTP handler", async () => {
+    await db.collection("bookings").doc("delayed").set({ propertyId: "hotel", guestId: "guest", source: "website", bookingStatus: "confirmed" });
     await startWorker();
     const ref = db.collection("bookingNotificationOutbox").doc("delayed_confirmed"), dueAt = Date.now() + 500;
     await db.batch().create(ref, { bookingId: "delayed", propertyId: "hotel", guestId: "guest", bookingStatus: "confirmed", status: "pending", attempts: 0, nextAttemptAt: Timestamp.fromMillis(dueAt) }).commit();

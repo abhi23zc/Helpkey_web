@@ -1,5 +1,7 @@
 "use client";
 import Link from "next/link";
+import { BulkRoomNumbers } from "./bulk-room-numbers";
+import { compareRoomLabels } from "@/lib/partner/reservations/bulk-unit-domain";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -28,7 +30,9 @@ export type PmsStatus = {
   items: SetupItem[];
   openingData: string;
   teamReviewed: boolean;
+  allowEarlyWalkIns?: boolean;
   adminDisabled: boolean;
+  inventoryVerification?: { passed: boolean; checkedAt: string | null };
   marketplace: { bookable: boolean; ownerPaused: boolean; reason: string };
 };
 export const stateLabels = {
@@ -464,8 +468,9 @@ function RoomRegister({ propertyId }: { propertyId: string }) {
               Add room number
             </button>
           </form>
+          <BulkRoomNumbers key={propertyId} propertyId={propertyId} rooms={query.data?.rooms ?? []} />
           <div className="mt-4 divide-y divide-slate-100">
-            {query.data?.units.map((u) => (
+            {query.data?.units.toSorted((a, b) => compareRoomLabels(a.label, b.label)).map((u) => (
               <div
                 key={u.id}
                 className="flex flex-wrap items-center justify-between gap-2 py-3"
@@ -532,12 +537,22 @@ function Settings({ propertyId }: { propertyId: string }) {
     setError("");
     setNotice("");
     try {
-      await apiFetch(`/api/partner/properties/${propertyId}/pms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      setNotice("Hotel settings saved.");
+      const saved = await apiFetch<PmsStatus>(
+        `/api/partner/properties/${propertyId}/pms`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (
+        saved.inventoryVerification?.checkedAt &&
+        !saved.inventoryVerification.passed
+      )
+        setError(
+          "Inventory verification found inconsistencies. Review the checklist and contact support before using PMS.",
+        );
+      else setNotice("Hotel settings saved.");
       await client.invalidateQueries({ queryKey: ["partner"] });
     } catch (e) {
       setError(message(e));
@@ -604,6 +619,15 @@ function Settings({ propertyId }: { propertyId: string }) {
               </h2>
               {owner && (
                 <div className="flex flex-wrap gap-2">
+                  {data.activated && (
+                    <button
+                      disabled={busy || !!data.reason}
+                      onClick={() => void send({ action: "verify" })}
+                      className={pmsButton}
+                    >
+                      Verify inventory
+                    </button>
+                  )}
                   {!data.activated ? (
                     <button
                       disabled={busy || !!data.reason}
@@ -631,6 +655,18 @@ function Settings({ propertyId }: { propertyId: string }) {
                 </div>
               )}
             </div>
+            {data.inventoryVerification?.checkedAt && (
+              <p className="mt-2 text-xs text-slate-500">
+                Last inventory verification:{" "}
+                {new Date(
+                  data.inventoryVerification.checkedAt,
+                ).toLocaleString()}{" "}
+                ·{" "}
+                {data.inventoryVerification.passed
+                  ? "Passed"
+                  : "Needs reconciliation"}
+              </p>
+            )}
             {data.reason && (
               <p
                 role="alert"
@@ -741,7 +777,8 @@ function Declarations({
   save: (body: object) => Promise<void>;
 }) {
   const [opening, setOpening] = useState(data.openingData),
-    [reviewed, setReviewed] = useState(data.teamReviewed);
+    [reviewed, setReviewed] = useState(data.teamReviewed),
+    [early, setEarly] = useState(data.allowEarlyWalkIns === true);
   return (
     <form
       className={pmsCard}
@@ -751,10 +788,12 @@ function Declarations({
           action: "declaration",
           openingData: opening,
           teamReviewed: reviewed,
+          allowEarlyWalkIns: early,
         });
       }}
     >
       <h2 className="text-lg font-bold">Confirm opening information</h2>
+      <label className="mt-4 flex gap-2 text-sm"><input type="checkbox" checked={early} disabled={busy} onChange={e => setEarly(e.target.checked)} />Allow overnight walk-ins before standard check-in. Charge full current-date nights; show checkout explicitly. Never book the previous night.</label>
       <label className="mt-4 block text-sm">
         Does this hotel have reservations or balances outside Helpkey to bring
         across?

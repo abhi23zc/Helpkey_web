@@ -27,7 +27,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
   const propertyMatch = path.match(/^\/api\/partner\/properties\/([^/]+)/);
   const bookingMatch = path.match(/^\/api\/partner\/bookings\/([^/]+)/);
   if (propertyMatch) propertyId = decodeURIComponent(propertyMatch[1]);
-  if (bookingMatch && !["search", "export"].includes(bookingMatch[1])) {
+  if (bookingMatch && !["search", "export", "quote"].includes(bookingMatch[1])) {
     const b = await adminDb
       .collection("bookings")
       .doc(decodeURIComponent(bookingMatch[1]))
@@ -54,7 +54,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
     operational = true;
     permission = path.endsWith("/export") ? "guest.export" : "reservation.read";
     if (write) {
-      if (path === "/api/partner/bookings") permission = "reservation.create";
+      if (path === "/api/partner/bookings" || path === "/api/partner/bookings/quote") permission = "reservation.create";
       else if (path.endsWith("/status"))
         permission = ["cancelled", "no_show"].includes(body.status)
           ? "reservation.cancel"
@@ -70,6 +70,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
               refund: "payment.refund",
             } as Record<string, Permission>
           )[body.action] || "listing.manage";
+      else if (path.endsWith("/guest-registration") || path.endsWith("/customer-link")) permission = "reservation.note";
       else if (path.endsWith("/amendment")) permission = "reservation.amend";
       else if (
         ["confirmed", "preparing", "ready", "fulfilled"].includes(body.status)
@@ -77,7 +78,10 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
         permission = "requests.prepare";
       else permission = "requests.manage";
     }
-  } else if (path === "/api/partner/physical-units")
+  } else if (
+    path === "/api/partner/physical-units" ||
+    path === "/api/partner/physical-units/bulk"
+  )
     permission = write ? "rooms.manage" : "rooms.read";
   else if (path.includes("/pms")) {
     permission = path.endsWith("/team") ? "team.manage" : "setup.read";

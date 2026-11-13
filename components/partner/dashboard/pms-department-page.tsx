@@ -22,6 +22,9 @@ type Department = {
     startAt: string;
     endAt: string;
   }[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+  lookup?: boolean;
   bookings?: {
     id: string;
     reference: string;
@@ -38,17 +41,25 @@ const rupees = (n: number) =>
   );
 function DepartmentView({ propertyId }: { propertyId: string }) {
   const base = `/api/partner/properties/${propertyId}/pms/department`;
+  const [searchInput, setSearchInput] = useState("");
+  const [cursor, setCursor] = useState<string>();
+  const [previousPages, setPreviousPages] = useState<(string | undefined)[]>(
+    [],
+  );
   const [search, setSearch] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const request = useRef({ body: "", key: "" });
   const query = useQuery({
-    queryKey: ["partner", propertyId, "department", search],
+    queryKey: ["partner", propertyId, "department", search, cursor],
     queryFn: ({ signal }) =>
-      apiFetch<Department>(`${base}?q=${encodeURIComponent(search)}`, {
-        signal,
-      }),
+      apiFetch<Department>(
+        `${base}?${new URLSearchParams({ q: search, ...(cursor ? { cursor } : {}) })}`,
+        {
+          signal,
+        },
+      ),
     refetchInterval: 15_000,
   });
   async function send(body: {
@@ -122,18 +133,46 @@ function DepartmentView({ propertyId }: { propertyId: string }) {
       )}
       {data.role === "cashier" ? (
         <>
-          <label className="block text-sm">
-            Search recent reservations
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={`${pmsInput} mt-2`}
-              placeholder="Guest name or booking reference"
-            />
-          </label>
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSearch(searchInput.trim());
+              setCursor(undefined);
+              setPreviousPages([]);
+            }}
+          >
+            <label className="grow text-sm">
+              Booking reference or ID
+              <input
+                value={searchInput}
+                maxLength={180}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className={`${pmsInput} mt-2`}
+                placeholder="Enter the complete booking reference or ID"
+              />
+            </label>
+            <button className={pmsButton} disabled={busy || query.isFetching}>
+              Find reservation
+            </button>
+            <button
+              type="button"
+              className={pmsButton}
+              disabled={busy}
+              onClick={() => {
+                setSearchInput("");
+                setSearch("");
+                setCursor(undefined);
+                setPreviousPages([]);
+              }}
+            >
+              Outstanding balances
+            </button>
+          </form>
           <p className="text-xs text-slate-500">
-            Shows matching reservations from the 50 most recently created
-            bookings. Ask a manager if the booking is not listed.
+            {data.lookup
+              ? "Exact reservation lookup, including older and settled stays."
+              : "Outstanding balances across hotel history. Pages inspect up to 50 reservations; settled stays are omitted."}
           </p>
           {data.bookings?.map((b) => (
             <section className={pmsCard} key={b.id}>
@@ -257,7 +296,43 @@ function DepartmentView({ propertyId }: { propertyId: string }) {
             </section>
           ))}
           {data.bookings?.length === 0 && (
-            <p className={pmsCard}>No matching recent reservations.</p>
+            <p className={pmsCard}>
+              {data.lookup
+                ? "No reservation found for that reference or ID in this hotel."
+                : data.hasMore
+                  ? "No outstanding balances on this page. Continue to the next page."
+                  : "No outstanding balances on this page."}
+            </p>
+          )}
+          {!data.lookup && (
+            <nav className="flex flex-wrap gap-3" aria-label="Balance pages">
+              {previousPages.length > 0 && (
+                <button
+                  type="button"
+                  className={pmsButton}
+                  disabled={busy || query.isFetching}
+                  onClick={() => {
+                    setCursor(previousPages.at(-1));
+                    setPreviousPages((p) => p.slice(0, -1));
+                  }}
+                >
+                  Previous page
+                </button>
+              )}
+              {data.nextCursor && (
+                <button
+                  type="button"
+                  className={pmsButton}
+                  disabled={busy || query.isFetching}
+                  onClick={() => {
+                    setPreviousPages((p) => [...p, cursor]);
+                    setCursor(data.nextCursor!);
+                  }}
+                >
+                  Next page
+                </button>
+              )}
+            </nav>
           )}
         </>
       ) : (
@@ -437,7 +512,10 @@ export function PmsDepartmentPage() {
     <PartnerShell>
       {({ selectedProperty }) =>
         selectedProperty ? (
-          <DepartmentView propertyId={selectedProperty.id} />
+          <DepartmentView
+            key={selectedProperty.id}
+            propertyId={selectedProperty.id}
+          />
         ) : (
           <p>No assigned hotel.</p>
         )

@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { bookingFailure } from "@/lib/booking/api-error";
 import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
@@ -10,7 +11,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
   try {
     const { bookingId } = await params;
     const booking = await adminDb.collection("bookings").doc(bookingId).get();
-    if (!booking.exists || booking.data()?.guestId !== user.uid) throw new Error("BOOKING_NOT_FOUND");
+    if (!booking.exists || !customerOwnsBooking(booking.data(), user.uid)) throw new Error("BOOKING_NOT_FOUND");
     await verifyBookingPayment(user.uid, bookingId, await request.json());
     return Response.json({ ok: true });
   } catch (error) {

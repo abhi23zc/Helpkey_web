@@ -41,6 +41,10 @@ export type BookingReceiptData = {
   bookingMode?: "overnight" | "hourly";
   durationMinutes?: number;
   leadGuest?: { name: string; email: string; phone: string } | null;
+  guestNames?: string[];
+  registrationIncomplete?: boolean;
+  actualCheckInAt?: string | null;
+  actualCheckOutAt?: string | null;
   bookingContact?: { name: string; email: string; phone: string } | null;
   billing?: {
     legalName: string;
@@ -380,7 +384,9 @@ function Receipt({
                   {booking.confirmationCode}
                 </p>
                 {bookedOn && (
-                  <p className="mt-0.5 text-stone-500 font-medium">Booked on {bookedOn}</p>
+                  <p className="mt-0.5 text-stone-500 font-medium">
+                    Booked on {bookedOn}
+                  </p>
                 )}
                 <div className="mt-1.5 flex justify-end">
                   <span
@@ -390,7 +396,9 @@ function Receipt({
                         : "border-stone-200 bg-stone-100 text-stone-700"
                     }`}
                   >
-                    {fullyPaid && <CheckCircle2 size={12} className="text-[#b48a3c]" />}
+                    {fullyPaid && (
+                      <CheckCircle2 size={12} className="text-[#b48a3c]" />
+                    )}
                     <span>{status}</span>
                     <span>· {human(booking.bookingStatus)}</span>
                   </span>
@@ -432,7 +440,10 @@ function Receipt({
                   {(booking.propertyPublicPhone ||
                     booking.propertyPublicEmail) && (
                     <p className="mt-1 break-words text-xs leading-relaxed text-stone-500">
-                      {[booking.propertyPublicPhone, booking.propertyPublicEmail]
+                      {[
+                        booking.propertyPublicPhone,
+                        booking.propertyPublicEmail,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
@@ -473,7 +484,37 @@ function Receipt({
                   value={departure.day}
                   extra={departure.time}
                 />
+                {(
+                  [
+                    [booking.actualCheckInAt, "Actual check-in"],
+                    [booking.actualCheckOutAt, "Actual checkout"],
+                  ] as const
+                )
+                  .filter(([value]) => value)
+                  .map(([value, label]) => {
+                    const moment = stayDate(value, "", "", timezone);
+                    return (
+                      <Detail
+                        key={label}
+                        label={label}
+                        value={moment.day}
+                        extra={moment.time}
+                      />
+                    );
+                  })}
                 <Detail label="Guests" value={guests} />
+                {!!booking.guestNames?.length && (
+                  <Detail
+                    label="Staying adults"
+                    value={booking.guestNames.join(", ")}
+                  />
+                )}
+                {booking.registrationIncomplete && (
+                  <Detail
+                    label="Guest registration"
+                    value="Incomplete — contact reception"
+                  />
+                )}
                 <Detail
                   label="Guest name"
                   value={booking.leadGuest?.name || "Not available"}
@@ -677,7 +718,9 @@ function Receipt({
                 <p className="mt-1 font-bold text-[#0f172a]">
                   {booking.billing.legalName}
                 </p>
-                <p className="text-xs text-stone-600 mt-0.5">GSTIN: {booking.billing.gstin}</p>
+                <p className="text-xs text-stone-600 mt-0.5">
+                  GSTIN: {booking.billing.gstin}
+                </p>
                 <p className="text-xs text-stone-500 mt-0.5">
                   {[
                     booking.billing.address.line1,
@@ -704,10 +747,7 @@ function Receipt({
             <footer className="mt-6 border-t border-[#e7e4dc] pt-4 text-xs leading-relaxed text-stone-500">
               This payment receipt is not a tax invoice. Please contact the
               property for a tax invoice. Need help?{" "}
-              <Link
-                href="/help"
-                className="font-bold text-[#0b1f3a] underline"
-              >
+              <Link href="/help" className="font-bold text-[#0b1f3a] underline">
                 Contact Helpkey support
               </Link>
               .
@@ -737,7 +777,9 @@ function Detail({
         {value}
       </dd>
       {extra && (
-        <dd className="mt-0.5 break-words text-[11px] font-medium text-stone-500">{extra}</dd>
+        <dd className="mt-0.5 break-words text-[11px] font-medium text-stone-500">
+          {extra}
+        </dd>
       )}
     </div>
   );

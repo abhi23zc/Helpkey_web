@@ -1,10 +1,9 @@
 import "server-only";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { ApiException } from "@/lib/api/errors";
 import { eligiblePricing } from "@/lib/booking/duration-pricing";
-import { allocateIntervals, validDate } from "@/lib/booking/domain";
 import { propertyAccess } from "./access";
 import { pmsState, publicBookable, type SetupItem } from "./domain";
 
@@ -13,32 +12,57 @@ const collections = [
   "ratePlans",
   "physicalUnits",
   "cancellationPolicies",
-  "inventoryHolds",
-  "inventoryCalendars",
-  "inventoryBlocks",
-  "bookings",
 ] as const;
+type Access = Awaited<ReturnType<typeof propertyAccess>>;
+// Reuse configuration reads only within the same transaction snapshot. Account
+// and permission checks are deliberately never cached across calls or requests.
+const transactionConfigurations = new WeakMap<
+  FirebaseFirestore.Transaction,
+  Map<string, Promise<FirebaseFirestore.QuerySnapshot[]>>
+>();
+function configuration(propertyId: string, tx?: FirebaseFirestore.Transaction) {
+  const load = () =>
+    Promise.all(
+      collections.map((name) => {
+        const query = adminDb
+          .collection(name)
+          .where("propertyId", "==", propertyId)
+          .limit(2001);
+        return tx ? tx.get(query) : query.get();
+      }),
+    );
+  if (!tx) return load();
+  let properties = transactionConfigurations.get(tx);
+  if (!properties) {
+    properties = new Map();
+    transactionConfigurations.set(tx, properties);
+  }
+  let pending = properties.get(propertyId);
+  if (!pending) {
+    pending = load();
+    properties.set(propertyId, pending);
+  }
+  return pending;
+}
 export async function setupStatus(
   uid: string,
   propertyId: string,
   tx?: FirebaseFirestore.Transaction,
 ) {
   const access = await propertyAccess(uid, propertyId, "setup.read", tx);
-  const snapshots = await Promise.all(
-    collections.map((name) => {
-      const q = adminDb
-        .collection(name)
-        .where("propertyId", "==", propertyId)
-        .limit(2001);
-      return tx ? tx.get(q) : q.get();
-    }),
+  return setupStatusForAccess(access, propertyId, tx);
+}
+export async function setupStatusForAccess(
+  access: Access,
+  propertyId: string,
+  tx?: FirebaseFirestore.Transaction,
+) {
+  const snapshots = await configuration(propertyId, tx);
+  const [rooms, rates, units, policies] = snapshots.map((s) =>
+    s.docs.map(
+      (d) => ({ ...d.data(), id: d.id }) as FirebaseFirestore.DocumentData,
+    ),
   );
-  const [rooms, rates, units, policies, holds, calendars, blocks, bookings] =
-    snapshots.map((s) =>
-      s.docs.map(
-        (d) => ({ ...d.data(), id: d.id }) as FirebaseFirestore.DocumentData,
-      ),
-    );
   const p = access.property;
   const active = rooms.filter((r) => r.status === "active");
   let timezone = false;
@@ -97,134 +121,6 @@ export async function setupStatus(
         p.cleaningBufferMinutes >= 0 &&
         p.cleaningBufferMinutes <= 1440 &&
         p.cleaningBufferMinutes % 15 === 0));
-  const expected = new Map<string, number>();
-  let integrity =
-    p.inventoryEngine === "interval_v1" &&
-    !snapshots.some((s) => s.size > 2000);
-  const add = (row: FirebaseFirestore.DocumentData, field: string) => {
-    if (
-      !Array.isArray(row.allocations) ||
-      !row.allocations.length ||
-      !Number.isSafeInteger(row.quantity) ||
-      row.quantity < 1
-    ) {
-      integrity = false;
-      return;
-    }
-    for (const a of row.allocations) {
-      if (
-        !validDate(a.date) ||
-        !Array.isArray(a.intervals) ||
-        !a.intervals.length ||
-        new Set(a.intervals).size !== a.intervals.length
-      ) {
-        integrity = false;
-        continue;
-      }
-      for (const slot of a.intervals) {
-        const key = `${propertyId}_${row.roomTypeId}_${a.date}/${field}/${slot}`;
-        expected.set(key, (expected.get(key) || 0) + row.quantity);
-      }
-    }
-  };
-  holds
-    .filter((h) => ["held", "committed"].includes(h.status))
-    .forEach((h) => add(h, "reserved"));
-  blocks.filter((b) => b.status === "active").forEach((b) => add(b, "blocked"));
-  for (const calendar of calendars)
-    for (const field of ["reserved", "blocked"])
-      for (const [slot, value] of Object.entries(calendar[field] || {})) {
-        const key = `${calendar.id}/${field}/${slot}`;
-        if (
-          !Number.isSafeInteger(value) ||
-          Number(value) < 0 ||
-          value !== (expected.get(key) || 0)
-        )
-          integrity = false;
-        expected.delete(key);
-      }
-  if ([...expected.values()].some((n) => n !== 0)) integrity = false;
-  for (const calendar of calendars) {
-    const room = rooms.find((r) => r.id === calendar.roomTypeId);
-    const keys = new Set([
-      ...Object.keys(calendar.reserved || {}),
-      ...Object.keys(calendar.blocked || {}),
-    ]);
-    if (keys.size && !room) integrity = false;
-    for (const key of keys)
-      if (
-        (calendar.reserved?.[key] || 0) + (calendar.blocked?.[key] || 0) >
-        (room?.totalInventory || 0)
-      )
-        integrity = false;
-  }
-  for (const hold of holds.filter((h) =>
-    ["held", "committed"].includes(h.status),
-  )) {
-    const b = bookings.find((b) => b.id === hold.id);
-    if (
-      !b ||
-      b.inventoryReleased ||
-      ["cancelled", "no_show", "expired", "payment_failed"].includes(
-        b.bookingStatus,
-      )
-    )
-      integrity = false;
-  }
-  for (const b of bookings.filter(
-    (b) =>
-      ["pending_payment", "confirmed", "checked_in"].includes(
-        b.bookingStatus,
-      ) && !b.inventoryReleased,
-  )) {
-    const hold = holds.find((h) => h.id === b.id);
-    if (
-      b.inventoryEngine !== "interval_v1" ||
-      !holds.some(
-        (h) =>
-          h.id === b.id &&
-          ["held", "committed"].includes(h.status) &&
-          h.roomTypeId === b.roomType?.id,
-      )
-    )
-      integrity = false;
-    if (hold) {
-      try {
-        const canonical = (
-          allocations: { date: string; intervals: string[] }[],
-        ) =>
-          JSON.stringify(
-            allocations
-              .map((a) => [a.date, [...a.intervals].sort()])
-              .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-          );
-        if (
-          canonical(hold.allocations) !==
-            canonical(
-              allocateIntervals(
-                b.startAt,
-                b.inventoryEndAt || b.endAt,
-                b.timezone || p.timezone,
-              ),
-            ) ||
-          hold.quantity !== (b.quantity || 1)
-        )
-          integrity = false;
-      } catch {
-        integrity = false;
-      }
-    }
-    if (
-      b.physicalUnitId &&
-      !units.some(
-        (u) =>
-          u.id === b.physicalUnitId &&
-          u.status === "active" &&
-          u.roomTypeId === b.roomType?.id,
-      )
-    )
-      integrity = false;
-  }
   const feature = (key: string) =>
     process.env[key] === "true" ||
     (process.env.NODE_ENV !== "production" && process.env[key] !== "false");
@@ -253,6 +149,7 @@ export async function setupStatus(
       id: "capacity",
       label: "Room types and sellable capacity",
       complete:
+        !snapshots.some((s) => s.size > 2000) &&
         active.length > 0 &&
         active.every(
           (r) => Number.isSafeInteger(r.totalInventory) && r.totalInventory > 0,
@@ -295,10 +192,15 @@ export async function setupStatus(
     {
       id: "inventory",
       label: "Shared inventory verified",
-      complete: integrity,
-      detail: snapshots.some((s) => s.size > 2000)
-        ? "This hotel exceeds the bounded readiness check. Contact support for reconciliation."
-        : "Existing holds, maintenance blocks and calendars must reconcile. Legacy inventory requires the existing controlled cutover process.",
+      complete:
+        p.inventoryEngine === "interval_v1" &&
+        p.pms?.inventoryVerification?.passed === true,
+      detail:
+        p.pms?.inventoryVerification?.passed === true
+          ? "Inventory verified during setup. Each operation still checks its affected inventory and payments."
+          : p.pms?.inventoryVerification?.passed === false
+            ? "Inventory verification found inconsistent records. Contact support to reconcile them, then verify again."
+            : "Verify inventory before using PMS. Legacy hotels require the controlled inventory cutover first.",
     },
     {
       id: "deployment",
@@ -321,8 +223,16 @@ export async function setupStatus(
     items,
     openingData: p.pms?.openingData || "unknown",
     teamReviewed: p.pms?.teamReviewed === true,
+    allowEarlyWalkIns: p.pms?.allowEarlyWalkIns === true,
     activated: Boolean(p.pms?.activatedAt),
     adminDisabled: p.pms?.adminDisabled === true,
+    inventoryVerification: {
+      passed: p.pms?.inventoryVerification?.passed === true,
+      checkedAt:
+        p.pms?.inventoryVerification?.checkedAt instanceof Timestamp
+          ? p.pms.inventoryVerification.checkedAt.toDate().toISOString()
+          : null,
+    },
     marketplace: {
       bookable: publicBookable(p),
       ownerPaused: p.marketplaceOwnerPaused === true,
@@ -361,12 +271,15 @@ export function audit(
   );
 }
 const command = z.discriminatedUnion("action", [
-  z.object({ action: z.enum(["activate", "disable", "resume"]) }).strict(),
+  z
+    .object({ action: z.enum(["activate", "disable", "resume", "verify"]) })
+    .strict(),
   z
     .object({
       action: z.literal("declaration"),
       openingData: z.enum(["none", "external"]),
       teamReviewed: z.boolean(),
+      allowEarlyWalkIns: z.boolean().optional(),
     })
     .strict(),
   z.object({ action: z.literal("marketplace"), paused: z.boolean() }).strict(),
@@ -420,6 +333,17 @@ export async function updatePms(uid: string, propertyId: string, raw: unknown) {
       if (input.action === "declaration") {
         pms.openingData = input.openingData;
         pms.teamReviewed = input.teamReviewed;
+        if (input.allowEarlyWalkIns !== undefined) pms.allowEarlyWalkIns = input.allowEarlyWalkIns;
+      }
+      if (
+        ["activate", "resume", "declaration", "verify"].includes(input.action)
+      ) {
+        const { verifyPmsInventory } = await import("./inventory-verification");
+        pms.inventoryVerification = {
+          passed: await verifyPmsInventory(propertyId, tx),
+          checkedAt: now,
+          checkedBy: uid,
+        };
       }
       tx.update(ref, { pms });
       audit(

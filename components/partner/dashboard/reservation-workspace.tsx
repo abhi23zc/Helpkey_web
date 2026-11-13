@@ -1,4 +1,5 @@
 "use client";
+import { ReservationGuests } from "./reservation-guests";
 import { useHotelCapabilities } from "./hotel-capabilities";
 
 import {
@@ -9,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   BedDouble,
@@ -81,6 +82,7 @@ function ReservationDetails({
   onChanged,
 }: WorkspaceProps) {
   const permits = useHotelCapabilities();
+  const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -94,13 +96,15 @@ function ReservationDetails({
   const paymentDetails = useRef<HTMLDetailsElement>(null);
   const dirty = Object.values(drafts).some((d) => d.dirty);
   const saving = Object.values(drafts).some((d) => d.busy);
+  const draftsRef = useRef(drafts);
   const reportDraft = useCallback(
     (section: string, changed: boolean, busy = false) => {
-      setDrafts((old) =>
-        old[section]?.dirty === changed && old[section]?.busy === busy
-          ? old
-          : { ...old, [section]: { dirty: changed, busy } },
-      );
+      const old = draftsRef.current;
+      if (old[section]?.dirty === changed && old[section]?.busy === busy) return;
+      const next = { ...old, [section]: { dirty: changed, busy } };
+      // Closing can race React's next render while a request starts.
+      draftsRef.current = next;
+      setDrafts(next);
     },
     [],
   );
@@ -142,6 +146,7 @@ function ReservationDetails({
       ? query.data.booking
       : undefined;
   const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["partner", propertyId, "registration", bookingId] });
     void query.refetch();
     onChanged();
   };
@@ -175,8 +180,9 @@ function ReservationDetails({
       setReceiptOpen(false);
       return;
     }
-    if (mutation.isPending || saving) return;
-    if (dirty) setCloseWarning(true);
+    const currentDrafts = Object.values(draftsRef.current);
+    if (mutation.isPending || currentDrafts.some((draft) => draft.busy)) return;
+    if (currentDrafts.some((draft) => draft.dirty)) setCloseWarning(true);
     else onClose();
   }
   const local = (value?: string | null) =>
@@ -517,6 +523,7 @@ function ReservationDetails({
           onDraftChange={reportDraft}
           render={(sections) => (
             <div className="space-y-5 pb-3 text-xs text-[#061224]">
+              <ReservationGuests bookingId={booking.id} propertyId={propertyId} onChanged={refresh} onDraftChange={reportDraft} />
               {query.isError && (
                 <p
                   role="alert"

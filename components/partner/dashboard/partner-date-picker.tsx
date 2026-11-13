@@ -31,6 +31,7 @@ export function PartnerDatePicker(props: Props) {
     [selectingEnd, setSelectingEnd] = useState(false),
     [draft, setDraft] = useState<DateRange>(),
     [month, setMonth] = useState<Date>(),
+    [calendarToday, setCalendarToday] = useState<Date>(),
     [mobile, setMobile] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null),
     panel = useRef<HTMLDivElement>(null);
@@ -84,14 +85,17 @@ export function PartnerDatePicker(props: Props) {
       document.removeEventListener("keydown", handler, true);
     };
   }, [open]);
-  const today = () => {
+  const hotelToday = () => {
     const date = new Intl.DateTimeFormat("en-CA", {
       timeZone: props.timezone || "Asia/Kolkata",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
-    const d = parse(date)!;
+    return parse(date)!;
+  };
+  const today = () => {
+    const d = hotelToday();
     setDraft({ from: d, to: d });
     setMonth(d);
   };
@@ -140,14 +144,17 @@ export function PartnerDatePicker(props: Props) {
             from: parse(props.value),
             to: parse(props.endValue || props.value),
           });
-          setMonth(parse(props.value) || new Date());
+          setCalendarToday(hotelToday());
+          setMonth(parse(props.value) || hotelToday());
           setSelectingEnd(false);
           setOpen(true);
         }}
       >
         <span>
           {props.displayLabel || display(props.value)}
-          {!props.displayLabel && props.range && props.endValue ? ` – ${display(props.endValue)}` : ""}
+          {!props.displayLabel && props.range && props.endValue
+            ? ` – ${display(props.endValue)}`
+            : ""}
         </span>
         <CalendarDays size={16} className="shrink-0 text-slate-400" />
       </button>
@@ -175,7 +182,7 @@ export function PartnerDatePicker(props: Props) {
                   <p className="mt-1 text-xs text-slate-500">
                     {props.range
                       ? `Select a start and end date${props.maxDays ? ` · Up to ${props.maxDays} days` : ""}`
-                      : (props.description || "Select the reporting date")}
+                      : props.description || "Select the reporting date"}
                   </p>
                 </div>
                 <button
@@ -189,9 +196,22 @@ export function PartnerDatePicker(props: Props) {
               </div>
               {props.range ? (
                 <DayPicker
+                  today={calendarToday}
                   mode="range"
                   selected={draft}
-                  onSelect={(_selection, day) => { if (!selectingEnd || !draft?.from) { setDraft({ from: day, to: undefined }); setSelectingEnd(true); } else { setDraft(day < draft.from ? { from: day, to: draft.from } : { from: draft.from, to: day }); setSelectingEnd(false); } }}
+                  onSelect={(_selection, day) => {
+                    if (!selectingEnd || !draft?.from) {
+                      setDraft({ from: day, to: undefined });
+                      setSelectingEnd(true);
+                    } else {
+                      setDraft(
+                        day < draft.from
+                          ? { from: day, to: draft.from }
+                          : { from: draft.from, to: day },
+                      );
+                      setSelectingEnd(false);
+                    }
+                  }}
                   month={month}
                   onMonthChange={setMonth}
                   numberOfMonths={mobile ? 1 : 2}
@@ -202,6 +222,7 @@ export function PartnerDatePicker(props: Props) {
                 />
               ) : (
                 <DayPicker
+                  today={calendarToday}
                   mode="single"
                   selected={draft?.from}
                   onSelect={(d) => setDraft(d ? { from: d, to: d } : undefined)}

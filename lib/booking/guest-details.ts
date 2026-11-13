@@ -206,6 +206,10 @@ export function guestReservationDetails(
       Boolean(text(data.razorpayOrderId)),
     savedDetails: {
       version: 1,
+      registrationIncomplete: data.registrationIncomplete === true,
+      recordedArrivalAt: text(data.recordedArrivalAt),
+      actualCheckInAt: (data.actualCheckInAt as { toDate?: () => Date })?.toDate?.().toISOString() || text(data.actualCheckInAt),
+      actualCheckOutAt: (data.actualCheckOutAt as { toDate?: () => Date })?.toDate?.().toISOString() || text(data.actualCheckOutAt),
       propertyName: text(saved.propertyName),
       propertySlug: text(saved.propertySlug),
       propertyAddress: text(saved.propertyAddress),

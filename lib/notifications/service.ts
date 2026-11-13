@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -149,7 +150,7 @@ async function visibleNotification(userId: string, notification: { data?: Record
   if (user.roles?.includes("admin")) return true;
   if (notification.data?.bookingId) {
     const b = (await adminDb.collection("bookings").doc(notification.data.bookingId).get()).data();
-    if (b?.guestId === userId && b.source !== "manual_partner" && b.propertyId === propertyId) return true;
+    if (customerOwnsBooking(b, userId) && b?.propertyId === propertyId) return true;
   }
   const { propertyAccess } = await import("@/lib/partner/pms/access");
   try { const access = await propertyAccess(userId, propertyId, notification.eventType?.startsWith("booking.") ? "reservation.read" : "listing.manage"); return !access.block; }

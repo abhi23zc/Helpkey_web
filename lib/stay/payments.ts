@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -51,7 +52,7 @@ export async function quotePaymentSession(
     const bookingRef = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(bookingRef)).data();
     const saved = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))
       throw new Error("This booking is closed for payments.");
     const offer = (b.extrasOffers as ExtrasOffer[] | undefined)?.find(o => o.id === requestId);
@@ -151,7 +152,7 @@ export async function verifyQuotePayment(
   )
     throw new Error("Payment signature is invalid.");
   const b = (await adminDb.collection("bookings").doc(bookingId).get()).data();
-  if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
+  if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
   const orders = await adminDb
     .collection("stayQuoteOrders")
     .where("orderId", "==", input.razorpay_order_id)

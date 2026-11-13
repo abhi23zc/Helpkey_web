@@ -1,9 +1,12 @@
+import type { SetupItem } from "@/lib/partner/pms/domain";
+
 export type Property = {
   role?: string;
   permissions?: readonly string[];
   accessRevision?: number;
   pmsState?: string;
   operationsReason?: string | null;
+  operationsIssues?: readonly SetupItem[];
   timezone?: string;
   isBookable?: boolean;
   id: string;

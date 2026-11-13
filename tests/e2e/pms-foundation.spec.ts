@@ -1,7 +1,7 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 if (
   !/^(127\.0\.0\.1|localhost):\d+$/.test(
     process.env.FIRESTORE_EMULATOR_HOST || "",
@@ -115,6 +115,11 @@ test.beforeAll(async () => {
           activatedAt: Timestamp.now(),
           openingData: "none",
           teamReviewed: true,
+          inventoryVerification: {
+            passed: true,
+            checkedAt: Timestamp.now(),
+            checkedBy: uid("owner"),
+          },
         },
       });
     await db.collection("roomTypes").doc(`${id}-room`).set({
@@ -303,6 +308,17 @@ test("owner sees both hotels, real setup state and independent public pause", as
     fullPage: true,
   });
 });
+test("dashboard with missing verification opens setup instead of remaining behind the loading screen", async ({ page, context }) => {
+  await login(context, "owner");
+  await db.collection("properties").doc(hotelA).update({ "pms.inventoryVerification": FieldValue.delete() });
+  await page.goto(`/partner/dashboard?propertyId=${hotelA}`);
+  await expect(page.getByRole("heading", { name: "Hotel operations unavailable" })).toBeVisible();
+  await expect(page.getByText("Loading partner workspace", { exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Review PMS setup" }).click();
+  await expect(page.getByRole("heading", { name: "PMS: Setup in progress" })).toBeVisible();
+  await page.getByRole("button", { name: "Verify inventory", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "PMS: Ready to use" })).toBeVisible();
+});
 test("owner invites a verified account and sees acceptance in team history", async ({
   page,
   context,
@@ -320,10 +336,16 @@ test("owner invites a verified account and sees acceptance in team history", asy
     name: "Private invitation link",
   });
   await expect(invitation).toBeVisible();
-  const url = await invitation.inputValue(),
-    employeeContext = await browser.newContext({
-      baseURL: "http://127.0.0.1:3014",
-    });
+  const url = await invitation.inputValue();
+  const checked = page.waitForResponse((r) => r.url().includes("/api/auth/me"));
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await checked;
+  await expect(invitation).toHaveValue(url);
+  const employeeContext = await browser.newContext({
+    baseURL: "http://127.0.0.1:3014",
+  });
   await login(employeeContext, "newstaff");
   const employee = await employeeContext.newPage();
   await employee.goto(url);
@@ -420,7 +442,9 @@ test("maintenance staff can block shared capacity and release it without guest a
   await expect(
     page.getByRole("heading", { name: "Room maintenance", exact: true }),
   ).toBeVisible();
-  await page.getByRole("combobox", { name: /Room/ }).selectOption(`${hotelA}-unit`);
+  await page
+    .getByRole("combobox", { name: /Room/ })
+    .selectOption(`${hotelA}-unit`);
   await page.getByLabel("Reason", { exact: true }).fill("Isolated repair test");
   const day = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
   await page.getByLabel("Start", { exact: true }).fill(`${day}T12:00`);
@@ -663,6 +687,42 @@ test("staff assigned to two hotels can switch hotels without owner-only access",
       )
     ).status(),
   ).not.toBe(200);
+});
+test("same-account foreground preserves a manual booking through an identity-check failure", async ({
+  page,
+  context,
+}) => {
+  await login(context, "owner");
+  await page.goto(`/partner/reservations?propertyId=${hotelA}`);
+  await page
+    .getByRole("button", { name: "New reservation", exact: true })
+    .click();
+  const guest = page.getByRole("textbox", { name: "Guest name", exact: true });
+  await guest.fill("Unfinished guest draft");
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "unavailable" }),
+    }),
+  );
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(
+    page.getByRole("button", { name: "Retry account check" }),
+  ).toBeVisible();
+  await expect(guest).toBeHidden();
+  await page.unroute("**/api/auth/me");
+  await page.getByRole("button", { name: "Retry account check" }).click();
+  await expect(guest).toBeVisible();
+  await expect(guest).toHaveValue("Unfinished guest draft");
+  const checked = page.waitForResponse((r) => r.url().includes("/api/auth/me"));
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await checked;
+  await expect(guest).toHaveValue("Unfinished guest draft");
 });
 test("logout clears private information in another open tab", async ({
   page,

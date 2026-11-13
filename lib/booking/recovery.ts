@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "./customer-access";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -17,7 +18,7 @@ export async function recoverSubmission(uid: string, key: string) {
   return adminDb.runTransaction(async tx => {
     const booking = (await tx.get(adminDb.collection("bookings").doc(id))).data();
     if (booking) {
-      if (booking.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+      if (!customerOwnsBooking(booking, uid)) throw new Error("BOOKING_NOT_FOUND");
       return { state: "booking_exists" as const, bookingId: id, confirmationCode: String(booking.confirmationCode) };
     }
     tx.set(adminDb.collection("bookingSubmissionClosures").doc(id), { uid, closedAt: FieldValue.serverTimestamp() });
@@ -45,7 +46,7 @@ export function paymentEligibility(data: FirebaseFirestore.DocumentData, now: nu
 export async function reconcilePaymentForGuest(uid: string, bookingId: string, report?: { attemptId?: string; nativeResult?: string }) {
   const ref = adminDb.collection("bookings").doc(bookingId);
   const initial = (await ref.get()).data();
-  if (!initial || initial.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+  if (!initial || !customerOwnsBooking(initial, uid)) throw new Error("BOOKING_NOT_FOUND");
   let providerSafe = initial.paymentMethod !== "online";
   let paymentIds: string[] = [];
   let reconciled = true;
@@ -94,7 +95,7 @@ export async function claimCheckoutAttempt(uid: string, bookingId: string) {
   const ref = adminDb.collection("bookings").doc(bookingId);
   return adminDb.runTransaction(async tx => {
     const data = (await tx.get(ref)).data();
-    if (!data || data.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+    if (!data || !customerOwnsBooking(data, uid)) throw new Error("BOOKING_NOT_FOUND");
     if (!paymentEligibility(data, Date.now(), true) || data.razorpayOrderId !== checked.orderId) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     const attemptId = randomUUID();
     tx.update(ref, { checkoutAttempt: { id: attemptId, orderId: data.razorpayOrderId, baselinePaymentIds: checked.paymentIds, startedAt: Timestamp.now() }, updatedAt: FieldValue.serverTimestamp() });

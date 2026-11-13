@@ -358,8 +358,17 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
     const city = typeof data.address?.city === "string" ? data.address.city : "";
     const tokens = Array.isArray(data.searchTokens) ? data.searchTokens.filter((token: unknown): token is string => typeof token === "string") : [];
     // publicCover is written by the search projection worker once a cover
-    // image has been processed; reuse it here rather than issuing another read.
-    const imageUrl = typeof data.publicCover?.imageUrl === "string" ? data.publicCover.imageUrl : null;
+    // image has been processed; reuse it here or fall back to any direct cover image.
+    const imageUrl =
+      typeof data.publicCover?.imageUrl === "string"
+        ? data.publicCover.imageUrl
+        : typeof data.coverImageUrl === "string"
+        ? data.coverImageUrl
+        : typeof data.coverImage?.url === "string"
+        ? data.coverImage.url
+        : Array.isArray(data.images) && typeof data.images[0]?.url === "string"
+        ? data.images[0].url
+        : null;
     return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const, imageUrl, rank: score(name, city, tokens) };
   }).filter((item) => item.rank > 0)
     .sort((a, b) => b.rank - a.rank || a.label.localeCompare(b.label));

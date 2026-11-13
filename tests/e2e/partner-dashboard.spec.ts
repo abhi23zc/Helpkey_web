@@ -711,3 +711,166 @@ test.describe("touch financial chart", () => {
     await expect(tooltip).toHaveCount(0);
   });
 });
+
+const accessShell = (property: Record<string, unknown> = {}) => ({
+  user: { uid: "owner", fullName: "Hotel Owner" },
+  currency: "INR",
+  businessName: "Owner Group",
+  properties: [
+    {
+      id: "hotel-one",
+      name: "First Hotel",
+      timezone: "Asia/Kolkata",
+      role: "owner",
+      permissions: ["reports.read", "setup.read"],
+      ...property,
+    },
+  ],
+});
+
+test("incomplete PMS setup shows its recovery link instead of a permanent skeleton", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.route("**/api/partner/dashboard", (route) =>
+    route.fulfill({
+      json: accessShell({
+        pmsState: "setup",
+        operationsReason:
+          "PMS setup is incomplete. Verify inventory in Settings.",
+        operationsIssues: [
+          { id: "inventory", label: "Inventory verification required", complete: false, detail: "Verify your room inventory in PMS setup before using hotel operations." },
+          { id: "opening", label: "Opening information needs review", complete: false, detail: "Confirm whether existing reservations or balances need to be brought across." },
+        ],
+      }),
+    }),
+  );
+  await page.goto("/partner/dashboard");
+  await expect(
+    page.getByRole("heading", { name: "Hotel operations unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Review PMS setup" }),
+  ).toHaveAttribute("href", "/partner/settings?propertyId=hotel-one");
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toContainText("PMS setup is incomplete. Verify inventory in Settings.");
+  await expect(page.getByText("Inventory verification required", { exact: true })).toBeVisible();
+  await expect(page.getByText("Opening information needs review", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Contact support", exact: true })).toHaveAttribute("href", "/help");
+  for (const width of [390, 1366]) {
+    await page.setViewportSize({ width, height: 950 });
+    await expect(page.getByRole("link", { name: "Review PMS setup" })).toBeVisible();
+    await expect.poll(() => page.getByRole("alert").evaluate(element => {
+      const notice = element.getBoundingClientRect();
+      const sidebar = document.querySelector("aside")?.getBoundingClientRect();
+      const edge = Math.max(0, sidebar?.right ?? 0);
+      return notice.left >= edge + 8 && notice.left <= edge + 32 && notice.right <= innerWidth;
+    })).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`access-notice-${width}.png`), fullPage: true, animations: "disabled" });
+  }
+});
+
+test("role-restricted overview shows the permitted workspace instead of loading forever", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.route("**/api/partner/dashboard", (route) =>
+    route.fulfill({
+      json: accessShell({
+        role: "receptionist",
+        permissions: ["reservation.read"],
+      }),
+    }),
+  );
+  await page.goto("/partner/dashboard");
+  await expect(
+    page.getByRole("heading", {
+      name: "This page is not available for your role",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open permitted workspace" }),
+  ).toHaveAttribute("href", "/partner/reservations?propertyId=hotel-one");
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+});
+
+test("failed hotel loading releases the skeleton and can recover through retry", async ({
+  page,
+}) => {
+  await fixture(page);
+  let failed = true;
+  await page.route("**/api/partner/dashboard", (route) =>
+    route.fulfill(
+      failed
+        ? {
+            status: 503,
+            json: {
+              error: {
+                code: "TEMPORARY",
+                message: "Hotel access is temporarily unavailable.",
+              },
+            },
+          }
+        : { json: accessShell() },
+    ),
+  );
+  await page.goto("/partner/dashboard");
+  await expect(page.getByRole("alert")).toContainText(
+    "Hotel access is temporarily unavailable.",
+  );
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+  failed = false;
+  await page.getByRole("button", { name: "Retry loading hotels" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hotel operations unavailable" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+});
+
+test("a property that becomes blocked after the overview loaded can recover without a stale overlay", async ({
+  page,
+}) => {
+  await fixture(page);
+  let blocked = false;
+  await page.route("**/api/partner/dashboard", (route) =>
+    route.fulfill({
+      json: accessShell(
+        blocked ? { operationsReason: "Hotel disabled by its owner." } : {},
+      ),
+    }),
+  );
+  await page.goto("/partner/dashboard");
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+  blocked = true;
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Hotel operations unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+  blocked = false;
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Hotel operations unavailable" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Loading partner workspace", { exact: true }),
+  ).toHaveCount(0);
+});

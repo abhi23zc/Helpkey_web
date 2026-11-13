@@ -6,7 +6,7 @@ import { Building2, Check, ChevronDown, CircleHelp, Loader2, LogOut, Menu, UserR
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { HotelCapabilitiesProvider } from "./hotel-capabilities";
 import { useAuth } from "@/components/auth/auth-provider";
-import { landing } from "@/lib/partner/pms/domain";
+import { WorkspaceAccessNotice } from "./workspace-access-notice";
 import { ReservationSearch } from "./reservation-search";
 import { PropertyImage } from "./property-image";
 import { PartnerSidebar } from "./partner-sidebar";
@@ -202,10 +202,13 @@ export function PartnerShell({
   const selected = data.selectedProperty;
   const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
   const denied = selected?.permissions && required[pathname] && !selected.permissions.includes(required[pathname]);
-  const blocked = selected?.operationsReason && ["/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname);
+  const blockedReason = ["/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname) ? selected?.operationsReason || null : null;
+  // Content cannot report its loading state when an access/setup/error gate
+  // prevents it from mounting. Never let that stale state cover the gate.
+  const showLoading = data.loading || (!!selected && !data.error && !denied && !blockedReason && contentLoading);
   return (
     <>
-    {(data.loading || contentLoading) ? <div className="fixed inset-0 z-[100] overflow-y-auto"><PartnerWorkspaceSkeleton /></div> : null}
+    {showLoading ? <div className="fixed inset-0 z-[100] overflow-y-auto"><PartnerWorkspaceSkeleton /></div> : null}
     <main
       className={`min-h-screen bg-[#f7f5f0] text-[#061224] font-sans transition-[padding] duration-300 ${
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-[264px]"
@@ -284,12 +287,12 @@ export function PartnerShell({
         </header>
 
         {data.error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
             {data.error}
           </div>
         )}
 
-        {data.loading ? null : data.error ? <a className="underline" href="/partner/settings">Reload assigned hotels</a> : denied || blocked ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><h2 className="font-bold">{blocked ? "Hotel operations unavailable" : "This page is not available for your role"}</h2><p className="mt-2">{blocked || "Choose a permitted workspace for this hotel."}</p><Link className="mt-3 inline-block underline" href={`${blocked ? "/partner/settings" : landing(selected?.role)}?propertyId=${data.selectedPropertyId}`}>Open your hotel workspace</Link></div> : <div key={`${data.user?.uid}:${selected?.id}:${selected?.role}:${selected?.accessRevision}`}><HotelCapabilitiesProvider value={selected?.permissions ?? null}>{children(data)}</HotelCapabilitiesProvider></div>}
+        {data.loading ? null : data.error ? <button type="button" className="underline" onClick={() => void data.reload()}>Retry loading hotels</button> : (denied || blockedReason) && selected ? <WorkspaceAccessNotice property={selected} reason={blockedReason} /> : <div key={`${data.user?.uid}:${selected?.id}:${selected?.role}:${selected?.accessRevision}`}><HotelCapabilitiesProvider value={selected?.permissions ?? null}>{children(data)}</HotelCapabilitiesProvider></div>}
       </section>
     </main>
     </>

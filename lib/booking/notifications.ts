@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { can } from "@/lib/partner/pms/domain";
 import { propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
@@ -23,7 +24,7 @@ export async function processBookingNotifications(recordId?: string) {
           try { const access = await propertyAccess(doc.get("userId"), event.propertyId, "reservation.read", tx); return access.block ? null : doc.get("userId") as string; }
           catch (error) { if (error && typeof error === "object" && "status" in error && error.status === 403) return null; throw error; }
         }));
-        const guest = booking?.source !== "manual_partner" ? event.guestId : null;
+        const guest = customerOwnsBooking(booking, booking?.guestId) ? booking?.guestId : null;
         const recipients = [...new Set<string>([guest, ...permitted].filter((uid): uid is string => !!uid))];
         const refs = recipients.map(uid => adminDb.collection("notifications").doc(`${document.id}_${uid}`));
         const existing = refs.length ? await tx.getAll(...refs) : [];
