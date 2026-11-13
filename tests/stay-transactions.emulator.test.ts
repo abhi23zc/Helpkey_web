@@ -610,7 +610,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           ),
       ).toBe(true);
     }, 30000);
-    it("preserves omitted variant prices and clears overrides explicitly or on preference conversion", async () => {
+    it("preserves omitted variant prices and preference conversions, and clears explicit null overrides", async () => {
       const { id, free } = await fixture();
       const input = Object.fromEntries(
         Object.entries(free).filter(
@@ -670,7 +670,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       });
       expect(
         (await catalog.get()).get("variants")[0].unitPricePaise,
-      ).toBeNull();
+      ).toBe(12345);
     }, 30000);
     it("lets an owner edit offerings while rejecting cross-property rooms and stale versions", async () => {
       const { id, free } = await fixture();
@@ -744,6 +744,36 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       ).find((r) => r.offeringId === "decoration")!;
       return { ...f, requests, payments, target };
     }
+    it("publishes one reviewed offer, captures once and refunds allocations separately", async () => {
+      const f = await upgradedFixture();
+      process.env.STAY_BATCH_OFFERS = "1";
+      try {
+        const offers = await import("@/lib/stay/offers");
+        const cake = { ...f.target, id: "batch-cake", totalPaise: 50000 };
+        const aroma = { ...f.target, id: "batch-aroma", totalPaise: 70000 };
+        await f.ref.update({ customizations: [cake, aroma] });
+        await f.requests.decideRequest(owner,f.ref.id,{ revision: 0,requestId: cake.id,action: "approve_price" },true);
+        await expect(offers.manageOffer(owner,f.ref.id,{ revision: 1, action: "publish" },true)).rejects.toThrow("Review every");
+        await f.requests.decideRequest(owner,f.ref.id,{ revision: 1,requestId: aroma.id,action: "approve_price" },true);
+        await offers.manageOffer(owner,f.ref.id,{ revision: 2, action: "publish" },true);
+        const offer = (await f.ref.get()).get("extrasOffers")[0];
+        await offers.manageOffer("guest",f.ref.id,{ revision: 3, action: "accept",offerId: offer.id,version: 1,selected: [cake.id,aroma.id] },false);
+        provider.mockImplementation(async () => Response.json({ id: "batch_order" }));
+        const session = await f.payments.quotePaymentSession("guest",f.ref.id,offer.id,1);
+        expect(session.amount).toBe(120000);
+        await expect(offers.manageOffer(owner,f.ref.id,{ revision: 4, action: "withdraw",offerId: offer.id,version: 1 },true)).rejects.toThrow("reconciled");
+        provider.mockImplementation(async () => Response.json({ id: "batch_payment",order_id: "batch_order",amount: 120000,currency: "INR",status: "captured",captured: true }));
+        await f.payments.captureQuotePayment(session.stayQuoteOrderId,"batch_order","batch_payment");
+        await f.payments.captureQuotePayment(session.stayQuoteOrderId,"batch_order","batch_payment");
+        const saved = (await f.ref.get()).data()!;
+        expect(saved.customizations.every((r: {settlement: string}) => r.settlement === "paid")).toBe(true);
+        expect(saved.stayPaymentReceipts).toHaveLength(2);
+        expect(saved.extrasOffers[0].status).toBe("paid");
+        await bookings.cancelBookingForUser("guest",f.ref.id);
+        const refunds = await db.collection("refunds").where("paymentId","==","batch_payment").get();
+        expect(refunds.docs.map(d => d.get("amountPaise")).sort()).toEqual([50000,70000]);
+      } finally { delete process.env.STAY_BATCH_OFFERS; }
+    },30000);
     it("keeps new paid approvals outside checkout and snapshots pending commitments", async () => {
       const f = await fixture();
       const input = {

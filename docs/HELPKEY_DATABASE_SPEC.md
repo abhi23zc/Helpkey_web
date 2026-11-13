@@ -1370,6 +1370,23 @@ booking/payment statuses and room-type sellable capacity remain authoritative.
   actor/timestamps. IDs are immutable. `physicalUnitLabels/{hash(property + normalized label)}`
   claims enforce label uniqueness transactionally, including renames.
   Room type is immutable; deactivation cannot remove an active assignment.
+- `physicalUnitBulkOperations/{previewId}`: server-only bulk room-number preview and
+  durable retry receipt. Stores propertyId, roomTypeId, actorId, labels (1–100,
+  maximum 40 characters each), register/capacity version digest, createdAt and
+  expiresAt (30 minutes). On completion stores result `{ previewId, count, unitIds }`
+  and completedAt. The server-generated previewId is the stable retry key; completed
+  receipts are retained so a lost response can be retried without creating rooms again.
+  Only the same actor with current `rooms.manage` access to that hotel may use it.
+  Preview/create use `/api/partner/physical-units/bulk` POST with action `preview`
+  (propertyId, roomTypeId, source: range start/end or list text) or `create`
+  (propertyId, previewId). Ranges retain leading zeros; lists accept commas/newlines.
+  Both actions check permissions, room-type scope, hotel-wide case-insensitive labels
+  (including inactive rooms) and active room-type capacity transactionally. Existing
+  labels and repeated inputs are reported and skipped; inactive matches stay inactive.
+  Create requires an unexpired matching register/capacity digest, never truncates,
+  and writes all new units, uniqueness claims, retry receipt and a `room_numbers_added`
+  PMS activity event atomically. A changed register requires a fresh preview.
+  Neither action writes sellable inventory, bookings, assignments or maintenance.
 - `physicalUnitCalendars/{unitId_date}`: propertyId, unitId, date, slots mapping
   15-minute UTC slot keys to booking IDs (including cleaning buffer). Assignment
   checks and old/new calendar writes are transactional. Historical calendars remain;
@@ -1420,3 +1437,35 @@ provider refund amounts.
 - `physicalUnits` gains optional `housekeepingStatus`, note, updater, timestamp and `revision`; missing status means unknown. Cleaning events are under the unit's `events` subcollection. Checkout records dirty status transactionally.
 - Numbered-room maintenance reuses `inventoryBlocks`, adding optional `unitId` and idempotency fingerprint. The same transaction reserves room-type blocked capacity and physical calendar slots identified as `maintenance:<blockId>`. Release removes only that block's slots/capacity.
 - Property `roomEvents` stores bulk edit audit records. New collections are server-only; existing default-deny client rules apply.
+
+## Partner PMS foundation (2026-11-13)
+
+This additive extension implements partner-wide PMS preparation, not a complete front desk or accounting system.
+
+- Membership IDs remain `{propertyId}_{uid}`. Fixed roles are owner, manager, receptionist, cashier, housekeeper and maintenance. Server role presets are authoritative; arbitrary client permission arrays never grant access. `accessRevision` increments on role/access changes. Primary ownership cannot be changed through staff management.
+- `propertyInvitations/{id}` stores propertyId, normalized email, staff role, SHA-256 tokenHash, pending/accepted/cancelled status, expiresAt, acceptedBy and actor/timestamps. Raw tokens are returned only on creation/rotation; links carry tokens in the fragment. Acceptance requires the matching Firebase-verified email and atomically grants membership and the existing partner application role. Expiry is enforced without TTL.
+- `properties/{id}/pmsEvents/{id}` is append-only team/activation/marketplace history, with actorId, type, targetId, before/after and createdAt. Never store invitation secrets in events.
+- `properties.pms` stores version 1, activatedAt/By, ownerDisabled, adminDisabled, adminReason, openingData (`none` or `external`), teamReviewed and actor/timestamps. Ready is derived from saved setup and inventory integrity, never a user-supplied status. External opening reservations/balances block readiness; imports and manual overrides are not implemented.
+- `properties.marketplaceOwnerPaused` is an independent voluntary public-sales pause. It never clears admin pause/suspension/archive/revoked approval. Public bookability remains server-derived. Internal commands may bypass public publication only through an explicit authorized, ready PMS context; prices, time rules, holds and shared capacity remain unchanged.
+- Staff/private DTOs and notifications are permission-filtered. Customer ownership never follows the operator UID on `manual_partner` reservations. Existing genuine customer records retain their behavior.
+- Missing PMS settings preserve existing owner marketplace workflows. Once activated, disabled/incomplete PMS cannot fall back to those workflows. Owners can always access setup/team recovery controls while their account remains eligible; admin restrictions prevent operational commands.
+- Revocation is enforced on each server request and transaction. Visible clients revalidate at most every 15 seconds and clear private state on account/access changes; no promise of instantaneous erasure of information already viewed or downloaded is made.
+
+### Phase 1 corrections: readiness checkpoint and cashier lookup
+
+- `properties.pms.inventoryVerification` is a server-only checkpoint with `passed: boolean`, `checkedAt: Timestamp`, and `checkedBy: uid`. Activate, resume, save opening declarations and explicit Verify inventory commands reconcile inventory in a consistent transaction and save the result. Clients cannot submit a result. Existing activated hotels without this checkpoint must have an owner run Verify inventory (or save setup declarations) once; no live records are migrated automatically.
+- Routine readiness checks read current room/rate/register/policy configuration and the saved verification result, never reservation/hold/calendar history. The result is a setup checkpoint, not a claim that a full audit runs on every operation. Existing transactional checks for the affected inventory, assignments, collections, reversals and refunds remain authoritative. Full explicit verification is paginated without an arbitrary historical-document ceiling; it preserves and checks historical calendar counters and committed holds, reads active bookings and resolves historical hold identities. It does not rewrite or repair financial/inventory records.
+- Cashier department GET accepts an exact booking ID/reference or a signed, account/property-bound cursor for outstanding-balance pages. Each page inspects at most 50 eligible reservations; paid candidates can produce an empty page with a next cursor. Exact lookup includes older/settled bookings for receipt corrections, uses property-scoped reference queries, and never returns guest contacts or raw provider/booking documents. New indexes are additive.
+- Same-account foreground identity checks hide retained private UI until verification succeeds without clearing drafts or remounting it. Failed verification offers a retry. Actual account changes/logout still cancel queries, clear private drafts/caches and reject stale responses; an account verification dialog also covers portalled private UI.
+
+## Phase 2A walk-in and identity extension
+
+- Internal manual requests add `reservationPurpose: reservation | walk_in` and a hotel-local `recordedArrivalTime`. Walk-ins use the server's current hotel date, never a previous night. `properties.pms.allowEarlyWalkIns` defaults false and is owner-controlled. Enabled early walk-ins reserve actual occupancy from arrival and charge full calendar-night prices; departure is always explicitly reviewed. Public timing rules remain unchanged.
+- Manual bookings add `identityVersion: 2`, `createdByStaffId`, `reservationPurpose`, `recordedArrivalAt` (UTC ISO), `occupants` (known names/age groups only), `registrationIncomplete`, `guestProfileId`, and `linkedCustomerId` (null until verified). `guestId` is null until verified customer linking, never the operator. `bookingContact` is independent. Existing booking snapshots, allocations, receipts and history are preserved.
+- `properties/{id}/guestProfiles/{id}` stores hotel-scoped lead name/contact and booking IDs; no global contact lookup or automatic contact-based merging. Booking occupant updates require reservation.note and a revision; events preserve previous details.
+- `bookings/{id}/customerLinks/current` stores normalized recipient email, tokenHash, pending/accepted/cancelled state, seven-day expiresAt, actors and acceptedBy. Raw secrets exist only in returned fragment links. Verified matching Firebase email and explicit acceptance atomically set linkedCustomerId/guestId and append history. No arbitrary UID or contact matching grants ownership. Legacy manual records are never claimed automatically; this flow requires identityVersion 2.
+- Checked-in walk-ins retain the recorded actual arrival and separately save checkInRecordedAt. Both creation and check-in are explicit actions. Inventory includes every overlapping UTC quarter hour and cleaning buffer. Historical review tooling is read-only.
+
+Phase 2A manual preview is `POST /api/partner/bookings/quote` with the same stay/purpose/arrival inputs and reservation.create permission. Saving accepts additive `expectedStartAt`, `expectedEndAt`, `expectedTimezone` and existing expectedTotalPaise; the current UI submits all reviewed values and must explicitly review changed terms before retrying. Creation still revalidates the effective rate, policies and allocation inside its existing transaction. Guest registration uses revision-checked partner GET/POST guest-registration; customer invitation issue/cancel is partner POST customer-link, and verified preview/explicit acceptance is customer POST customer-link with token and accept flag. These endpoints never accept an arbitrary linked UID.
+
+The partner guest-registration GET also returns a safe `customerInvitation` summary (status, recipient email and ISO expiry). Pending links whose deadline passed are reported as expired. It never returns a token or tokenHash; reopening a reservation can cancel a pending invitation without recovering its secret. No collection or index changes are required.

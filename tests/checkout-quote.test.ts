@@ -33,6 +33,8 @@ vi.mock("@/lib/api/cache", () => ({ invalidatePublic: vi.fn() }));
 vi.mock("@/lib/booking/notifications", () => ({ enqueueBookingNotification: vi.fn() }));
 vi.mock("@/lib/providers/http", () => ({ providerFetch: fixture.provider }));
 
+import { bookingFailure } from "@/lib/booking/api-error";
+import { StaySelectionError } from "@/lib/stay/domain";
 import { createBooking, quote, quoteWithTiming } from "@/lib/bookings";
 
 const stay = {
@@ -145,6 +147,26 @@ describe("checkout quote and booking comparison", () => {
     offering.version--;
     offering.variants[1].unitPricePaise = 16000;
     await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
+  });
+
+  it("returns a stable selection code while retaining the legacy message", () => {
+    expect(bookingFailure(new StaySelectionError("Choose valid service hours."), "Choose valid service hours.")).toEqual({ code: "STAY_SELECTION_INVALID", error: "Choose valid service hours." });
+    expect(bookingFailure(new Error("internal secret"), "Unable to book.")).toEqual({ code: "BOOKING_FAILED", error: "Unable to book." });
+  });
+
+  it.each(["full", "deposit", "pay_at_property"])("%s excludes approval requests but includes immediate paid preferences", async paymentMode => {
+    Object.assign(fixture.records.get("ratePlans/rate")!, { paymentMode, depositBasisPoints: 2500 });
+    const common = { propertyId: "hotel", version: 1, description: "Published request", kind: "preference", travelerCategories: [], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 1, advanceNoticeMinutes: 0, variants: [], status: "active" };
+    fixture.records.set("properties/hotel/stayCustomizations/paid", { ...common, name: "Paid preference", confirmation: "immediate" });
+    fixture.records.set("properties/hotel/stayCustomizations/pending", { ...common, name: "Hotel approval", confirmation: "approval" });
+    const input = { ...stay, customizationSelections: ["paid", "pending"].map(offeringId => ({ offeringId, variantId: null, quantity: 1 })), unlistedRequests: [{ name: "Unlisted service", note: "Hotel review needed", neededAt: "2027-01-15T12:00:00Z" }] };
+    const priced = await quote(input);
+    expect(priced.extrasTotalPaise).toBe(20000);
+    expect(priced.totalPaise).toBe(160000);
+    expect(priced.payableNowPaise).toBe(paymentMode === "full" ? 160000 : paymentMode === "deposit" ? 55000 : 0);
+    expect(priced.customizations.map(r => r.settlement)).toEqual(["included", "pending_hotel", "pending_hotel"]);
+    await expect(createBooking("guest", { ...input, ...guest, paymentMethod: paymentMode === "pay_at_property" ? "pay_at_property" : "online", expectedTotalPaise: priced.totalPaise, quoteFingerprint: priced.fingerprint })).rejects.toThrow("TEST_TRANSACTION_BOUNDARY");
+    expect(fixture.provider).not.toHaveBeenCalled();
   });
 
   it("rejects sold-out inventory even with the original valid fingerprint", async () => {

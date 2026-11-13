@@ -67,11 +67,11 @@ export function PartnerRequestQueue({
             className="mt-1 w-full sm:min-w-72"
           />
         </label>
-        <label className="text-sm font-medium">
+        <label className="text-xs font-medium text-slate-500">
           Request status
           <select
             aria-label="Request status"
-            className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 sm:min-w-56"
+            className="mt-1 block h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20 sm:min-w-56"
             value={status}
             onChange={(e) => setStatus(e.target.value as RequestGroup)}
           >
@@ -84,7 +84,7 @@ export function PartnerRequestQueue({
         </label>
         <button
           type="button"
-          className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm"
+          className="h-10 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs self-end"
           disabled={query.isFetching}
           onClick={() => void query.refetch()}
         >
@@ -169,7 +169,7 @@ export function PartnerRequestQueue({
             <button
               type="button"
               onClick={() => setSelected(row)}
-              className="mt-4 min-h-11 rounded-xl bg-[#061224] px-4 text-sm font-semibold text-white"
+              className="mt-4 h-9 inline-flex items-center justify-center rounded-lg bg-[#061224] px-4 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-colors"
             >
               View request
             </button>
@@ -252,7 +252,7 @@ function RequestDetail({
     >
       <div className="space-y-4">
         <a
-          className="inline-flex min-h-11 items-center text-sm font-semibold underline"
+          className="h-9 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
           href={`/partner/reservations?${new URLSearchParams({ propertyId, bookingId: row.bookingId, scope: "all" })}`}
         >
           Open reservation

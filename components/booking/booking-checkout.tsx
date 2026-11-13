@@ -7,9 +7,13 @@ import {
   type CheckoutStep,
 } from "./checkout-journey";
 import { eligibleOffering } from "@/lib/stay/domain";
-import { UnlistedRequestForm, type UnlistedDraft } from "@/components/stay/unlisted-request";
+import {
+  UnlistedRequestForm,
+  type UnlistedDraft,
+} from "@/components/stay/unlisted-request";
 import { TravelerChips } from "@/components/stay/personalization-picker";
 import { CheckoutPersonalization } from "@/components/stay/checkout-personalization";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 import type {
   Selection,
   TravelerCategory,
@@ -40,7 +44,9 @@ import {
   ArrowLeft,
   ArrowRight,
   BedDouble,
+  Briefcase,
   Building2,
+  Cake,
   Check,
   ChevronDown,
   Clock,
@@ -337,10 +343,10 @@ export function BookingCheckout({
   // one now selected. Booking is blocked until the matching quote arrives.
   const quoteStale = Boolean(
     quote &&
-      input &&
-      (quote.adults !== input.adults ||
-        quote.children !== input.children ||
-        quote.infants !== input.infants),
+    input &&
+    (quote.adults !== input.adults ||
+      quote.children !== input.children ||
+      quote.infants !== input.infants),
   );
   const guestsPending = !sameGuests(guests, committedGuests) || quoteStale;
   // Remember the last guest count that priced successfully so a failed change
@@ -451,11 +457,11 @@ export function BookingCheckout({
     if (!showGstForm && !taxId) return false;
     return Boolean(
       taxId &&
-        (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(
-          taxId.toUpperCase(),
-        ) ||
-          !companyName.trim() ||
-          !Object.values(billingAddress).every(Boolean)),
+      (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(
+        taxId.toUpperCase(),
+      ) ||
+        !companyName.trim() ||
+        !Object.values(billingAddress).every(Boolean)),
     );
   }, [billingAddress, companyName, showGstForm, taxId]);
 
@@ -875,65 +881,72 @@ export function BookingCheckout({
       )}
 
       {holdSeconds !== null && (
-        <div className="bg-emerald-50 border-b border-emerald-200/80 px-4 py-2.5">
-          <div className="mx-auto max-w-[1280px] flex items-center justify-between text-xs font-bold text-emerald-900">
+        <div className="bg-[#fbf7ee] border-b border-[#e8d9b5] px-4 py-2.5">
+          <div className="mx-auto max-w-[1280px] flex items-center justify-between text-xs font-bold text-[#785d1c]">
             <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-emerald-600" />
+              <Clock className="h-3.5 w-3.5 text-[#b48a3c]" />
               {holdSeconds > 0
                 ? `Room reserved temporarily for ${Math.floor(holdSeconds / 60)}:${String(holdSeconds % 60).padStart(2, "0")}`
                 : "Your payment hold has expired. Check Trips for status."}
             </span>
-            <span className="text-[11px] font-medium text-emerald-700">
+            <span className="text-[11px] font-medium text-[#785d1c]/80">
               Guaranteed availability
             </span>
           </div>
         </div>
       )}
 
-      <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
-        <header className="mb-7">
+      <div className="mx-auto max-w-[1280px] px-4 pt-4 pb-12 sm:px-6 sm:pt-6 sm:pb-14 lg:px-10 lg:pt-6 lg:pb-16">
+        <header className="mb-6 sm:mb-8">
           <Link
             href={hotelHref}
-            className="mb-5 inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-[var(--hk-muted)]"
+            className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#000615] transition"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back to hotel
           </Link>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hk-gold)]">
-            Your next stay, made simple
-          </p>
+          {step !== "extras" && (
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--hk-gold)]">
+              Your next stay, made simple
+            </p>
+          )}
           <h1
             ref={stageHeading}
             tabIndex={-1}
-            className="scroll-mt-28 text-2xl font-extrabold tracking-tight text-[var(--hk-navy)] outline-none sm:text-3xl"
+            className="scroll-mt-28 text-2xl font-extrabold tracking-tight text-[#000615] outline-none sm:text-3xl"
           >
             {checkoutStepLabels[step]}
           </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--hk-muted)]">
+          <p className="mt-1 text-xs sm:text-sm text-slate-600 leading-relaxed">
             {step === "details"
               ? "A few details, then you’re one step closer to checking in."
               : step === "extras"
-                ? "Small touches for a more comfortable stay. Everything here is optional."
+                ? "Little comforts. Special moments. All optional."
                 : "Everything in one place. Take a moment to make sure it’s right."}
           </p>
-          <div className="mt-4 rounded-xl border border-[var(--hk-border)] bg-white p-3 text-xs lg:hidden">
-            <p className="font-bold text-[var(--hk-navy)]">
+
+          {/* Stepper directly below title, matching user design cards */}
+          <div className="mt-5 max-w-3xl">
+            <CheckoutProgress
+              furthestStep={furthestStep}
+              step={step}
+              locked={guestsLocked}
+              onChange={goToStep}
+            />
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs lg:hidden">
+            <p className="font-bold text-[#000615]">
               {initialDisplay?.propertyName ?? "Your hotel"} ·{" "}
               {initialDisplay?.roomType.name ?? "Your room"}
             </p>
-            <p className="mt-1 leading-5 text-[var(--hk-muted)]">
+            <p className="mt-1 leading-5 text-slate-500">
               {initialDisplay
                 ? `${shortDate(initialDisplay.checkIn)} · ${initialDisplay.arrivalTime} → ${shortDate(initialDisplay.checkOut)} · ${initialDisplay.departureTime}`
                 : ""}{" "}
               · {guests.adults + guests.children + guests.infants} guests
             </p>
           </div>
-          <CheckoutProgress
-            furthestStep={furthestStep}
-            step={step}
-            locked={guestsLocked}
-            onChange={goToStep}
-          />
         </header>
         {quoteQuery.isError && (
           <div
@@ -965,7 +978,63 @@ export function BookingCheckout({
           <section className="min-w-0 space-y-5 lg:col-span-8">
             {step === "details" && (
               <>
-                <div className="rounded-2xl border border-[var(--hk-border)] bg-white p-5"><TravelerChips value={preferences} onChange={setPreferences} single disabled={guestsLocked}/></div>
+                {/* Trip Context Card */}
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white p-5 sm:p-6 shadow-xs space-y-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#141b2b]">
+                      Trip context (optional)
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Helps the hotel personalize your stay additions and room
+                      preparation.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {[
+                      { id: "Couple", label: "Couple", icon: Users },
+                      { id: "Family", label: "Family", icon: Users },
+                      { id: "Business", label: "Business", icon: Briefcase },
+                      { id: "Friends / Group", label: "Friends", icon: Users },
+                      { id: "Solo", label: "Solo", icon: User },
+                      {
+                        id: "Special occasion",
+                        label: "Special occasion",
+                        icon: Cake,
+                      },
+                    ].map(({ id, label, icon: Icon }) => {
+                      const isSelected = preferences.includes(
+                        id as TravelerCategory,
+                      );
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          disabled={guestsLocked}
+                          onClick={() => {
+                            if (isSelected) {
+                              setPreferences(
+                                preferences.filter((p) => p !== id),
+                              );
+                            } else {
+                              setPreferences([
+                                ...preferences.filter((p) => p !== id),
+                                id as TravelerCategory,
+                              ]);
+                            }
+                          }}
+                          className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
+                            isSelected
+                              ? "border-[#b48a3c] bg-[#fbf6ee] text-[#785d1c] shadow-xs"
+                              : "border-[#e5e1d8] bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5 opacity-70" />
+                          <span>{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {/* Sign-In Prompt Banner */}
                 {!loading && !appUser && (
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 rounded-2xl border border-amber-200/50 bg-gradient-to-r from-amber-50/40 via-white to-blue-50/30 p-6 sm:p-7 shadow-xs">
@@ -1346,8 +1415,9 @@ export function BookingCheckout({
                                   <span className="text-rose-500">*</span>
                                 </label>
                                 {isAadhaarComplete && (
-                                  <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                                    <Check className="h-3.5 w-3.5" /> 12 digits
+                                  <span className="text-[11px] font-semibold text-[#0b1f3a] flex items-center gap-1">
+                                    <Check className="h-3.5 w-3.5 text-[#b48a3c]" />{" "}
+                                    12 digits
                                   </span>
                                 )}
                               </div>
@@ -1633,10 +1703,41 @@ export function BookingCheckout({
                   priceError={quoteQuery.isError}
                   retry={() => void optionsQuery.refetch()}
                 />
-                {unlistedRequests.map((r,i)=><div key={i} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--hk-border)] bg-white p-4 text-sm"><div><p className="font-semibold">{r.name}</p><p className="mt-1 text-xs text-[var(--hk-muted)]">Awaiting hotel review / quote · Not included in payment</p></div><button type="button" disabled={guestsLocked} className="min-h-11 text-xs underline" onClick={()=>setUnlistedRequests(old=>old.filter((_,j)=>i!==j))}>Remove</button></div>)}
-                <UnlistedRequestForm timezone={quote?.timezone ?? "Asia/Kolkata"} disabled={guestsLocked || unlistedRequests.length>=5} onAdd={v=>setUnlistedRequests(old=>[...old,v])}/>
+                {unlistedRequests.map((r, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-xs"
+                  >
+                    <div>
+                      <p className="font-semibold text-[#000615]">{r.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Awaiting hotel review / quote · Not included in payment
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={guestsLocked}
+                      className="text-xs font-semibold text-slate-500 underline hover:text-rose-600"
+                      onClick={() =>
+                        setUnlistedRequests((old) =>
+                          old.filter((_, j) => i !== j),
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <UnlistedRequestForm
+                  timezone={quote?.timezone ?? "Asia/Kolkata"}
+                  disabled={guestsLocked || unlistedRequests.length >= 5}
+                  onAdd={(v) => setUnlistedRequests((old) => [...old, v])}
+                />
                 {/* Special Requests */}
-                <details className="rounded-2xl border border-[var(--hk-border)] bg-white p-5">
+                <details
+                  id="special-requests-section"
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"
+                >
                   <summary className="min-h-6 cursor-pointer text-sm font-semibold text-[var(--hk-navy)]">
                     Anything else the hotel should know?{" "}
                     <span className="font-normal text-[var(--hk-muted)]">
@@ -1677,6 +1778,9 @@ export function BookingCheckout({
                   locked={guestsLocked}
                   propertyName={initialDisplay?.propertyName ?? "Your hotel"}
                   roomName={initialDisplay?.roomType.name ?? "Your room"}
+                  propertyCoverImageUrl={
+                    initialDisplay?.propertyCoverImageUrl ?? null
+                  }
                   stayLabel={`${initialDisplay ? shortDate(initialDisplay.checkIn) : ""} · ${initialDisplay?.arrivalTime ?? ""} → ${initialDisplay ? shortDate(initialDisplay.checkOut) : ""} · ${initialDisplay?.departureTime ?? ""} · ${guests.adults + guests.children + guests.infants} guests`}
                   amenities={[
                     ...(quote?.includedAmenities.roomAmenities ?? []),
@@ -1704,32 +1808,73 @@ export function BookingCheckout({
                     <PriceBreakdown quote={quote} />
                   </div>
                 )}
-                {/* CARD 4: Policies & Confirmation Agreement */}
-                <div className="rounded-2xl border border-[#c4c6ce]/40 bg-white p-6 sm:p-7 shadow-[0_4px_20px_rgba(11,31,58,0.04)] space-y-6">
-                  <h2 className="text-lg font-bold text-[#000615]">
-                    Booking Terms &amp; Policies
-                  </h2>
+                {/* Confirmation Agreement Card */}
+                <div className="rounded-2xl border border-[#e5e1d8] bg-white shadow-xs overflow-hidden">
+                  {/* Header */}
+                  <div className="border-b border-[#e5e1d8] bg-[#fbf7ee] px-5 py-3.5">
+                    <h2 className="text-sm font-bold text-[#141b2b] flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-[#b48a3c]" />
+                      Confirm & agree to continue
+                    </h2>
+                  </div>
 
-                  <div className="space-y-4 pt-1">
+                  <div className="p-5 space-y-3">
+                    {/* Trust badges row */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {[
+                        { icon: ShieldCheck, text: "Secure payment" },
+                        { icon: Lock, text: "Data encrypted" },
+                        { icon: UserCheck, text: "Verified hotel" },
+                      ].map(({ icon: Icon, text }) => (
+                        <div
+                          key={text}
+                          className="flex flex-col items-center gap-1.5 rounded-xl border border-[#e5e1d8] bg-slate-50/60 py-3 text-center"
+                        >
+                          <Icon className="h-4 w-4 text-[#b48a3c]" />
+                          <span className="text-[10px] font-semibold text-slate-600">
+                            {text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Checkbox 1: Terms */}
                     <label
-                      className={`flex items-start gap-4 rounded-2xl p-4 cursor-pointer transition-all duration-200 ${
+                      className={`flex items-start gap-3 rounded-xl p-3.5 cursor-pointer transition-all duration-200 border ${
                         hasAttemptedSubmit && !termsAccepted
-                          ? "border border-rose-300 bg-rose-50/20"
-                          : "hover:bg-slate-50/80"
+                          ? "border-rose-300 bg-rose-50/30"
+                          : termsAccepted
+                            ? "border-[#0b1f3a]/30 bg-[#fbf7ee]/60"
+                            : "border-[#e5e1d8] bg-white hover:bg-slate-50/80"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={termsAccepted}
-                        onChange={(e) => setTermsAccepted(e.target.checked)}
-                        className="mt-0.5 h-5 w-5 accent-[#000615] rounded border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      <div className="relative mt-0.5 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={termsAccepted}
+                          onChange={(e) => setTermsAccepted(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                            termsAccepted
+                              ? "border-[#0b1f3a] bg-[#0b1f3a]"
+                              : hasAttemptedSubmit
+                                ? "border-rose-400 bg-white"
+                                : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {termsAccepted && (
+                            <Check className="h-3 w-3 stroke-[3] text-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-700 leading-relaxed">
                         I agree to the Helpkey{" "}
                         <Link
                           href="/help"
                           target="_blank"
-                          className="font-bold text-[#000615] underline hover:text-slate-900"
+                          className="font-bold text-[#0b1f3a] underline hover:text-[#b48a3c]"
                         >
                           Terms of Service and Privacy Policy
                         </Link>{" "}
@@ -1737,43 +1882,56 @@ export function BookingCheckout({
                       </span>
                     </label>
 
+                    {/* Checkbox 2: House rules */}
                     <label
-                      className={`flex items-start gap-4 rounded-2xl p-4 cursor-pointer transition-all duration-200 ${
+                      className={`flex items-start gap-3 rounded-xl p-3.5 cursor-pointer transition-all duration-200 border ${
                         hasAttemptedSubmit && !rulesAccepted
-                          ? "border border-rose-300 bg-rose-50/20"
-                          : "hover:bg-slate-50/80"
+                          ? "border-rose-300 bg-rose-50/30"
+                          : rulesAccepted
+                            ? "border-[#0b1f3a]/30 bg-[#fbf7ee]/60"
+                            : "border-[#e5e1d8] bg-white hover:bg-slate-50/80"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={rulesAccepted}
-                        onChange={(e) => setRulesAccepted(e.target.checked)}
-                        className="mt-0.5 h-5 w-5 accent-[#000615] rounded border-slate-300 cursor-pointer"
-                      />
-                      <span className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      <div className="relative mt-0.5 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={rulesAccepted}
+                          onChange={(e) => setRulesAccepted(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                            rulesAccepted
+                              ? "border-[#0b1f3a] bg-[#0b1f3a]"
+                              : hasAttemptedSubmit
+                                ? "border-rose-400 bg-white"
+                                : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {rulesAccepted && (
+                            <Check className="h-3 w-3 stroke-[3] text-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-700 leading-relaxed">
                         I confirm that all staying guests meet the
                         property&apos;s check-in age, ID verification, and
                         house-rule requirements.
                       </span>
                     </label>
+
+                    {/* Validation error */}
+                    {hasAttemptedSubmit && formError && !error && (
+                      <div
+                        role="alert"
+                        className="flex items-center gap-2.5 rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-800"
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-rose-600" />
+                        <span>{formError}</span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Validation Banner if attempted submit */}
-                  {hasAttemptedSubmit && formError && !error && (
-                    <div
-                      role="alert"
-                      className="flex items-center gap-2.5 rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs sm:text-sm font-bold text-rose-800"
-                    >
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-rose-600" />
-                      <span>{formError}</span>
-                    </div>
-                  )}
                 </div>
-
-                <p className="flex items-center justify-center gap-2 text-xs text-[var(--hk-muted)]">
-                  <Lock className="h-3.5 w-3.5" />
-                  Secure payment · Clear prices · Your booking in My Trips
-                </p>
               </>
             )}
             {step !== "details" && (
@@ -1798,6 +1956,8 @@ export function BookingCheckout({
             display={initialDisplay}
             quote={quote}
             busy={busy}
+            step={step}
+            onSkipExtras={() => goToStep("review")}
             appUserReady={Boolean(appUser)}
             guestCount={guests.adults + guests.children + guests.infants}
             updating={
@@ -1861,10 +2021,18 @@ function PriceBreakdown({ quote }: { quote: Quote }) {
         <span>
           {quote.extrasTotalPaise
             ? money(quote.extrasTotalPaise, quote.currency)
-            : quote.customizations.some(r=>r.settlement==="pending_hotel") ? "Pending requests" : "Free"}
+            : quote.customizations.some((r) => r.settlement === "pending_hotel")
+              ? "Pending requests"
+              : "Free"}
         </span>
       </div>
-      {quote.customizations.some(r=>r.settlement==="pending_hotel") && <p className="text-xs">Pending requests are excluded from the total and need hotel approval. You will review any final quote before paying.</p>}
+      {quote.customizations.some((r) => r.settlement === "pending_hotel") && (
+        <p className="text-xs">
+          Pending extras are not charged at checkout. After hotel approval,
+          review and accept any final price, then pay separately from your
+          booking. Free extras require no payment.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3 border-t border-[var(--hk-border)] pt-4 font-bold text-[var(--hk-navy)]">
         <span>Booking total</span>
         <span className="text-xl">
@@ -1901,6 +2069,8 @@ function BookingSummary({
   actionLabel,
   actionBlocked,
   selectedCount,
+  step,
+  onSkipExtras,
 }: {
   display: CheckoutDisplay | null;
   quote: Quote | null;
@@ -1914,6 +2084,8 @@ function BookingSummary({
   actionLabel?: string;
   actionBlocked: boolean;
   selectedCount: number;
+  step?: CheckoutStep;
+  onSkipExtras?: () => void;
 }) {
   const cta =
     actionLabel ??
@@ -1930,15 +2102,22 @@ function BookingSummary({
       : quoteError
         ? "Refresh price to continue"
         : cta;
+
+  const stayNights = quote?.nights ?? display?.nights ?? 1;
+  const stayDates = display
+    ? `${shortDate(display.checkIn)}–${shortDate(display.checkOut)}`
+    : "";
+
   return (
     <>
       <aside
         aria-label="Booking summary"
         className="hidden self-start lg:sticky lg:top-24 lg:col-span-4 lg:block"
       >
-        <div className="overflow-hidden rounded-2xl border border-[var(--hk-border)] bg-white shadow-[var(--hk-shadow-card)]">
-          <div className="flex items-center gap-3 border-b border-[var(--hk-border)] p-5">
-            <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
+          {/* 1. Hotel Header */}
+          <div className="flex items-center gap-3.5 border-b border-slate-100 p-5">
+            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
               {display?.propertyCoverImageUrl ? (
                 <PublicMediaImage
                   src={display.propertyCoverImageUrl}
@@ -1947,89 +2126,150 @@ function BookingSummary({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <BedDouble className="h-7 w-7" />
+                <div className="grid h-full w-full place-items-center text-slate-400">
+                  <BedDouble className="h-6 w-6" />
+                </div>
               )}
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-[var(--hk-navy)]">
+              <h2 className="text-base font-bold text-[#000615] leading-snug truncate">
                 {display?.propertyName ?? "Your hotel"}
               </h2>
-              <p className="mt-1 text-xs text-[var(--hk-muted)]">
-                {[display?.propertyCity, display?.propertyState]
-                  .filter(Boolean)
-                  .join(", ")}
+              <p className="mt-0.5 text-xs text-slate-500 truncate">
+                {display?.roomType.name ?? "Room"}
+                {display?.propertyCity ? ` · ${display.propertyCity}` : ""}
               </p>
-              <p className="mt-1 text-xs font-medium text-[var(--hk-navy)]">
-                {display?.roomType.name ?? "Your room"}
+              <p className="mt-1 text-xs text-slate-500">
+                {stayDates ? `${stayDates} · ` : ""}
+                {quote?.bookingMode === "hourly"
+                  ? `${quote.durationMinutes / 60}h stay`
+                  : `${stayNights} ${stayNights === 1 ? "night" : "nights"}`}{" "}
+                · {guestCount} {guestCount === 1 ? "guest" : "guests"}
               </p>
             </div>
           </div>
-          <div className="space-y-2 border-b border-[var(--hk-border)] bg-[var(--hk-surface-soft)]/40 p-5 text-xs text-[var(--hk-muted)]">
-            <div className="flex justify-between gap-3">
-              <span>Check-in</span>
-              <span className="text-right font-semibold text-[var(--hk-navy)]">
-                {display
-                  ? `${shortDate(display.checkIn)} · ${displayTime(display.arrivalTime, "")}`
-                  : "—"}
-              </span>
+
+          {/* 2. Visual Selected Extras (Direct Feedback) */}
+          {quote && Boolean(quote.customizations.length) && (
+            <div className="border-b border-slate-100 p-5">
+              <h3 className="mb-3 text-sm font-bold text-[#000615]">
+                Your selected extras
+              </h3>
+              <div className="space-y-3">
+                {quote.customizations.map((r) => {
+                  const isApproval =
+                    r.settlement === "pending_hotel" || r.priceOnRequest;
+                  return (
+                    <div key={r.id} className="flex items-center gap-3">
+                      <img
+                        src={getOfferingImageUrl(r)}
+                        alt={r.name}
+                        className="h-11 w-11 shrink-0 rounded-lg object-cover bg-slate-100"
+                        loading="lazy"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-[#000615] truncate">
+                          {r.name}
+                          {r.variantName ? ` · ${r.variantName}` : ""} ×{" "}
+                          {r.quantity}
+                        </p>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium mt-0.5 ${
+                            isApproval
+                              ? "bg-amber-50 text-amber-800"
+                              : "bg-[#fbf7ee] text-[#785d1c] border border-[#e8d9b5]"
+                          }`}
+                        >
+                          {isApproval ? (
+                            <>
+                              <Clock className="h-2.5 w-2.5" />
+                              Awaiting hotel confirmation
+                            </>
+                          ) : (
+                            <>
+                              <Check className="h-2.5 w-2.5" />
+                              Confirmed
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-xs font-bold text-[#000615]">
+                        {r.source === "unlisted" || r.priceOnRequest
+                          ? "Quote"
+                          : r.totalPaise
+                            ? money(r.totalPaise, quote.currency)
+                            : "Free"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex justify-between gap-3">
-              <span>Check-out</span>
-              <span className="text-right font-semibold text-[var(--hk-navy)]">
-                {display
-                  ? `${shortDate(display.checkOut)} · ${displayTime(display.departureTime, "")}`
-                  : "—"}
-              </span>
-            </div>
-            <p className="pt-1">
-              {guestCount} {guestCount === 1 ? "guest" : "guests"} ·{" "}
-              {quote?.bookingMode === "hourly"
-                ? `${quote.durationMinutes / 60} hour stay`
-                : `${quote?.nights ?? display?.nights ?? 1} night stay`}
-            </p>
-          </div>
+          )}
+
+          {/* 3. Price Breakdown */}
           <div className="p-5">
-            <h3 className="mb-4 text-sm font-bold text-[var(--hk-navy)]">
-              Your booking summary
-            </h3>
+            {step !== "extras" && (
+              <h3 className="mb-3 text-sm font-bold text-[#000615]">
+                Your booking summary
+              </h3>
+            )}
+
             {quote ? (
-              <PriceBreakdown quote={quote} />
+              <div className="space-y-2.5 text-xs sm:text-sm text-slate-600">
+                <div className="flex justify-between gap-3">
+                  <span>Room &amp; taxes</span>
+                  <span className="font-semibold text-[#000615]">
+                    {money(
+                      quote.subtotalPaise + quote.taxPaise,
+                      quote.currency,
+                    )}
+                  </span>
+                </div>
+                {Boolean(quote.extrasTotalPaise) && (
+                  <div className="flex justify-between gap-3">
+                    <span>Confirmed extras</span>
+                    <span className="font-semibold text-[#000615]">
+                      {money(quote.extrasTotalPaise, quote.currency)}
+                    </span>
+                  </div>
+                )}
+                {quote.customerFeePaise > 0 && (
+                  <div className="flex justify-between gap-3">
+                    <span>Helpkey service fee</span>
+                    <span>{money(quote.customerFeePaise, quote.currency)}</span>
+                  </div>
+                )}
+
+                {/* Highlighted Pay Now Bar */}
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-[#fbf7ee] px-4 py-3 font-bold text-[#000615]">
+                  <span className="text-sm">Pay now</span>
+                  <span className="text-lg">
+                    {money(quote.payableNowPaise, quote.currency)}
+                  </span>
+                </div>
+
+                {quote.balanceDuePaise > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500 pt-1">
+                    <span>Pay at property</span>
+                    <span className="font-semibold text-[#000615]">
+                      {money(quote.balanceDuePaise, quote.currency)}
+                    </span>
+                  </div>
+                )}
+              </div>
             ) : (
-              <p role="status" className="text-sm text-[var(--hk-muted)]">
+              <p role="status" className="text-sm text-slate-500">
                 Preparing your price…
               </p>
             )}
-            {!!quote?.customizations.length && (
-              <details className="mt-3 border-t border-[var(--hk-border)] pt-1 text-xs">
-                <summary className="min-h-11 cursor-pointer py-3 font-semibold text-[var(--hk-navy)]">
-                  Selected additions ({selectedCount})
-                </summary>
-                <div className="max-h-44 space-y-3 overflow-y-auto pb-3">
-                  {quote.customizations.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex justify-between gap-3 text-[var(--hk-muted)]"
-                    >
-                      <span>
-                        {r.name}
-                        {r.variantName ? ` · ${r.variantName}` : ""} ×{" "}
-                        {r.quantity}
-                      </span>
-                      <span className="shrink-0">
-                        {r.source==="unlisted" || r.priceOnRequest ? "Awaiting quote" : r.totalPaise ? money(r.totalPaise,quote.currency) : "Free"}
-                        {r.settlement==="pending_hotel" && <span className="mt-1 block text-[10px]">Pending · Not charged</span>}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
+
             {quote?.cancellationPolicy && (
-              <details className="mt-3 text-xs text-[var(--hk-muted)]">
-                <summary className="min-h-11 cursor-pointer py-3 font-medium text-[var(--hk-navy)]">
+              <details className="mt-3 text-xs text-slate-500 border-t border-slate-100 pt-2">
+                <summary className="min-h-8 cursor-pointer py-1 font-medium text-[#000615]">
                   {quote.cancellationPolicy.name} cancellation
                 </summary>
-                <p className="leading-5">
+                <p className="mt-1 leading-5">
                   {quote.cancellationPolicy.description}
                   {cancellationDeadline(quote)
                     ? ` Deadline: ${cancellationDeadline(quote)} (${quote.timezone}).`
@@ -2037,6 +2277,7 @@ function BookingSummary({
                 </p>
               </details>
             )}
+
             {quoteError && (
               <div
                 role="alert"
@@ -2046,42 +2287,58 @@ function BookingSummary({
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="block min-h-11 font-semibold underline"
+                  className="block min-h-8 font-semibold underline mt-1"
                 >
                   Refresh price
                 </button>
               </div>
             )}
+
+            {/* Primary Action CTA */}
             <button
               type="button"
               disabled={disabled}
               onClick={onSubmit}
-              className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--hk-navy)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--hk-primary)] disabled:opacity-50"
+              className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#000615] px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
-              {buttonText}
+              <span>{buttonText}</span>
               <ArrowRight className="h-4 w-4 shrink-0" />
             </button>
-            <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-[var(--hk-muted)]">
+
+            {/* Secondary Exit Link (Continue without extras) */}
+            {step === "extras" && onSkipExtras && (
+              <button
+                type="button"
+                onClick={onSkipExtras}
+                className="mt-2.5 w-full text-center text-xs font-semibold text-slate-600 underline hover:text-[#000615] py-1 transition"
+              >
+                Continue without extras
+              </button>
+            )}
+
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
               <Lock className="h-3 w-3" />
-              Secure booking with Helpkey
+              Secure booking · Your details are safe with Helpkey.
             </p>
           </div>
         </div>
       </aside>
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--hk-border)] bg-white px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(11,31,58,0.06)] lg:hidden">
+
+      {/* Mobile Bottom Fixed Bar */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-lg lg:hidden">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium text-[var(--hk-muted)]">
+            <p className="text-[10px] font-medium text-slate-500">
               Pay now
               {selectedCount
                 ? ` · ${selectedCount} ${selectedCount === 1 ? "addition" : "additions"}`
                 : ""}
             </p>
-            <p className="text-lg font-extrabold text-[var(--hk-navy)]">
+            <p className="text-lg font-extrabold text-[#000615]">
               {money(quote?.payableNowPaise ?? 0, quote?.currency)}
             </p>
             {quote && quote.balanceDuePaise > 0 && (
-              <p className="text-[10px] text-[var(--hk-muted)]">
+              <p className="text-[10px] text-slate-500">
                 {money(quote.balanceDuePaise, quote.currency)} at property
               </p>
             )}
@@ -2090,9 +2347,10 @@ function BookingSummary({
             type="button"
             disabled={disabled}
             onClick={onSubmit}
-            className="min-h-12 max-w-[65%] rounded-xl bg-[var(--hk-navy)] px-4 py-3 text-xs font-semibold text-white disabled:opacity-50"
+            className="min-h-12 max-w-[65%] rounded-xl bg-[#000615] px-4 py-3 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5 justify-center"
           >
-            {buttonText}
+            <span>{buttonText}</span>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0" />
           </button>
         </div>
       </div>

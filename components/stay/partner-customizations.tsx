@@ -5,8 +5,30 @@ import { OfferingGuestPreview } from "./offering-guest-preview";
 import { offeringPriceLabel } from "@/lib/stay/pricing";
 import { OfferingFields, TemplateLibrary } from "./offering-fields";
 import { useEffect, useId, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import {
+  Loader2,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  Sparkles,
+  Clock3,
+  CheckCircle2,
+  SlidersHorizontal,
+  Zap,
+  Copy,
+  Pencil,
+  Pause,
+  Play,
+  Gift,
+  PauseCircle,
+  IndianRupee,
+  Building2,
+  Moon,
+  Clock,
+} from "lucide-react";
 import { Drawer } from "@/components/partner/dashboard/drawer";
+import { CategoryIcon } from "./category-icon";
 import { PartnerRequestQueue } from "./partner-request-queue";
 import { catalogRows, noticeLabel } from "@/lib/stay/workspace";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -136,6 +158,7 @@ function Customizations({
   const [status, setStatus] = useState("all");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState("name");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [editing, setEditing] = useState<Offering | "new" | null>(null);
   const [duplicate, setDuplicate] = useState<OfferingInput>();
   const [busy, setBusy] = useState(false);
@@ -145,6 +168,17 @@ function Customizations({
   const rows = query.data?.offerings ?? [];
   const filtered = catalogRows(rows, search, status, category, sort);
   const canManage = query.data?.canManage === true;
+  const activeCount = rows.filter((o) => o.status === "active").length;
+  const pausedCount = rows.filter((o) => o.status === "paused").length;
+  const freeCount = rows.filter(
+    (o) =>
+      o.unitPricePaise === 0 &&
+      !o.variants.some((v) => (v.unitPricePaise ?? 0) > 0),
+  ).length;
+  const paidCount = rows.length - freeCount;
+  const usedCategories = Array.from(
+    new Set(rows.map((o) => offeringCategory(o))),
+  );
   async function save(
     offering: OfferingInput,
     existing?: Offering,
@@ -191,51 +225,95 @@ function Customizations({
     "min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium disabled:opacity-50";
   return (
     <div className="min-w-0 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Stay Customizations</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-[#061224]">Guest Extras & Add-ons</h1>
+            {query.data && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                {rows.length} total
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-sm text-slate-500">
-            {propertyName} · Extras and thoughtful touches for every stay.
+            {propertyName} · Special comforts, extra amenities, and bookable services for your guests.
           </p>
         </div>
-        {tab === "offerings" && query.isFetching && !query.isPending && (
-          <span role="status" className="inline-flex items-center gap-2 text-xs text-slate-500">
-            <Loader2 aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" />
-            Updating offerings…
-          </span>
-        )}
-        {query.isPending ? (
-          <div aria-hidden="true" className="h-11 w-36 rounded-xl bg-slate-200/60 motion-safe:animate-pulse" />
-        ) : canManage && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setError("");
-              setDuplicate(undefined);
-              setEditing("new");
-              setConflict(false);
-            }}
-            className="min-h-11 rounded-xl bg-[#061224] px-4 py-3 text-sm font-semibold text-white"
-          >
-            Create offering
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {tab === "offerings" && (
+            <div className="flex h-10 items-center rounded-xl border border-slate-200 bg-white p-1 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                aria-pressed={viewMode === "grid"}
+                className={`h-8 flex items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${
+                  viewMode === "grid"
+                    ? "bg-[#061224] text-white shadow-2xs"
+                    : "text-slate-600 hover:text-[#061224]"
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                aria-pressed={viewMode === "table"}
+                className={`h-8 flex items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all ${
+                  viewMode === "table"
+                    ? "bg-[#061224] text-white shadow-2xs"
+                    : "text-slate-600 hover:text-[#061224]"
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                <span>Table</span>
+              </button>
+            </div>
+          )}
+          {tab === "offerings" && query.isFetching && !query.isPending && (
+            <span role="status" className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+              <Loader2 aria-hidden="true" className="h-3.5 w-3.5 motion-safe:animate-spin" />
+              Updating…
+            </span>
+          )}
+          {query.isPending ? (
+            <div aria-hidden="true" className="h-10 w-32 rounded-xl bg-slate-200/60 motion-safe:animate-pulse" />
+          ) : canManage && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setError("");
+                setDuplicate(undefined);
+                setEditing("new");
+                setConflict(false);
+              }}
+              className="h-10 inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-slate-800 transition-all disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Extra</span>
+            </button>
+          )}
+        </div>
       </div>
       <div
         className="flex gap-2 border-b border-slate-200"
         aria-label="Customization workspace"
       >
         {[
-          ["offerings", "Offerings"],
-          ["requests", "Guest requests"],
+          ["offerings", "Extras Catalog"],
+          ["requests", "Guest Requests Queue"],
         ].map(([id, label]) => (
           <button
             type="button"
             aria-pressed={tab === id}
             onClick={() => setTab(id)}
             key={id}
-            className={`min-h-11 border-b-2 px-4 text-sm font-semibold ${tab === id ? "border-[#b58a32] text-[#061224]" : "border-transparent text-slate-500"}`}
+            className={`min-h-11 border-b-2 px-4 text-sm font-semibold transition-all ${
+              tab === id
+                ? "border-[#b58a32] text-[#061224]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
           >
             {label}
           </button>
@@ -267,49 +345,69 @@ function Customizations({
         <OfferingsSkeleton />
       ) : (
         <>
-          <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap gap-2">
-              {[
-                ["all", "All"],
-                ["active", "Active"],
-                ["paused", "Paused"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={status === id}
-                  onClick={() => setStatus(id)}
-                  className={`min-h-11 rounded-xl px-4 text-sm ${status === id ? "bg-[#061224] text-white" : "bg-slate-50 text-slate-600"}`}
-                >
-                  {label}{" "}
-                  <span className="ml-1 opacity-75">
-                    {query.data
-                      ? rows.filter((o) => id === "all" || o.status === id)
-                          .length
-                      : "—"}
-                  </span>
-                </button>
-              ))}
+          {/* Quick Metrics */}
+          {query.data && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-[#061224]">{activeCount}</div>
+                  <div className="text-xs font-medium text-slate-500">Active Extras</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <PauseCircle className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-[#061224]">{pausedCount}</div>
+                  <div className="text-xs font-medium text-slate-500">Paused Extras</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Gift className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-[#061224]">{freeCount}</div>
+                  <div className="text-xs font-medium text-slate-500">Free Amenities</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                  <IndianRupee className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-[#061224]">{paidCount}</div>
+                  <div className="text-xs font-medium text-slate-500">Paid Add-ons</div>
+                </div>
+              </div>
             </div>
-            <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto]">
-              <label className="text-xs font-medium text-slate-500">
-                Search offerings
+          )}
+
+          {/* Search, Filter Toolbar & Quick Category Chips */}
+          <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs">
+            <div className="grid items-center gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="search"
                   aria-label="Search offerings"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by name or description…"
-                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-[#061224]"
+                  placeholder="Search bathrobes, chargers, cake, pillows…"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-xs sm:text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
                 />
-              </label>
+              </div>
               <label className="text-xs font-medium text-slate-500">
-                Category
+                <span className="sr-only">Category</span>
                 <select
                   aria-label="Offering category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-[#061224]"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
                   <option value="all">All categories</option>
                   {offeringCategories.map((c) => (
@@ -320,25 +418,22 @@ function Customizations({
                 </select>
               </label>
               <label className="text-xs font-medium text-slate-500">
-                Sort by
+                <span className="sr-only">Sort by</span>
                 <select
                   aria-label="Sort offerings"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-[#061224]"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 >
-                  <option value="name">Name A–Z</option>
-                  <option value="price_low">Price: low to high</option>
-                  <option value="price_high">Price: high to low</option>
+                  <option value="name">Sort: Name (A–Z)</option>
+                  <option value="price_low">Price: Low to High</option>
+                  <option value="price_high">Price: High to Low</option>
                 </select>
               </label>
-              {(search ||
-                status !== "all" ||
-                category !== "all" ||
-                sort !== "name") && (
+              {(search || status !== "all" || category !== "all" || sort !== "name") && (
                 <button
                   type="button"
-                  className={button}
+                  className="h-10 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                   onClick={() => {
                     setSearch("");
                     setStatus("all");
@@ -350,15 +445,79 @@ function Customizations({
                 </button>
               )}
             </div>
+
+            {/* Quick Status & Category Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+              <div className="flex items-center gap-1.5 pr-2.5 border-r border-slate-200 mr-1">
+                {[
+                  ["all", "All"],
+                  ["active", "Active"],
+                  ["paused", "Paused"],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={status === id}
+                    onClick={() => setStatus(id)}
+                    className={`h-8 inline-flex items-center justify-center rounded-lg px-3 text-xs font-semibold transition-all ${
+                      status === id
+                        ? "bg-[#061224] text-white shadow-2xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className="ml-1.5 text-[11px] opacity-75">
+                      {query.data
+                        ? rows.filter((o) => id === "all" || o.status === id).length
+                        : "—"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCategory("all")}
+                className={`h-8 inline-flex items-center justify-center rounded-lg px-3 text-xs font-medium transition-all ${
+                  category === "all"
+                    ? "bg-amber-100 font-semibold text-amber-900 border border-amber-300 shadow-2xs"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                }`}
+              >
+                All Categories
+              </button>
+              {usedCategories.map((catKey) => {
+                const count = rows.filter((o) => offeringCategory(o) === catKey).length;
+                if (!count) return null;
+                const isSelected = category === catKey;
+                return (
+                  <button
+                    key={catKey}
+                    type="button"
+                    onClick={() => setCategory(isSelected ? "all" : catKey)}
+                    className={`h-8 inline-flex items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-all ${
+                      isSelected
+                        ? "bg-amber-100 font-semibold text-amber-900 border border-amber-300 shadow-2xs"
+                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60"
+                    }`}
+                  >
+                    <CategoryIcon category={catKey} className="h-3.5 w-3.5 text-slate-500" />
+                    <span>{offeringCategoryLabels[catKey]}</span>
+                    <span className="text-[11px] opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <p className="text-xs leading-5 text-slate-500">
-            Included amenities belong in Rooms or Property Listing. Changes here
-            apply to future selections; existing booking commitments stay
-            unchanged.
-            {query.data && !canManage
-              ? " Only the property owner can edit this catalog."
-              : ""}
-          </p>
+
+          <div className="flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200/70 px-3.5 py-2 text-xs text-slate-500">
+            <span className="text-base">💡</span>
+            <span>
+              Included room amenities belong in Rooms or Property Listing. Changes here apply to future guest bookings.
+              {query.data && !canManage ? " Only the property owner can edit this catalog." : ""}
+            </span>
+          </div>
+
           {query.isError && (
             <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm">
               Offerings could not load.{" "}
@@ -371,135 +530,358 @@ function Customizations({
               </button>
             </p>
           )}
+
           {query.data && !filtered.length && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6">
-              <h2 className="font-semibold">
-                {rows.length ? "No matching offerings" : "No offerings yet"}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+              <h2 className="font-semibold text-slate-800">
+                {rows.length ? "No matching extras found" : "No extras added yet"}
               </h2>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-slate-500">
                 {rows.length
-                  ? "Adjust your search or reset the filters."
-                  : "Start with a template or create an extra your hotel can provide."}
+                  ? "Adjust your search terms or reset the category filters."
+                  : "Start with a pre-configured template or create an extra from scratch."}
               </p>
             </div>
           )}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {filtered.map((o) => (
-              <article
-                key={o.id}
-                className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5"
-              >
-                <div className="flex items-start gap-3">
-                  {o.imageId && (
-                    <img
-                      src={`/api/stay-images/${encodeURIComponent(propertyId)}/${o.imageId}`}
-                      alt="Illustrative offering"
-                      onError={(event) => {
-                        event.currentTarget.hidden = true;
-                      }}
-                      className="h-16 w-16 shrink-0 rounded-xl object-cover"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-slate-500">
-                      {offeringCategoryLabels[offeringCategory(o)]}
-                    </p>
-                    <h2 className="mt-1 break-words font-bold">{o.name}</h2>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-1 text-xs ${o.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}
+
+          {/* Cards View vs Table View */}
+          {viewMode === "grid" ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+              {filtered.map((o) => {
+                const cat = offeringCategory(o);
+                const isFree =
+                  o.unitPricePaise === 0 &&
+                  !o.variants.some((v) => (v.unitPricePaise ?? 0) > 0);
+                return (
+                  <article
+                    key={o.id}
+                    className={`flex min-w-0 flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs transition-all hover:shadow-md ${
+                      o.status === "active"
+                        ? "border-slate-200"
+                        : "border-dashed border-slate-300 opacity-80"
+                    }`}
                   >
-                    {o.status === "active" ? "Active" : "Paused"}
-                  </span>
-                </div>
-                <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-slate-600">
-                  {o.description}
-                </p>
-                <p className="mt-3 font-semibold">
-                  {offeringPriceLabel(o, currency)}
-                  {o.unitPricePaise > 0 ||
-                  o.variants.some((v) => (v.unitPricePaise ?? 0) > 0)
-                    ? ` / ${o.pricingUnit ?? "item"}`
-                    : ""}
-                </p>
-                <div className="mt-3 space-y-1 text-xs leading-5 text-slate-500">
-                  <p>
-                    {o.confirmation === "approval"
-                      ? "Hotel approval required"
-                      : "Instant confirmation"}{" "}
-                    · Up to {o.maxQuantity} per booking
-                  </p>
-                  <p>{noticeLabel(o.advanceNoticeMinutes)}</p>
-                  <p>
-                    {o.roomTypeIds.length
-                      ? o.roomTypeIds
-                          .map(
-                            (id) =>
-                              query.data?.rooms.find((r) => r.id === id)
-                                ?.name ?? "Unavailable room type",
-                          )
-                          .join(", ")
-                      : "All room types"}{" "}
-                    ·{" "}
-                    {o.bookingModes
-                      .map((m) => (m === "overnight" ? "Overnight" : "Hourly"))
-                      .join(" & ")}
-                  </p>
-                </div>
-                {canManage && (
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className={button}
-                      onClick={() => {
-                        setError("");
-                        setConflict(false);
-                        setDuplicate(undefined);
-                        setEditing(o);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className={button}
-                      onClick={() => {
-                        setError("");
-                        setConflict(false);
-                        setDuplicate({
-                          ...oInput(o),
-                          name: `${o.name.slice(0, 111)} (copy)`,
-                          status: "paused",
-                        });
-                        setEditing("new");
-                      }}
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className={button}
-                      onClick={() =>
-                        void save(
-                          {
-                            ...oInput(o),
-                            status: o.status === "active" ? "paused" : "active",
-                          },
-                          o,
-                          false,
-                        )
-                      }
-                    >
-                      {o.status === "active" ? "Pause" : "Activate"}
-                    </button>
-                  </div>
-                )}
-              </article>
-            ))}
-          </div>
+                    <div>
+                      {/* Top Bar: Icon + Category + Active Status Toggle */}
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <span className="h-7 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs font-medium text-slate-700">
+                          <CategoryIcon category={cat} className="h-3.5 w-3.5 text-slate-500" />
+                          <span>{offeringCategoryLabels[cat]}</span>
+                        </span>
+                        {canManage && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void save(
+                                {
+                                  ...oInput(o),
+                                  status: o.status === "active" ? "paused" : "active",
+                                },
+                                o,
+                                false,
+                              )
+                            }
+                            title="Click to toggle active status"
+                            className={`h-7 inline-flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-all border ${
+                              o.status === "active"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 hover:bg-emerald-100"
+                                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                o.status === "active" ? "bg-emerald-500" : "bg-slate-400"
+                              }`}
+                            />
+                            <span>{o.status === "active" ? "Active" : "Paused"}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Title & Image & Description */}
+                      <div className="mt-3.5 flex items-start gap-3">
+                        {o.imageId && (
+                          <img
+                            src={`/api/stay-images/${encodeURIComponent(propertyId)}/${o.imageId}`}
+                            alt="Offering thumbnail"
+                            onError={(event) => {
+                              event.currentTarget.hidden = true;
+                            }}
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover border border-slate-200"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <h2 className="break-words font-bold text-[#061224] text-base leading-snug">
+                            {o.name}
+                          </h2>
+                          <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-slate-500">
+                            {o.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Price Row */}
+                      <div className="mt-3.5 flex items-center justify-between border-t border-slate-100/80 pt-3">
+                        <div className="flex items-center gap-1.5">
+                          {isFree ? (
+                            <span className="h-6 inline-flex items-center rounded-md bg-emerald-50 px-2.5 text-xs font-bold text-emerald-700 border border-emerald-200/60">
+                              FREE
+                            </span>
+                          ) : (
+                            <span className="font-bold text-slate-900 text-sm">
+                              {offeringPriceLabel(o, currency)}
+                              {o.unitPricePaise > 0 ||
+                              o.variants.some((v) => (v.unitPricePaise ?? 0) > 0)
+                                ? ` / ${o.pricingUnit ?? "item"}`
+                                : ""}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-500 font-medium">
+                          Max {o.maxQuantity} per booking
+                        </span>
+                      </div>
+
+                      {/* Attribute Chips */}
+                      <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+                        <span className="h-6 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 font-medium text-slate-600">
+                          <Clock3 className="h-3 w-3 text-slate-400" />
+                          {noticeLabel(o.advanceNoticeMinutes)}
+                        </span>
+                        <span
+                          className={`h-6 inline-flex items-center gap-1 rounded-md px-2 font-medium border ${
+                            o.confirmation === "approval"
+                              ? "bg-amber-50 text-amber-800 border-amber-200/60"
+                              : "bg-blue-50 text-blue-700 border-blue-200/60"
+                          }`}
+                        >
+                          {o.confirmation === "approval" ? "🛎 Hotel Approval" : "⚡ Instant"}
+                        </span>
+                        <span className="h-6 inline-flex items-center rounded-md bg-slate-100 px-2 font-medium text-slate-500">
+                          {o.roomTypeIds.length
+                            ? `${o.roomTypeIds.length} rooms`
+                            : "All rooms"}
+                          {" · "}
+                          {o.bookingModes
+                            .map((m) => (m === "overnight" ? "Overnight" : "Hourly"))
+                            .join(" & ")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Row */}
+                    {canManage && (
+                      <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className="h-8 inline-flex items-center gap-1.5 rounded-lg bg-[#061224] px-3.5 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-all disabled:opacity-50"
+                          onClick={() => {
+                            setError("");
+                            setConflict(false);
+                            setDuplicate(undefined);
+                            setEditing(o);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs disabled:opacity-50"
+                            onClick={() => {
+                              setError("");
+                              setConflict(false);
+                              setDuplicate({
+                                ...oInput(o),
+                                name: `${o.name.slice(0, 111)} (copy)`,
+                                status: "paused",
+                              });
+                              setEditing("new");
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Duplicate</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={`h-8 inline-flex items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 ${
+                              o.status === "active"
+                                ? "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-100"
+                                : "border-emerald-200 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-100"
+                            }`}
+                            onClick={() =>
+                              void save(
+                                {
+                                  ...oInput(o),
+                                  status: o.status === "active" ? "paused" : "active",
+                                },
+                                o,
+                                false,
+                              )
+                            }
+                          >
+                            {o.status === "active" ? (
+                              <>
+                                <Pause className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Pause</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>Activate</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View for Bulk Scanning */
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="border-b border-slate-200 bg-slate-50/80 font-semibold text-slate-600">
+                    <tr>
+                      <th className="py-3 px-4">Item & Category</th>
+                      <th className="py-3 px-4">Price</th>
+                      <th className="py-3 px-4">Limits & Notice</th>
+                      <th className="py-3 px-4">Confirmation</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((o) => {
+                      const cat = offeringCategory(o);
+                      const isFree =
+                        o.unitPricePaise === 0 &&
+                        !o.variants.some((v) => (v.unitPricePaise ?? 0) > 0);
+                      return (
+                        <tr key={o.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                                <CategoryIcon category={cat} className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0">
+                                <span className="block font-bold text-slate-900 truncate max-w-xs">
+                                  {o.name}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {offeringCategoryLabels[cat]}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            {isFree ? (
+                              <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">
+                                FREE
+                              </span>
+                            ) : (
+                              <span className="font-bold text-slate-900">
+                                {offeringPriceLabel(o, currency)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">
+                            <div>Max {o.maxQuantity} per booking</div>
+                            <div className="text-[11px] text-slate-400">
+                              {noticeLabel(o.advanceNoticeMinutes)}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`inline-block rounded px-2 py-0.5 text-[11px] font-medium ${
+                                o.confirmation === "approval"
+                                  ? "bg-amber-50 text-amber-800"
+                                  : "bg-blue-50 text-blue-700"
+                              }`}
+                            >
+                              {o.confirmation === "approval" ? "🛎 Approval" : "⚡ Instant"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              type="button"
+                              disabled={busy || !canManage}
+                              onClick={() =>
+                                void save(
+                                  {
+                                    ...oInput(o),
+                                    status: o.status === "active" ? "paused" : "active",
+                                  },
+                                  o,
+                                  false,
+                                )
+                              }
+                              className={`h-7 inline-flex items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-all border ${
+                                o.status === "active"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 hover:bg-emerald-100"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  o.status === "active" ? "bg-emerald-500" : "bg-slate-400"
+                                }`}
+                              />
+                              <span>{o.status === "active" ? "Active" : "Paused"}</span>
+                            </button>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                disabled={busy || !canManage}
+                                onClick={() => {
+                                  setError("");
+                                  setConflict(false);
+                                  setDuplicate(undefined);
+                                  setEditing(o);
+                                }}
+                                className="h-7 inline-flex items-center gap-1 rounded-md bg-[#061224] px-2.5 text-[11px] font-semibold text-white hover:bg-slate-800 transition-colors shadow-2xs"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy || !canManage}
+                                onClick={() => {
+                                  setError("");
+                                  setConflict(false);
+                                  setDuplicate({
+                                    ...oInput(o),
+                                    name: `${o.name.slice(0, 111)} (copy)`,
+                                    status: "paused",
+                                  });
+                                  setEditing("new");
+                                }}
+                                className="h-7 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-2xs"
+                              >
+                                <Copy className="h-3 w-3 text-slate-400" />
+                                <span>Duplicate</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
       {editing && (
@@ -583,24 +965,22 @@ function OfferingEditor({
   const formId = useId();
   const [paid, setPaid] = useState(() => value.unitPricePaise > 0 || value.variants.some(v => (v.unitPricePaise ?? 0) > 0));
   const savedPrices = useRef({ unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit });
-  const [reviewed, setReviewed] = useState(false);
+  const [reviewed, setReviewed] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [issues, setIssues] = useState<{ path: string; message: string }[]>([]);
-  const [discard, setDiscard] = useState(false);
   const feedbackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (discard || error || serverError)
+    if (error || serverError)
       feedbackRef.current?.scrollIntoView({
         block: "center",
         behavior: "smooth",
       });
-  }, [discard, error, serverError]);
+  }, [error, serverError]);
   const base = draft ?? (offering ? oInput(offering) : initial);
   const dirty = JSON.stringify(value) !== JSON.stringify(base);
   const requestClose = () => {
     if (busy || uploading) return;
-    if (dirty) setDiscard(true);
-    else close();
+    close();
   };
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -613,7 +993,7 @@ function OfferingEditor({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, uploading]);
   const field =
-    "mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm";
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all";
   const issueFor = (path: string) =>
     issues.find((i) => i.path === path || i.path.startsWith(`${path}.`))?.message;
   function patch(v: Partial<OfferingInput>) {
@@ -624,14 +1004,16 @@ function OfferingEditor({
       return next;
     });
 
-    setReviewed(false);
     setIssues([]);
   }
   return (
     <Drawer
       open
-      title={offering ? "Edit offering" : "Create offering"}
-      description="Configure what guests can request from your hotel."
+      spacious
+      closeOnOutsideClick={false}
+      contentClassName="flex flex-col"
+      title={offering ? "Edit Extra" : "Create Extra"}
+      description="Configure how this extra appears to guests and set its availability rules."
       onClose={requestClose}
       footer={
         <div className="flex items-center gap-3">
@@ -639,15 +1021,15 @@ function OfferingEditor({
             type="submit"
             form={formId}
             disabled={busy || uploading || !started}
-            className="rounded-xl bg-[#061224] px-4 py-3 text-sm text-white disabled:opacity-50"
+            className="h-11 inline-flex items-center justify-center rounded-xl bg-[#061224] px-5 text-sm font-semibold text-white disabled:opacity-50 shadow-xs hover:bg-slate-800 transition-all"
           >
-            {busy ? "Saving…" : "Save offering"}
+            {busy ? "Saving…" : offering ? "Save Changes" : "Publish Extra"}
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={requestClose}
-            className="min-h-11 text-sm underline"
+            className="h-11 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
           >
             Cancel
           </button>
@@ -661,12 +1043,6 @@ function OfferingEditor({
           e.preventDefault();
           if (uploading) {
             setError("Wait for the image upload to complete.");
-            return;
-          }
-          if (!reviewed) {
-            setError(
-              "Review prices, eligibility and confirmation settings before saving.",
-            );
             return;
           }
           let candidate = value;
@@ -688,548 +1064,495 @@ function OfferingEditor({
           setError("");
           onSave(parsed.data);
         }}
-        className="space-y-4"
+        className={!started ? "flex flex-1 flex-col min-h-0" : "space-y-4"}
       >
         {!started && (
-          <TemplateLibrary
-            scratch={() => {
-              setReviewed(false);
-              setValue({
-                ...initial,
-                formType: "simple",
-                responseConfig: { responseType: "yes_no", quantityEnabled: false },
-                pricingUnit: "item",
-              });
-              setStarted(true);
-            }}
-            choose={(t) => {
-              setPaid((t.draft.unitPricePaise ?? 0) > 0 || !!t.draft.variants?.some(v => (v.unitPricePaise ?? 0) > 0));
-              setReviewed(false);
-              setValue({
-                ...initial,
-                confirmation: "approval",
-                formType: "quantity",
-                pricingUnit: "item",
-                ...t.draft,
-              });
-              setStarted(true);
-            }}
-          />
+          <div className="flex flex-1 flex-col min-h-0 pb-1">
+            <TemplateLibrary
+              scratch={() => {
+                setReviewed(false);
+                setValue({
+                  ...initial,
+                  formType: "simple",
+                  responseConfig: { responseType: "yes_no", quantityEnabled: false },
+                  pricingUnit: "item",
+                });
+                setStarted(true);
+              }}
+              choose={(t) => {
+                setPaid((t.draft.unitPricePaise ?? 0) > 0 || !!t.draft.variants?.some(v => (v.unitPricePaise ?? 0) > 0));
+                setReviewed(false);
+                setValue({
+                  ...initial,
+                  confirmation: "approval",
+                  formType: "quantity",
+                  pricingUnit: "item",
+                  ...t.draft,
+                });
+                setStarted(true);
+              }}
+            />
+            <p className="mt-3 text-xs text-slate-400 shrink-0">
+              💡 All extras include applicable taxes and service charges. You can edit availability anytime.
+            </p>
+          </div>
         )}
         {started && (
-          <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
-            {!offering && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    !dirty ||
-                    window.confirm(
-                      "Choose another template? Your current draft will be replaced.",
-                    )
-                  ) {
-                    setReviewed(false);
-                    setStarted(false);
-                  }
-                }}
-                className="text-left text-sm underline sm:col-span-2"
-              >
-                Choose another template
-              </button>
-            )}
-            <h3 className="border-b border-slate-100 pb-2 font-semibold sm:col-span-2">
-              Details
-            </h3>
-
-            <label className="text-sm">
-              Name
-              <input
-                required
-                minLength={2}
-                maxLength={120}
-                aria-invalid={Boolean(issueFor("name"))}
-                aria-describedby={
-                  issueFor("name") ? "offering-error-name" : undefined
-                }
-                value={value.name}
-                onChange={(e) => patch({ name: e.target.value })}
-                className={field}
-              />
-              {issueFor("name") && (
-                <span
-                  id="offering-error-name"
-                  className="mt-1 block text-xs text-red-700"
-                >
-                  {issueFor("name")}
-                </span>
-              )}
-            </label>
-            <label className="text-sm">
-              Type
-              <select
-                aria-label="Type"
-                value={value.kind}
-                onChange={(e) =>
-                  patch({ kind: e.target.value as OfferingInput["kind"] })
-                }
-                className={field}
-              >
-                <option value="item">Hotel-provided item</option>
-                <option value="service">Preparation service</option>
-                <option value="preference">Room preference</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              Guest browsing category
-              <select
-                aria-label="Guest browsing category"
-                value={offeringCategory(value)}
-                onChange={(e) =>
-                  patch({
-                    category: e.target.value as OfferingInput["category"],
-                  })
-                }
-                className={field}
-              >
-                {offeringCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {offeringCategoryLabels[category]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm sm:col-span-2">
-              Description
-              <textarea
-                required
-                minLength={3}
-                maxLength={1500}
-                aria-invalid={Boolean(issueFor("description"))}
-                aria-describedby={
-                  issueFor("description")
-                    ? "offering-error-description"
-                    : undefined
-                }
-                value={value.description}
-                onChange={(e) => patch({ description: e.target.value })}
-                className={field}
-              />
-              {issueFor("description") && (
-                <span
-                  id="offering-error-description"
-                  className="mt-1 block text-xs text-red-700"
-                >
-                  {issueFor("description")}
-                </span>
-              )}
-            </label>
-            <h3 className="border-b border-slate-100 pb-2 pt-3 font-semibold sm:col-span-2">
-              Pricing & guest options
-            </h3>
-            <OfferingFields
-              value={value}
-              patch={patch}
-              propertyId={propertyId}
-              disabled={busy}
-              onUploading={setUploading}
-              paid={paid}
-              onPaidChange={(nextPaid) => {
-                if (!nextPaid) {
-                  savedPrices.current = { unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit };
-                  patch({ unitPricePaise: 0, pricingUnit: "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: null })) });
-                } else {
-                  patch({ unitPricePaise: savedPrices.current.unitPricePaise, pricingUnit: savedPrices.current.pricingUnit ?? "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: savedPrices.current.variants.find(old => old.id === v.id)?.unitPricePaise ?? null })) });
-                }
-                setPaid(nextPaid);
-              }}
-            >
-            {paid && value.formType !== "custom" && <label className="text-sm">
-              Default price (₹, 0 = Free)
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                aria-invalid={Boolean(issueFor("unitPricePaise"))}
-                aria-describedby={
-                  issueFor("unitPricePaise")
-                    ? "offering-error-unitPricePaise"
-                    : undefined
-                }
-                value={value.unitPricePaise / 100}
-                onChange={(e) =>
-                  patch({
-                    unitPricePaise: Math.round(Number(e.target.value) * 100),
-                  })
-                }
-                className={field}
-              />
-              {issueFor("unitPricePaise") && (
-                <span
-                  id="offering-error-unitPricePaise"
-                  className="mt-1 block text-xs text-red-700"
-                >
-                  {issueFor("unitPricePaise")}
-                </span>
-              )}
-            </label>}
-            {(resolveResponse(value).quantityEnabled || resolveResponse(value).responseType === "multiple") && (
-              <label className="text-sm">
-                {resolveResponse(value).quantityEnabled ? "Maximum quantity per booking" : "Maximum choices per booking"}
-                <input
-                  required
-                  type="number"
-                  min={1}
-                  max={100}
-                  aria-invalid={Boolean(issueFor("maxQuantity"))}
-                  aria-describedby={
-                    issueFor("maxQuantity")
-                      ? "offering-error-maxQuantity"
-                      : undefined
-                  }
-                  value={value.maxQuantity}
-                  onChange={(e) =>
-                    patch({ maxQuantity: Number(e.target.value) })
-                  }
-                  className={field}
-                />
-                {issueFor("maxQuantity") && (
-                  <span
-                    id="offering-error-maxQuantity"
-                    className="mt-1 block text-xs text-red-700"
+          <fieldset disabled={busy} className="space-y-5">
+            {/* 1. Basic Details Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">1</span>
+                  <h3 className="font-bold text-slate-900 text-sm">Basic Information</h3>
+                </div>
+                {!offering && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!dirty || window.confirm("Choose another template? Your current draft will be replaced.")) {
+                        setReviewed(false);
+                        setStarted(false);
+                      }
+                    }}
+                    className="text-xs font-semibold text-amber-700 hover:text-amber-800 underline"
                   >
-                    {issueFor("maxQuantity")}
-                  </span>
+                    Choose another template
+                  </button>
                 )}
-              </label>
-            )}
-            {(["single", "multiple"].includes(resolveResponse(value).responseType)) && (
-              <div className="sm:col-span-2">
-                <p className="text-sm font-semibold">Options guests can choose from</p>
-                {issueFor("variants") && <p role="alert" className="text-xs text-red-700">{issueFor("variants")}</p>}
-                {value.variants.map((v, i) => (
-                  <div
-                    key={v.id}
-                    className="mt-2 flex flex-wrap items-center gap-2"
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Extra / Item Name
+                  </label>
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={120}
+                    aria-invalid={Boolean(issueFor("name"))}
+                    aria-describedby={
+                      issueFor("name") ? "offering-error-name" : undefined
+                    }
+                    value={value.name}
+                    placeholder="e.g. Additional Bathrobes, Birthday Cake"
+                    onChange={(e) => patch({ name: e.target.value })}
+                    className={field}
+                  />
+                  {issueFor("name") && (
+                    <span
+                      id="offering-error-name"
+                      className="mt-1 block text-xs text-red-700"
+                    >
+                      {issueFor("name")}
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Category
+                  </label>
+                  <select
+                    aria-label="Category"
+                    value={offeringCategory(value)}
+                    onChange={(e) => {
+                      const cat = e.target.value as OfferingInput["category"];
+                      patch({
+                        category: cat,
+                        kind:
+                          cat === "room_preferences"
+                            ? "preference"
+                            : value.kind === "preference"
+                              ? "item"
+                              : value.kind,
+                      });
+                    }}
+                    className={field}
                   >
-                    <input
-                      aria-label={`Variant ${i + 1}`}
-                      value={v.name}
+                    {offeringCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {offeringCategoryLabels[category]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Description for Guests
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    minLength={3}
+                    maxLength={1500}
+                    placeholder="Describe what guests can request, when it is provided, or any helpful details..."
+                    aria-invalid={Boolean(issueFor("description"))}
+                    aria-describedby={
+                      issueFor("description")
+                        ? "offering-error-description"
+                        : undefined
+                    }
+                    value={value.description}
+                    onChange={(e) => patch({ description: e.target.value })}
+                    className={field}
+                  />
+                  {issueFor("description") && (
+                    <span
+                      id="offering-error-description"
+                      className="mt-1 block text-xs text-red-700"
+                    >
+                      {issueFor("description")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Pricing & Guest Selection Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">2</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Pricing & Guest Selection</h3>
+                  <p className="text-xs text-slate-500">Choose the extra type, set your prices, and configure guest choices.</p>
+                </div>
+              </div>
+
+              <OfferingFields
+                value={value}
+                patch={patch}
+                propertyId={propertyId}
+                disabled={busy}
+                onUploading={setUploading}
+                paid={paid}
+                onPaidChange={(nextPaid) => {
+                  if (!nextPaid) {
+                    savedPrices.current = { unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit };
+                    patch({ unitPricePaise: 0, pricingUnit: value.formType === "package" ? "package" : "item", variants: value.variants.map(v => ({ ...v, unitPricePaise: null })) });
+                  } else {
+                    patch({ unitPricePaise: savedPrices.current.unitPricePaise, pricingUnit: savedPrices.current.pricingUnit ?? (value.formType === "package" ? "package" : "item"), variants: value.variants.map(v => ({ ...v, unitPricePaise: savedPrices.current.variants.find(old => old.id === v.id)?.unitPricePaise ?? null })) });
+                  }
+                  setPaid(nextPaid);
+                }}
+                issueFor={issueFor}
+                currency={currency}
+              />
+            </div>
+
+            {/* 3. Delivery & Fulfillment Rules Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">3</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Delivery & Fulfillment Rules</h3>
+                  <p className="text-xs text-slate-500">Set lead times, order confirmation workflows, and catalog visibility.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Advance Notice Section */}
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Required Advance Notice
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      Minimum notice time guests must provide before fulfillment
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="relative sm:w-48 shrink-0">
+                      <input
+                        required
+                        type="number"
+                        min={0}
+                        max={525600}
+                        aria-invalid={Boolean(issueFor("advanceNoticeMinutes"))}
+                        aria-describedby={
+                          issueFor("advanceNoticeMinutes")
+                            ? "offering-error-advanceNoticeMinutes"
+                            : undefined
+                        }
+                        value={value.advanceNoticeMinutes}
+                        onChange={(e) =>
+                          patch({ advanceNoticeMinutes: Number(e.target.value) })
+                        }
+                        className={`${field} pr-14`}
+                      />
+                      <span className="pointer-events-none absolute right-3.5 top-[calc(50%+3px)] -translate-y-1/2 text-xs font-semibold text-slate-400">
+                        min
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
+                      {[
+                        { label: "⚡ Instant (0m)", value: 0 },
+                        { label: "30 min", value: 30 },
+                        { label: "1 hour", value: 60 },
+                        { label: "2 hours", value: 120 },
+                        { label: "4 hours", value: 240 },
+                        { label: "24 hours", value: 1440 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => patch({ advanceNoticeMinutes: preset.value })}
+                          className={`h-8 px-2.5 text-xs font-semibold rounded-lg transition-all border ${
+                            value.advanceNoticeMinutes === preset.value
+                              ? "bg-[#061224] text-white border-[#061224] shadow-2xs"
+                              : "bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100 hover:text-slate-900"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {issueFor("advanceNoticeMinutes") && (
+                    <span
+                      id="offering-error-advanceNoticeMinutes"
+                      className="mt-1 block text-xs text-red-700"
+                    >
+                      {issueFor("advanceNoticeMinutes")}
+                    </span>
+                  )}
+                </div>
+
+                {/* Confirmation Workflow & Publishing Status in 2 columns */}
+                <div className="grid gap-4 sm:grid-cols-2 pt-2 border-t border-slate-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Confirmation Workflow
+                    </label>
+                    <select
+                      aria-label="Confirmation"
+                      value={value.confirmation}
                       onChange={(e) =>
                         patch({
-                          variants: value.variants.map((n) =>
-                            n.id === v.id ? { ...n, name: e.target.value } : n,
-                          ),
+                          confirmation: e.target
+                            .value as OfferingInput["confirmation"],
                         })
                       }
                       className={field}
-                    />
-                    {paid && value.formType !== "custom" && <label className="w-full text-sm sm:w-56">
-                      Custom price (₹, 0 = Free)
-                      <input
-                        aria-label={`Variant ${i + 1} custom price`}
-                        type="number"
-                        min={0}
-                        max={1000000}
-                        step="0.01"
-                                placeholder={`Default: ${formatMoney(value.unitPricePaise, currency)}`}
-                        value={
-                          v.unitPricePaise == null ? "" : v.unitPricePaise / 100
-                        }
-                        onChange={(e) =>
-                          patch({
-                            variants: value.variants.map((n) =>
-                              n.id === v.id
-                                ? {
-                                    ...n,
-                                    unitPricePaise:
-                                      e.target.value === ""
-                                        ? null
-                                        : Math.round(
-                                            Number(e.target.value) * 100,
-                                          ),
-                                  }
-                                : n,
-                            ),
-                          })
-                        }
-                        className={field}
-                      />
-                      <span className="text-xs text-slate-500">
-                        Blank uses the default price.
-                      </span>
-                    </label>}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch({
-                          variants: value.variants.filter((n) => n.id !== v.id),
-                        })
-                      }
-                      className="text-sm underline"
                     >
-                      Remove
-                    </button>
-                    {value.formType === "package" && (
-                      <label className="w-full text-sm">
-                        Package inclusions
-                        <textarea
-                          value={v.inclusions ?? ""}
-                          maxLength={500}
-                          required
-                          onChange={(e) =>
-                            patch({
-                              variants: value.variants.map((n) =>
-                                n.id === v.id
-                                  ? { ...n, inclusions: e.target.value }
-                                  : n,
-                              ),
-                            })
-                          }
-                          className={field}
-                        />
-                      </label>
-                    )}
+                      <option value="immediate">⚡ Immediate confirmation</option>
+                      <option value="approval">🛎 Hotel approval required</option>
+                    </select>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {value.confirmation === "approval"
+                        ? "Requires staff approval before confirmation."
+                        : "Automatically confirmed upon guest request."}
+                    </p>
                   </div>
-                ))}
-                <button
-                  type="button"
-                  disabled={value.variants.length >= 20}
-                  onClick={() =>
-                    patch({
-                      variants: [
-                        ...value.variants,
-                        { id: crypto.randomUUID(), name: "" },
-                      ],
-                    })
-                  }
-                  className="mt-3 text-sm underline"
-                >
-                  Add choice
-                </button>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Publishing Status
+                    </label>
+                    <select
+                      aria-label="Status"
+                      value={value.status}
+                      onChange={(e) =>
+                        patch({ status: e.target.value as OfferingInput["status"] })
+                      }
+                      className={field}
+                    >
+                      <option value="active">Active (Visible to guests)</option>
+                      <option value="paused">Paused (Hidden from guests)</option>
+                    </select>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {value.status === "active"
+                        ? "Guests can view and request this extra in the app."
+                        : "Temporarily hidden from guest view."}
+                    </p>
+                  </div>
+                </div>
               </div>
-            )}
-            </OfferingFields>
-            <label className="text-sm">
-              Required advance notice (minutes)
-              <input
-                required
-                type="number"
-                min={0}
-                max={525600}
-                aria-invalid={Boolean(issueFor("advanceNoticeMinutes"))}
-                aria-describedby={
-                  issueFor("advanceNoticeMinutes")
-                    ? "offering-error-advanceNoticeMinutes"
-                    : undefined
-                }
-                value={value.advanceNoticeMinutes}
-                onChange={(e) =>
-                  patch({ advanceNoticeMinutes: Number(e.target.value) })
-                }
-                className={field}
-              />
-              {issueFor("advanceNoticeMinutes") && (
-                <span
-                  id="offering-error-advanceNoticeMinutes"
-                  className="mt-1 block text-xs text-red-700"
-                >
-                  {issueFor("advanceNoticeMinutes")}
-                </span>
-              )}
-            </label>
-            <label className="text-sm">
-              Confirmation
-              <select
-                aria-label="Confirmation"
-                value={value.confirmation}
-                onChange={(e) =>
-                  patch({
-                    confirmation: e.target
-                      .value as OfferingInput["confirmation"],
-                  })
-                }
-                className={field}
-              >
-                <option value="immediate">Immediate confirmation</option>
-                <option value="approval">Hotel approval</option>
-              </select>
-            </label>
-            <h3 className="border-b border-slate-100 pb-2 pt-3 font-semibold sm:col-span-2">
-              Eligibility & confirmation
-            </h3>
-            <div className="sm:col-span-2">
-              <TravelerChips
-                value={value.travelerCategories}
-                onChange={(travelerCategories) => patch({ travelerCategories })}
-                disabled={busy}
-              />
             </div>
-            <div className="text-sm">
-              <p className="mb-2 font-semibold">Room types</p>
-              <label className="flex gap-2">
+
+            {/* 4. Availability & Eligibility Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">4</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Availability & Eligibility</h3>
+                  <p className="text-xs text-slate-500">Control which rooms, stay modes, and traveler types can access this extra.</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Eligible Room Types */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Eligible Room Types
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Select which room types can request this extra.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                      {!value.roomTypeIds.length ? "All Rooms" : `${value.roomTypeIds.length} Selected`}
+                    </span>
+                  </div>
+
+                  <label className={`flex items-center justify-between rounded-xl p-3 border cursor-pointer transition-all ${
+                    !value.roomTypeIds.length
+                      ? "border-[#061224] bg-[#061224] text-white shadow-2xs"
+                      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <Building2 className={`h-4 w-4 ${!value.roomTypeIds.length ? "text-amber-400" : "text-slate-500"}`} />
+                      <span className="text-xs font-bold">All room types eligible</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded accent-amber-400"
+                      checked={!value.roomTypeIds.length}
+                      onChange={() => patch({ roomTypeIds: [] })}
+                    />
+                  </label>
+
+                  {rooms.length > 0 && (
+                    <div className="max-h-44 overflow-y-auto space-y-1 rounded-xl border border-slate-200/70 bg-white p-2">
+                      {rooms.map((r) => {
+                        const isChecked = value.roomTypeIds.includes(r.id);
+                        return (
+                          <label
+                            key={r.id}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                              isChecked ? "bg-amber-50 text-amber-950 font-semibold" : "text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>{r.name}</span>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded accent-[#061224]"
+                              checked={isChecked}
+                              onChange={(e) =>
+                                patch({
+                                  roomTypeIds: e.target.checked
+                                    ? [...value.roomTypeIds, r.id]
+                                    : value.roomTypeIds.filter((id) => id !== r.id),
+                                })
+                              }
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Eligible Stay Types */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Eligible Stay Types
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Enable for overnight reservations, hourly stays, or both.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-0.5">
+                    {([
+                      {
+                        id: "overnight",
+                        label: "Overnight Stays",
+                        desc: "Standard nightly and multi-day hotel bookings",
+                        icon: Moon,
+                      },
+                      {
+                        id: "hourly",
+                        label: "Hourly Day-Use Stays",
+                        desc: "Short duration and daytime transit room stays",
+                        icon: Clock,
+                      },
+                    ] as const).map((m) => {
+                      const isChecked = value.bookingModes.includes(m.id);
+                      const Icon = m.icon;
+                      return (
+                        <label
+                          key={m.id}
+                          className={`flex items-start gap-3 rounded-xl p-3 border cursor-pointer transition-all ${
+                            isChecked
+                              ? "border-slate-300 bg-white shadow-2xs"
+                              : "border-slate-200 bg-slate-100/60 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded accent-[#061224]"
+                            checked={isChecked}
+                            onChange={(e) =>
+                              patch({
+                                bookingModes: e.target.checked
+                                  ? [...value.bookingModes, m.id]
+                                  : value.bookingModes.filter((v) => v !== m.id),
+                              })
+                            }
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <Icon className="h-3.5 w-3.5 text-slate-500" />
+                              <span className="text-xs font-bold text-slate-900">{m.label}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{m.desc}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Target Traveler Categories */}
+                <div className="sm:col-span-2 pt-3 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Target Traveler Categories
+                  </label>
+                  <TravelerChips
+                    value={value.travelerCategories}
+                    onChange={(travelerCategories) => patch({ travelerCategories })}
+                    disabled={busy}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Live Guest App Preview & Review */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 pb-3 border-b border-amber-200/60">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-white text-xs font-bold">5</span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Live Guest App Preview</h3>
+                  <p className="text-xs text-slate-500">Preview exactly how guests will see and interact with this extra.</p>
+                </div>
+              </div>
+
+              <OfferingGuestPreview key={JSON.stringify(value)} value={value} currency={currency} />
+
+              <label className="flex items-start gap-2.5 text-xs font-medium text-slate-700 pt-3 border-t border-amber-200/60 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={!value.roomTypeIds.length}
-                  onChange={() => patch({ roomTypeIds: [] })}
+                  checked={reviewed}
+                  onChange={(e) => setReviewed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
                 />
-                All rooms
+                <span>I reviewed prices, room and stay eligibility, advance notice and confirmation settings.</span>
               </label>
-              {rooms.map((r) => (
-                <label
-                  key={r.id}
-                  className="mt-2 flex flex-wrap items-center gap-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={value.roomTypeIds.includes(r.id)}
-                    onChange={(e) =>
-                      patch({
-                        roomTypeIds: e.target.checked
-                          ? [...value.roomTypeIds, r.id]
-                          : value.roomTypeIds.filter((id) => id !== r.id),
-                      })
-                    }
-                  />
-                  {r.name}
-                </label>
-              ))}
             </div>
-            <div className="text-sm">
-              <p className="mb-2 font-semibold">Stay types</p>
-              {(["overnight", "hourly"] as const).map((m) => (
-                <label
-                  key={m}
-                  className="mt-2 flex flex-wrap items-center gap-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={value.bookingModes.includes(m)}
-                    onChange={(e) =>
-                      patch({
-                        bookingModes: e.target.checked
-                          ? [...value.bookingModes, m]
-                          : value.bookingModes.filter((v) => v !== m),
-                      })
-                    }
-                  />
-                  {m === "overnight" ? "Overnight" : "Hourly"}
-                </label>
-              ))}
-            </div>
-            <label className="text-sm">
-              Status
-              <select
-                value={value.status}
-                onChange={(e) =>
-                  patch({ status: e.target.value as OfferingInput["status"] })
-                }
-                className={field}
-              >
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-              </select>
-            </label>
-            <section
-              className="space-y-2 rounded-xl border border-amber-100 bg-amber-50/40 p-4 sm:col-span-2"
-              aria-label="Guest preview"
-            >
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Guest preview & review
-              </h3>
-              <p className="font-bold">{value.name || "Offering name"}</p>
-              <p className="whitespace-pre-wrap break-words text-sm">
-                {value.description || "Your description appears here."}
-              </p>
-              <p className="text-sm font-semibold">
-                {offeringPriceLabel({ ...value, variants: ["single", "multiple"].includes(resolveResponse(value).responseType) ? value.variants : [] }, currency)}
-                {value.unitPricePaise > 0 ||
-                value.variants.some((v) => (v.unitPricePaise ?? 0) > 0)
-                  ? ` / ${value.pricingUnit ?? "item"}`
-                  : ""}
-              </p>
-              <p className="text-xs text-slate-500">
-                {noticeLabel(value.advanceNoticeMinutes)} ·{" "}
-                {value.confirmation === "approval"
-                  ? "Hotel approval required"
-                  : "Instant confirmation"}{" "}
-                ·{" "}
-                {value.roomTypeIds.length
-                  ? `${value.roomTypeIds.length} room types`
-                  : "All room types"}{" "}
-                · {value.bookingModes.join(" & ")} · Up to {value.maxQuantity}{" "}
-                per booking
-              </p>
-              {value.variants.length > 0 && (
-                <ul className="space-y-1 text-xs">
-                  {value.variants.map((v) => (
-                    <li key={v.id}>
-                      {v.name || "Unnamed option"} ·{" "}
-                      {formatMoney(
-                        v.unitPricePaise ?? value.unitPricePaise,
-                        currency,
-                      )}
-                      {v.inclusions ? ` · ${v.inclusions}` : ""}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {value.choiceGroups?.map((g) => (
-                <p key={g.id} className="text-xs">
-                  {g.name}: {g.options.join(", ")}
-                  {g.required ? " (required)" : ""}
-                </p>
-              ))}
-              {value.noteLabel && (
-                <p className="text-xs">
-                  {value.noteLabel}
-                  {value.noteRequired ? " (required)" : " (optional)"}
-                </p>
-              )}
-              <OfferingGuestPreview key={JSON.stringify(value)} value={value} currency={currency} />
-            </section>
-            <label className="flex items-start gap-2 text-sm sm:col-span-2">
-              <input
-                type="checkbox"
-                checked={reviewed}
-                onChange={(e) => setReviewed(e.target.checked)}
-                className="mt-1"
-              />
-              I reviewed prices, room and stay eligibility, advance notice and
-              confirmation settings.
-            </label>
           </fieldset>
         )}
-        <p className="text-xs text-slate-500">
-          Prices include all charges. Immediate paid extras follow the room’s
-          cancellation policy. New approval requests are excluded from checkout
-          payment; the guest accepts any final hotel quote before paying. The
-          quantity limit is shared across variants.
-        </p>
+        {started && (
+          <p className="text-xs text-slate-400">
+            💡 All extras include applicable taxes and service charges. You can edit availability anytime.
+          </p>
+        )}
         <div ref={feedbackRef} className="space-y-3">
-          {discard && (
-            <div
-              role="alert"
-              className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"
-            >
-              <p>Discard your unsaved changes?</p>
-              <div className="mt-3 flex gap-3">
-                <button
-                  type="button"
-                  onClick={close}
-                  className="min-h-11 rounded-lg border bg-white px-3"
-                >
-                  Discard changes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDiscard(false)}
-                  className="min-h-11 px-3 font-semibold"
-                >
-                  Keep editing
-                </button>
-              </div>
-            </div>
-          )}
           {serverError && (
             <div
               role="alert"

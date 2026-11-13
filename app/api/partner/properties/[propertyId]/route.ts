@@ -1,3 +1,4 @@
+import { loadRoomAmenityOptions } from "@/lib/partner/room-amenities-server";
 import { invalidatePublic } from "@/lib/api/cache";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue, GeoPoint } from "firebase-admin/firestore";
@@ -49,17 +50,21 @@ const rawGET = async function GET(request: Request, { params }: RouteContext<"/a
   try {
     const { propertyId } = await params;
     const view = new URL(request.url).searchParams.get("view") === "rooms" ? "rooms" : "listing";
-    const ref = await propertyOwner(user.uid, propertyId);
-    const [property, rooms, rates, policies, media, documents] = await Promise.all([
+    const { propertyAccess } = await import("@/lib/partner/pms/access");
+    await propertyAccess(user.uid, propertyId, view === "rooms" ? "rooms.read" : "listing.manage");
+    const ref = adminDb.collection("properties").doc(propertyId);
+    const [property, rooms, rates, policies, media, documents, amenityOptions] = await Promise.all([
       ref.get(),
       adminDb.collection("roomTypes").where("propertyId", "==", propertyId).limit(50).get(),
       adminDb.collection("ratePlans").where("propertyId", "==", propertyId).limit(100).get(),
       adminDb.collection("cancellationPolicies").where("propertyId", "==", propertyId).limit(50).get(),
       adminDb.collection("mediaAssets").where("propertyId", "==", propertyId).limit(50).get(),
       view === "listing" ? adminDb.collection("verificationDocuments").where("propertyId", "==", propertyId).limit(50).get() : Promise.resolve(null),
+      loadRoomAmenityOptions(),
     ]);
     const p = property.data() ?? {};
     return Response.json({
+      amenityOptions,
       property: {
         id: property.id,
         name: p.name,

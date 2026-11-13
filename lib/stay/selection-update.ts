@@ -1,3 +1,4 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
@@ -15,12 +16,13 @@ export async function patchRequestSelection(uid: string, bookingId: string, raw:
   const input = patch.parse(raw), ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async tx => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);
     if (!bounds || !["confirmed", "checked_in"].includes(b.bookingStatus) || now >= Date.parse(bounds.endAt)) throw new Error("This booking is closed for requests.");
     const requests: StayRequest[] = b.customizations ?? [], r = requests.find(r => r.id === input.requestId);
     if (!r) throw new Error("NOT_FOUND");
+    if (r.offerId || r.offerDraft) throw new Error("Manage this item through its offer.");
     if (!canEditRequest(r, now) || r.settlement === "paid" || r.totalPaise > 0) throw new Error("This request is locked. Contact the hotel for changes.");
     const s = input.selection;
     let updated: StayRequest;

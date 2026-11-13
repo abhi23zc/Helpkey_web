@@ -1,27 +1,33 @@
 "use client";
+
 import { ResponseControls } from "./response-controls";
-import { resolveResponse, responseLimit, replaceSelection, requiredResponseError } from "@/lib/stay/response";
-/* eslint-disable @next/next/no-img-element */
+import {
+  resolveResponse,
+  responseLimit,
+  replaceSelection,
+  requiredResponseError,
+} from "@/lib/stay/response";
 import { includedOffering } from "@/lib/stay/inclusions";
 import { GuestInputFields } from "./guest-input-fields";
 import { recommendedOfferings } from "@/lib/stay/recommendations";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 
 import { useEffect, useState } from "react";
 import {
   BedDouble,
-  Plug,
-  Coffee,
-  Bath,
-  Shirt,
-  Compass,
-  PartyPopper,
-  DoorOpen,
-  Gift,
   Search,
-  Plus,
   Check,
   ChevronDown,
   Clock,
+  Info,
+  UtensilsCrossed,
+  Cake,
+  Heart,
+  MessageSquare,
+  Gift,
+  X,
+  Trash2,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   offeringCategories,
@@ -44,31 +50,21 @@ import {
 } from "@/lib/stay/pricing";
 import { formatMoney } from "@/lib/customer/offer";
 
-const categoryIcons: Record<string, typeof Gift> = {
-  comfort: BedDouble,
-  bathroom: Bath,
-  technology: Plug,
-  family: Gift,
-  business: Coffee,
-  housekeeping: Shirt,
-  transport: Gift,
-  wellness: Gift,
-  experiences: Compass,
-  groups: Gift,
-  pets: Gift,
-  room_essentials: BedDouble,
-  devices: Plug,
-  food_drinks: Coffee,
-  celebrations: PartyPopper,
-  room_preferences: DoorOpen,
-  other: Gift,
-};
-const filters: { value: ExtrasFilter; label: string }[] = [
-  { value: "all", label: "All options" },
-  { value: "free", label: "Free options" },
-  { value: "paid", label: "Paid extras" },
-  { value: "selected", label: "Selected" },
+const mainCategoryTabs = [
+  { id: "all", label: "All extras", icon: null },
+  { id: "comfort", label: "Comfort", icon: BedDouble },
+  { id: "food_drinks", label: "Food", icon: UtensilsCrossed },
+  { id: "celebrations", label: "Celebrations", icon: Cake },
+  { id: "room_preferences", label: "Romance", icon: Heart },
 ];
+
+const priceFilters: { value: ExtrasFilter | "quote"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "free", label: "Free" },
+  { value: "paid", label: "Paid" },
+  { value: "quote", label: "Hotel quote" },
+];
+
 const priceText = (price: number, currency: string) =>
   price === 0 ? "Free" : formatMoney(price, currency);
 
@@ -105,20 +101,21 @@ export function CheckoutExtrasCatalog({
   const [inputError, setInputError] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [filter, setFilter] = useState<ExtrasFilter>("all");
-  const [variantFocus, setVariantFocus] = useState<
-    Record<string, string | null>
-  >({});
-  const [expanded, setExpanded] = useState<string[]>([]);
+  const [priceFilter, setPriceFilter] = useState<ExtrasFilter | "quote">("all");
+  const [showMoreCategories, setShowMoreCategories] = useState(false);
+  const [selectedModalOffering, setSelectedModalOffering] = useState<Offering | null>(null);
   const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
   const selectedIds = new Set(selections.map((s) => s.offeringId));
   const sorted = offerings
     .filter((o) => o.status === "active")
     .sort((a, b) => a.name.localeCompare(b.name));
+
   const unavailableMessage = (o: Offering) =>
     includedOffering(o, includedCodes)
       ? "Already included in your room or rate · No need to add again."
@@ -132,19 +129,32 @@ export function CheckoutExtrasCatalog({
             timezone,
             now,
           );
-  const filtered = sorted.filter((o) =>
-    matchesExtras(o, search, category, filter, selectedIds),
-  );
+
+  const effectiveFilter: ExtrasFilter =
+    priceFilter === "quote" ? "all" : priceFilter;
+
+  const filtered = sorted.filter((o) => {
+    if (priceFilter === "quote") {
+      const isQuote =
+        o.formType === "custom" || o.confirmation === "approval";
+      if (!isQuote) return false;
+    }
+    return matchesExtras(o, search, category, effectiveFilter, selectedIds);
+  });
+
   const shortlist = recommendedOfferings(
     sorted.filter((o) => !unavailableMessage(o)),
     preferences,
   );
+
   const visible =
-    !browse && !search.trim() && category === "all" && filter === "all"
+    !browse && !search.trim() && category === "all" && priceFilter === "all"
       ? shortlist
       : filtered;
+
   const available = visible.filter((o) => !unavailableMessage(o));
   const unavailable = visible.filter((o) => unavailableMessage(o));
+
   function change(o: Offering, variantId: string | null, quantity: number) {
     const key = JSON.stringify([o.id, variantId]);
     const inputs =
@@ -153,136 +163,162 @@ export function CheckoutExtrasCatalog({
         ?.inputs ??
       {};
     const missing = requiredResponseError(o, inputs);
-    if (quantity > 0 && missing) { setInputError(missing); return; }
+    if (quantity > 0 && missing) {
+      setInputError(missing);
+      return;
+    }
     setInputError("");
     onChange(replaceSelection(selections, o, variantId, quantity, inputs));
   }
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      {/* 1. Header with View Mode Toggle */}
+      <div className="flex items-center justify-between gap-3 pt-0.5">
         <div>
-          <h3 className="font-bold text-[var(--hk-navy)]">
-            {!browse && !search && category === "all" && filter === "all"
+          <h2 className="text-xl font-bold tracking-tight text-[#141b2b]">
+            {!browse && !search && category === "all" && priceFilter === "all"
               ? "Recommended for your stay"
-              : "Browse stay extras"}
-          </h3>
-          <p className="mt-1 text-xs text-[var(--hk-muted)]">
-            Optional touches from your hotel. Choose any, or continue without
-            extras.
+              : "Browse all stay extras"}
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Thoughtful touches from your hotel. Add anything you like, or continue.
           </p>
         </div>
         <button
           type="button"
-          className="hk-extra-chip"
           onClick={() => {
             setBrowse(!browse);
             setSearch("");
             setCategory("all");
-            setFilter("all");
+            setPriceFilter("all");
           }}
+          className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-[#b48a3c] hover:underline transition shrink-0"
         >
-          {browse ? "Recommendations" : "Browse all"}
+          {browse ? "← View recommendations" : "Browse all →"}
         </button>
       </div>
-      {selectedIds.size > 0 && (
-        <div
-          aria-label="Selected extras"
-          className="flex flex-wrap gap-2 rounded-xl bg-white p-3"
-        >
-          {[...selectedIds].map((id) => (
-            <button
-              type="button"
-              key={id}
-              disabled={disabled}
-              onClick={() =>
-                onChange(selections.filter((s) => s.offeringId !== id))
-              }
-              className="hk-extra-chip"
-            >
-              {offerings.find((o) => o.id === id)?.name ?? "Selected extra"} ·
-              Remove ×
-            </button>
-          ))}
-        </div>
-      )}
+
       {inputError && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-xs sm:text-sm font-medium text-rose-700">
           {inputError}
         </p>
       )}
 
-      {selections.length >= 30 && (
-        <p role="status" className="text-xs text-[var(--hk-muted)]">
-          You can select up to 30 different choices per booking. Remove a choice
-          to add another.
-        </p>
-      )}
+      {/* 2. Full-Width Search Input */}
       <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-[var(--hk-muted)]" />
+        <Search className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
         <input
           aria-label="Search stay options"
-          placeholder="Search pillows, chargers, celebrations…"
+          placeholder="Search extras (e.g. cake, room setup, snacks)"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
             if (e.target.value) setBrowse(true);
           }}
-          className="h-12 w-full rounded-xl border border-[var(--hk-border)] bg-white pl-12 pr-4 text-sm outline-none focus:border-[var(--hk-navy)] focus:ring-2 focus:ring-[var(--hk-navy)]/10"
+          className="h-10 sm:h-11 w-full rounded-xl border border-[#e5e1d8] bg-white pl-11 pr-4 text-xs sm:text-sm text-[#141b2b] placeholder:text-slate-400 outline-none transition focus:border-[#0b1f3a] focus:ring-2 focus:ring-[#0b1f3a]/10"
         />
       </div>
-      <label className="flex items-center gap-3 text-xs font-semibold text-[var(--hk-muted)]">
-        Category
-        <select
-          aria-label="Extra categories"
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value);
-            setBrowse(true);
-          }}
-          className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--hk-border)] bg-white px-3 text-sm text-[var(--hk-navy)]"
-        >
-          <option value="all">All categories</option>
-          {offeringCategories
-            .filter((c) => offerings.some((o) => offeringCategory(o) === c))
-            .map((c) => (
-              <option key={c} value={c}>
-                {offeringCategoryLabels[c]}
-              </option>
-            ))}
-        </select>
-      </label>
-      <div
-        className="flex flex-wrap items-center gap-1 border-b border-[var(--hk-border)] pb-3"
-        aria-label="Extra price filters"
-      >
-        {filters.map((f) => (
-          <button
-            type="button"
-            key={f.value}
-            aria-pressed={filter === f.value}
-            onClick={() => setFilter(f.value)}
-            className={`min-h-11 rounded-lg px-3 text-xs font-semibold transition ${filter === f.value ? "bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]" : "text-[var(--hk-muted)] hover:bg-white"}`}
-          >
-            {f.label}
-            {f.value === "selected" && selectedIds.size > 0
-              ? ` (${selectedIds.size})`
-              : ""}
-          </button>
-        ))}
-        <span role="status" className="ml-auto text-xs text-[var(--hk-muted)]">
-          {available.length} available
-          {unavailable.length > 0 ? ` · ${unavailable.length} unavailable` : ""}
-        </span>
+
+      {/* 3. Category Tabs + Price Filter Segment */}
+      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between border-b border-[#e5e1d8] pb-3">
+        {/* Category Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {mainCategoryTabs.map(({ id, label, icon: Icon }) => {
+            const isActive = category === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setCategory(id);
+                  setBrowse(true);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  isActive
+                    ? "bg-[#0b1f3a] text-white shadow-2xs border border-[#0b1f3a]"
+                    : "bg-white border border-[#e5e1d8] text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {Icon && <Icon className="h-3 w-3" />}
+                <span>{label}</span>
+              </button>
+            );
+          })}
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowMoreCategories(!showMoreCategories)}
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold border transition-all ${
+                !mainCategoryTabs.some((t) => t.id === category) && category !== "all"
+                  ? "bg-[#0b1f3a] text-white border-[#0b1f3a]"
+                  : "bg-white border-[#e5e1d8] text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <span>
+                {!mainCategoryTabs.some((t) => t.id === category) && category !== "all"
+                  ? offeringCategoryLabels[category] ?? "More"
+                  : "More"}
+              </span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+
+            {showMoreCategories && (
+              <div className="absolute left-0 top-full z-30 mt-1.5 w-56 rounded-2xl border border-[#e5e1d8] bg-white p-2 shadow-xl">
+                {offeringCategories
+                  .filter((c) => !mainCategoryTabs.some((t) => t.id === c))
+                  .map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setCategory(c);
+                        setBrowse(true);
+                        setShowMoreCategories(false);
+                      }}
+                      className="w-full text-left rounded-xl px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      {offeringCategoryLabels[c] ?? c}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Price / Quote Segments */}
+        <div className="flex items-center rounded-xl border border-[#e5e1d8] bg-[#fbf7ee] p-0.5 self-start lg:self-auto">
+          {priceFilters.map((f) => {
+            const isSelected = priceFilter === f.value;
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setPriceFilter(f.value)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  isSelected
+                    ? "bg-white text-[#141b2b] shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-[#141b2b]"
+                }`}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* 4. Zero-State */}
       {!visible.length && (
-        <div className="rounded-2xl border border-dashed border-[var(--hk-border)] bg-white px-6 py-10 text-center">
-          <Gift className="mx-auto mb-3 h-7 w-7 text-[var(--hk-muted)]" />
-          <p className="font-semibold text-[var(--hk-navy)]">
+        <div className="rounded-2xl border border-dashed border-[#e5e1d8] bg-white px-6 py-12 text-center">
+          <Gift className="mx-auto mb-3 h-8 w-8 text-slate-400" />
+          <p className="font-bold text-[#141b2b]">
             {offerings.length
               ? "No matching options"
               : "Your stay is ready as it is"}
           </p>
-          <p className="mt-2 text-sm text-[var(--hk-muted)]">
+          <p className="mt-2 text-xs sm:text-sm text-slate-500">
             {offerings.length
               ? "Try another category or search, or continue to review."
               : "There are no additional options for this stay. Continue whenever you’re ready."}
@@ -290,11 +326,11 @@ export function CheckoutExtrasCatalog({
           {offerings.length > 0 && (
             <button
               type="button"
-              className="mt-3 min-h-11 text-sm font-semibold underline"
+              className="mt-3 text-xs font-semibold text-[#b48a3c] underline"
               onClick={() => {
                 setSearch("");
                 setCategory("all");
-                setFilter("all");
+                setPriceFilter("all");
               }}
             >
               Clear filters
@@ -302,23 +338,18 @@ export function CheckoutExtrasCatalog({
           )}
         </div>
       )}
-      <div
-        className="grid items-start gap-3"
-        style={{
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-        }}
-      >
+
+      {/* 5. 3-Column Responsive Product Cards Grid (Uniform Fixed Proportions) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {available.map((o) => {
           const count = selections
             .filter((s) => s.offeringId === o.id)
             .reduce((sum, s) => sum + s.quantity, 0);
           const deadline = Date.parse(startAt) - o.advanceNoticeMinutes * 60000;
           const expired = now >= deadline || o.status !== "active";
-          const open = expanded.includes(o.id) || count > 0;
-          const Icon = categoryIcons[offeringCategory(o)] ?? Gift;
+
           const needsDetails = Boolean(
-            o.variants.length ||
+            o.variants.length > 1 ||
               o.formType === "scheduled" ||
               resolveResponse(o).responseType === "text" ||
               o.formType === "custom" ||
@@ -327,261 +358,481 @@ export function CheckoutExtrasCatalog({
               o.pricingUnit === "person" ||
               o.pricingUnit === "hour",
           );
+
           const variants = o.variants.length
             ? o.variants
             : [{ id: null, name: "Quantity" }];
-          const matchingVariants = variants.filter((v) =>
-            matchesExtrasPrice(variantPrice(o, v.id), filter),
-          );
-          const shownOffering = o.variants.length
-            ? {
-                ...o,
-                variants: o.variants.filter((v) =>
-                  matchesExtrasPrice(variantPrice(o, v.id), filter),
-                ),
-              }
-            : o;
+
+          const lowestPrice = Math.min(...variants.map((v) => variantPrice(o, v.id)));
+          const isComplimentary = lowestPrice === 0 && o.variants.length <= 1;
+
+          let displayPrice = "";
+          let priceUnitSuffix = "";
+
+          if (o.formType === "custom") {
+            displayPrice = "Price on request";
+          } else if (isComplimentary) {
+            displayPrice = "Complimentary";
+          } else if (o.variants.length > 1) {
+            displayPrice = `From ${priceText(lowestPrice, currency)}`;
+            priceUnitSuffix = pricingUnitLabel(o.pricingUnit);
+          } else {
+            displayPrice = priceText(o.unitPricePaise, currency);
+            priceUnitSuffix = pricingUnitLabel(o.pricingUnit);
+          }
+
           return (
             <article
               id={`extra-${o.id}`}
               key={o.id}
-              className={`scroll-mt-28 rounded-2xl border bg-white p-4 transition sm:p-5 ${count ? "border-[var(--hk-navy)]/30 shadow-sm" : "border-[var(--hk-border)]"}`}
+              className={`group flex flex-col justify-between overflow-hidden rounded-2xl border bg-white transition-all duration-200 h-full ${
+                count
+                  ? "border-[#b48a3c] ring-1 ring-[#b48a3c]/30 shadow-md"
+                  : "border-[#e5e1d8] hover:border-slate-300 hover:shadow-xs"
+              }`}
             >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${count ? "bg-[var(--hk-navy)] text-white" : "bg-[var(--hk-surface-soft)] text-[var(--hk-navy)]"}`}
-                >
-                  {o.imageId ? (
-                    <img
-                      src={`/api/stay-images/${encodeURIComponent(o.propertyId)}/${o.imageId}`}
-                      alt="Illustrative image; actual item may vary"
-                      className="h-10 w-10 rounded-xl object-cover"
-                    />
-                  ) : (
-                    <Icon className="h-5 w-5" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-bold leading-5 text-[var(--hk-navy)]">
-                    {o.name}
-                  </h3>
-                  <p className="mt-1 text-xs font-semibold text-[var(--hk-navy)]">
-                    {o.formType === "custom"
-                      ? "Price after hotel review"
-                      : offeringPriceLabel(shownOffering, currency)}
-                    <span className="font-normal text-[var(--hk-muted)]">
-                      {o.formType === "custom"
-                        ? " · Request only"
-                        : matchingVariants.some(
-                              (v) => variantPrice(o, v.id) > 0,
-                            )
-                          ? ` · ${pricingUnitLabel(o.pricingUnit)}`
-                          : " · No extra charge"}
-                    </span>
-                  </p>
-                </div>
+              {/* Product Cover Photography (Proportional 4:3) */}
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 shrink-0">
+                <img
+                  src={getOfferingImageUrl(o)}
+                  alt={o.name}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  loading="lazy"
+                />
                 {count > 0 && (
-                  <span
-                    aria-label={`${count} selected`}
-                    className="flex items-center gap-1 text-xs font-semibold text-[var(--hk-navy)]"
-                  >
-                    <Check className="h-4 w-4" />
-                    {count}
-                  </span>
+                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-[#0b1f3a] px-2.5 py-0.5 text-xs font-bold text-white shadow-md">
+                    <Check className="h-3 w-3 stroke-[2.5]" />
+                    <span>{count}</span>
+                  </div>
                 )}
               </div>
-              {o.imageId && (
-                <p className="mt-2 text-[10px] text-[var(--hk-muted)]">
-                  Illustrative image · Actual item may vary
-                </p>
-              )}
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--hk-muted)]">
-                {o.description}
-              </p>
-              {o.confirmation === "approval" && (
-                <p className="mt-2 text-xs text-[var(--hk-muted)]">
-                  Hotel approval required · Not charged at checkout
-                </p>
-              )}
-              {expired && (
-                <p
-                  role="status"
-                  className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-800"
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  Request deadline passed
-                </p>
-              )}
-              {!open && (
-                <button
-                  type="button"
-                  disabled={disabled || expired || selections.length >= 30}
-                  onClick={() => {
-                    if (needsDetails) setExpanded((old) => [...old, o.id]);
-                    else change(o, null, 1);
-                  }}
-                  className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--hk-border)] text-sm font-semibold text-[var(--hk-navy)] transition hover:border-[var(--hk-navy)] hover:bg-[var(--hk-surface-soft)] disabled:opacity-50"
-                >
-                  <Plus className="h-4 w-4" />
-                  {needsDetails
-                    ? "Choose options"
-                    : o.confirmation === "approval"
-                      ? "Request"
-                      : "Add"}
-                </button>
-              )}
-              {open && (
-                <div className="mt-4 space-y-3 border-t border-[var(--hk-border)] pt-4">
-                  <p className="text-xs text-[var(--hk-muted)]">
-                    {!resolveResponse(o).quantityEnabled && resolveResponse(o).responseType !== "multiple"
-                      ? "One request per booking"
-                      : `Maximum ${o.maxQuantity} per booking`}
-                    {o.variants.length ? " · Shared across choices" : ""}
+
+              {/* Card Body (Uniform Spacing & Fixed Alignment) */}
+              <div className="flex flex-1 flex-col justify-between p-3.5 sm:p-4">
+                <div>
+                  <h3
+                    className="text-sm font-bold text-[#141b2b] leading-tight truncate"
+                    title={o.name}
+                  >
+                    {o.name}
+                  </h3>
+
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span
+                      className={`text-xs sm:text-sm font-extrabold ${
+                        isComplimentary ? "text-[#785d1c]" : "text-[#141b2b]"
+                      }`}
+                    >
+                      {displayPrice}
+                    </span>
+                    {priceUnitSuffix && !isComplimentary && (
+                      <span className="text-[11px] text-slate-500 font-normal">
+                        / {priceUnitSuffix}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-1.5 text-xs text-slate-500 line-clamp-2 leading-relaxed h-8">
+                    {o.description}
                   </p>
-                  {matchingVariants.map((v) => {
-                    const hasGuestInputs = Boolean(
-                      o.noteLabel ||
-                        o.noteRequired ||
-                        o.peopleRequired ||
-                        o.timeRequired ||
-                        o.formType === "scheduled" ||
-                        resolveResponse(o).responseType === "text" ||
-                        o.formType === "custom" ||
-                        o.pricingUnit === "person" ||
-                        o.pricingUnit === "hour" ||
-                        o.choiceGroups?.length,
-                    );
-                    const quantity =
-                      selections.find(
-                        (s) => s.offeringId === o.id && s.variantId === v.id,
-                      )?.quantity ?? 0;
-                    const showInputs =
-                      quantity > 0 ||
-                      (Object.hasOwn(variantFocus, o.id)
-                        ? variantFocus[o.id]
-                        : matchingVariants[0]?.id) === v.id;
-                    return (
-                      <div
-                        key={v.id ?? "quantity"}
-                        className="space-y-3 rounded-xl border border-[var(--hk-border)] p-3"
+
+                  {/* Trust / Confirmation Badge (Fixed Height) */}
+                  <div className="mt-2.5 h-5 flex items-center">
+                    {count > 0 && o.confirmation === "approval" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                        <Clock className="h-2.5 w-2.5 text-amber-600 shrink-0" />
+                        Awaiting hotel confirmation
+                      </span>
+                    ) : o.confirmation === "approval" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                        <Info className="h-2.5 w-2.5 text-slate-500 shrink-0" />
+                        Hotel approval required
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf7ee] border border-[#e8d9b5] px-2 py-0.5 text-[10px] font-medium text-[#785d1c]">
+                        <Check className="h-2.5 w-2.5 text-[#b48a3c] shrink-0" />
+                        Instant confirmation
+                      </span>
+                    )}
+                  </div>
+
+                  {expired && (
+                    <p
+                      role="status"
+                      className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-800"
+                    >
+                      <Clock className="h-3 w-3" />
+                      Request deadline passed
+                    </p>
+                  )}
+                </div>
+
+                {/* Card Action Button (Fixed h-10 Container) */}
+                <div className="mt-3.5 pt-1 h-10">
+                  {needsDetails ? (
+                    count > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedModalOffering(o)}
+                        className="w-full h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c] hover:bg-[#f5ebd8]"
                       >
-                        {showInputs && (
+                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                        <span>
+                          {o.confirmation === "approval" ? "Requested" : "Added"} ({count}) · Edit
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={disabled || expired || selections.length >= 30}
+                        onClick={() => setSelectedModalOffering(o)}
+                        className="w-full h-10 rounded-xl bg-[#0b1f3a] text-white text-xs font-semibold hover:bg-[#14294d] active:scale-[0.99] transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                        <span>Choose options</span>
+                      </button>
+                    )
+                  ) : count === 0 ? (
+                    <button
+                      type="button"
+                      disabled={disabled || expired || selections.length >= 30}
+                      onClick={() => change(o, null, 1)}
+                      className="w-full h-10 rounded-xl bg-[#0b1f3a] text-white text-xs font-semibold hover:bg-[#14294d] active:scale-[0.99] transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
+                    >
+                      {o.confirmation === "approval" ? "Request" : "Add"}
+                    </button>
+                  ) : o.maxQuantity === 1 || resolveResponse(o).responseType === "single" ? (
+                    <div className="flex items-center gap-1.5 h-10">
+                      <div className="flex-1 h-full rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]">
+                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                        <span>{o.confirmation === "approval" ? "Requested" : "Added"}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => change(o, null, 0)}
+                        aria-label={`Remove ${o.name}`}
+                        className="h-full px-2.5 rounded-xl border border-[#e5e1d8] bg-white text-slate-400 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center text-xs"
+                        title="Remove"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-full h-10 rounded-xl flex items-center justify-between px-2 text-xs font-semibold border border-[#d4af37] bg-[#fbf6ee] text-[#785d1c]">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => change(o, null, count - 1)}
+                        aria-label={`Decrease ${o.name}`}
+                        className="h-7 w-7 rounded-lg bg-white/80 hover:bg-white text-slate-700 flex items-center justify-center font-bold text-sm shadow-2xs transition active:scale-95"
+                      >
+                        –
+                      </button>
+                      <span className="text-xs font-bold">
+                        {o.confirmation === "approval" ? "Requested" : "Added"}: {count}
+                        {o.maxQuantity ? ` / ${o.maxQuantity}` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={
+                          disabled ||
+                          (o.maxQuantity ? count >= o.maxQuantity : false) ||
+                          selections.length >= 30
+                        }
+                        onClick={() => change(o, null, count + 1)}
+                        aria-label={`Increase ${o.name}`}
+                        className="h-7 w-7 rounded-lg bg-white/80 hover:bg-white text-slate-700 flex items-center justify-center font-bold text-sm shadow-2xs transition active:scale-95 disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {/* 6. Offering Options Modal Dialog (Replaces inline expansion) */}
+      {selectedModalOffering && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-offering-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedModalOffering(null);
+          }}
+        >
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-3xl bg-white shadow-2xl border border-[#e5e1d8] animate-in zoom-in-95 duration-200">
+            {/* Modal Image Header */}
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-100 shrink-0">
+              <img
+                src={getOfferingImageUrl(selectedModalOffering)}
+                alt={selectedModalOffering.name}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent" />
+              <button
+                type="button"
+                onClick={() => setSelectedModalOffering(null)}
+                aria-label="Close modal"
+                className="absolute top-3.5 right-3.5 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-slate-700 flex items-center justify-center shadow-md transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="absolute bottom-3.5 left-4 right-4 text-white">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-white/20 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+                    {offeringCategoryLabels[selectedModalOffering.category ?? "other"] ?? "Extra"}
+                  </span>
+                  {selectedModalOffering.confirmation === "approval" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/80 backdrop-blur-md px-2 py-0.5 text-[10px] font-medium text-white">
+                      <Clock className="h-2.5 w-2.5" />
+                      Hotel approval required
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-md px-2.5 py-0.5 text-[10px] font-semibold text-white border border-white/20">
+                      <Check className="h-2.5 w-2.5" />
+                      Instant confirmation
+                    </span>
+                  )}
+                </div>
+                <h2 id="modal-offering-title" className="mt-1 text-lg font-bold leading-tight">
+                  {selectedModalOffering.name}
+                </h2>
+              </div>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {selectedModalOffering.description}
+              </p>
+
+              <div className="rounded-xl border border-[#e5e1d8] bg-[#fbf7ee] p-3 text-xs text-[#785d1c] flex items-start gap-2">
+                <Info className="h-4 w-4 shrink-0 mt-0.5 text-[#b48a3c]" />
+                <div>
+                  <p className="font-semibold">
+                    {selectedModalOffering.confirmation === "approval"
+                      ? "Request without upfront charge"
+                      : "Instant confirmation"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#785d1c]/80">
+                    {selectedModalOffering.confirmation === "approval"
+                      ? "The hotel will review your request. It will only be added to your bill once confirmed."
+                      : "This item will be confirmed immediately with your reservation."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Variants / Choices */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>
+                    {selectedModalOffering.variants.length > 1
+                      ? "Choose option & quantity:"
+                      : "Configure your request:"}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-normal">
+                    {!resolveResponse(selectedModalOffering).quantityEnabled &&
+                    resolveResponse(selectedModalOffering).responseType !== "multiple"
+                      ? "1 per booking"
+                      : `Max ${selectedModalOffering.maxQuantity} per stay`}
+                  </span>
+                </div>
+
+                {(selectedModalOffering.variants.length
+                  ? selectedModalOffering.variants
+                  : [{ id: null, name: selectedModalOffering.name }]
+                ).map((v) => {
+                  const quantity =
+                    selections.find(
+                      (s) =>
+                        s.offeringId === selectedModalOffering.id &&
+                        s.variantId === v.id,
+                    )?.quantity ?? 0;
+                  const totalOfferingCount = selections
+                    .filter((s) => s.offeringId === selectedModalOffering.id)
+                    .reduce((sum, s) => sum + s.quantity, 0);
+                  const price = variantPrice(selectedModalOffering, v.id);
+
+                  return (
+                    <div
+                      key={v.id ?? "default"}
+                      className={`rounded-2xl border p-3.5 transition-all ${
+                        quantity > 0
+                          ? "border-[#b48a3c] bg-[#fbf6ee]/40 ring-1 ring-[#b48a3c]/30"
+                          : "border-[#e5e1d8] bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-xs sm:text-sm font-bold text-[#141b2b]">
+                            {v.name}
+                          </h4>
+                          <p className="text-xs font-semibold text-[#b48a3c]">
+                            {priceText(price, currency)}
+                            {pricingUnitLabel(selectedModalOffering.pricingUnit) &&
+                              price > 0 && (
+                                <span className="text-[10px] text-slate-500 font-normal">
+                                  {" "}
+                                  / {pricingUnitLabel(selectedModalOffering.pricingUnit)}
+                                </span>
+                              )}
+                          </p>
+                        </div>
+
+                        <ResponseControls
+                          offering={selectedModalOffering}
+                          optionName={v.name}
+                          quantity={quantity}
+                          count={totalOfferingCount}
+                          disabled={disabled}
+                          blockIncrease={
+                            disabled ||
+                            (selections.length >= 30 && quantity === 0)
+                          }
+                          onChange={(n) => change(selectedModalOffering, v.id, n)}
+                        />
+                      </div>
+
+                      {/* Guest Inputs if this variant is active */}
+                      {(quantity > 0 ||
+                        selectedModalOffering.variants.length <= 1) && (
+                        <div className="mt-3 pt-3 border-t border-[#e5e1d8]">
                           <GuestInputFields
-                            offering={o}
+                            offering={selectedModalOffering}
                             timezone={timezone}
                             disabled={disabled}
                             value={
-                              inputDrafts[JSON.stringify([o.id, v.id])] ??
+                              inputDrafts[
+                                JSON.stringify([selectedModalOffering.id, v.id])
+                              ] ??
                               selections.find(
                                 (s) =>
-                                  s.offeringId === o.id && s.variantId === v.id,
+                                  s.offeringId === selectedModalOffering.id &&
+                                  s.variantId === v.id,
                               )?.inputs
                             }
                             onChange={(inputs) => {
                               setInputDrafts((old) => ({
                                 ...old,
-                                [JSON.stringify([o.id, v.id])]: inputs,
+                                [JSON.stringify([
+                                  selectedModalOffering.id,
+                                  v.id,
+                                ])]: inputs,
                               }));
-                              if (quantity)
+                              if (quantity) {
                                 onChange(
                                   selections.map((s) =>
-                                    s.offeringId === o.id &&
+                                    s.offeringId === selectedModalOffering.id &&
                                     s.variantId === v.id
                                       ? { ...s, inputs }
                                       : s,
                                   ),
                                 );
+                              }
                             }}
                           />
-                        )}
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm">
-                            <p className="font-medium text-[var(--hk-navy)]">
-                              {!o.variants.length
-                                ? "Request this"
-                                : v.name}
-                            </p>
-                            {"inclusions" in v && v.inclusions && (
-                              <p className="mt-1 text-xs text-[var(--hk-muted)]">
-                                {v.inclusions}
-                              </p>
-                            )}
-                            <p className="text-xs text-[var(--hk-muted)]">
-                              {priceText(variantPrice(o, v.id), currency)}
-                            </p>
-                          </div>
-                          {hasGuestInputs && !showInputs ? (
-                            <button
-                              type="button"
-                              disabled={disabled || (resolveResponse(o).responseType !== "single" && count >= responseLimit(o))}
-                              onClick={() =>
-                                setVariantFocus((old) => ({
-                                  ...old,
-                                  [o.id]: v.id,
-                                }))
-                              }
-                              className="hk-extra-chip"
-                            >
-                              Choose {v.name}
-                            </button>
-                          ) : <ResponseControls offering={o} optionName={v.name} quantity={quantity} count={count} disabled={disabled} blockIncrease={expired || (selections.length >= 30 && quantity === 0 && !(resolveResponse(o).responseType === "single" && count > 0))} onChange={n => change(o, v.id, n)} />}
-
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <details className="mt-3 text-xs text-[var(--hk-muted)]">
-                <summary className="flex min-h-8 cursor-pointer items-center gap-1 font-medium">
-                  Details <ChevronDown className="h-3 w-3" />
-                </summary>
-                <div className="mt-2 space-y-2 leading-5">
-                  <p>{o.description}</p>
-                  <p>
-                    Choose before{" "}
-                    {new Date(deadline).toLocaleString("en-IN", {
-                      timeZone: timezone,
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}{" "}
-                    ({timezone}).
-                  </p>
-                  <p>
-                    {o.confirmation === "approval"
-                      ? "The hotel will confirm whether it can fulfil your request."
-                      : "Confirmed with your booking."}{" "}
-                    Maximum {o.maxQuantity} per booking.
-                  </p>
-                </div>
-              </details>
-            </article>
-          );
-        })}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Sticky Footer */}
+            <div className="border-t border-[#e5e1d8] bg-slate-50 p-4 flex items-center justify-between gap-3 shrink-0">
+              <div>
+                {selections.some((s) => s.offeringId === selectedModalOffering.id) ? (
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      onChange(
+                        selections.filter(
+                          (s) => s.offeringId !== selectedModalOffering.id,
+                        ),
+                      );
+                      setSelectedModalOffering(null);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Remove from stay</span>
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    All extras are optional
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedModalOffering(null)}
+                className="rounded-xl bg-[#0b1f3a] px-5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#14294d] active:scale-[0.99] transition"
+              >
+                {selections.some((s) => s.offeringId === selectedModalOffering.id)
+                  ? "Save changes"
+                  : "Done"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Footer Prompt: Something else in mind? */}
+      <div className="pt-2 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById("special-requests-section");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth" });
+              const details = el.closest("details");
+              if (details) details.open = true;
+            }
+          }}
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#b48a3c] hover:underline transition"
+        >
+          <MessageSquare className="h-4 w-4" />
+          <span>
+            Something else in mind?{" "}
+            <span className="underline">Send a request →</span>
+          </span>
+        </button>
       </div>
+
+      {/* 7. Unavailable Items Collapsible */}
       {unavailable.length > 0 && (
         <details
-          key={`${search.trim() ? "search" : "browse"}-${category}-${filter}`}
+          key={`${search.trim() ? "search" : "browse"}-${category}-${priceFilter}`}
           open={Boolean(search.trim())}
-          className="rounded-2xl border border-[var(--hk-border)] bg-white"
+          className="rounded-2xl border border-[#e5e1d8] bg-white"
         >
-          <summary className="min-h-12 cursor-pointer px-5 py-4 text-sm font-semibold text-[var(--hk-muted)]">
+          <summary className="min-h-11 cursor-pointer px-5 py-3 text-xs font-semibold text-slate-500">
             Unavailable for this stay ({unavailable.length})
           </summary>
-          <div className="divide-y divide-[var(--hk-border)] border-t border-[var(--hk-border)] px-5">
+          <div className="divide-y divide-[#e5e1d8] border-t border-[#e5e1d8] px-5">
             {unavailable.map((o) => {
               const reason = unavailableMessage(o);
               const visibleVariants = o.variants.filter((v) =>
-                matchesExtrasPrice(variantPrice(o, v.id), filter),
+                matchesExtrasPrice(variantPrice(o, v.id), effectiveFilter),
               );
               return (
-                <article key={o.id} className="py-4" aria-label={o.name}>
+                <article key={o.id} className="py-3" aria-label={o.name}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-[var(--hk-navy)]">
+                      <h3 className="text-xs sm:text-sm font-semibold text-[#141b2b]">
                         {o.name}
                       </h3>
-                      <p className="mt-1 text-xs text-[var(--hk-muted)]">
+                      <p className="mt-0.5 text-xs text-slate-500">
                         {offeringPriceLabel(
                           o.variants.length
                             ? { ...o, variants: visibleVariants }
@@ -590,52 +841,14 @@ export function CheckoutExtrasCatalog({
                         )}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      disabled
-                      className="min-h-11 shrink-0 rounded-lg bg-[var(--hk-surface-soft)] px-3 text-xs font-medium text-[var(--hk-muted)]"
-                    >
+                    <span className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-400">
                       Unavailable
-                    </button>
+                    </span>
                   </div>
-                  <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-[var(--hk-muted)]">
+                  <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-500">
                     <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    {reason}
+                    <span>{reason}</span>
                   </p>
-                  <details className="mt-2 text-xs text-[var(--hk-muted)]">
-                    <summary className="min-h-8 cursor-pointer py-2 font-medium">
-                      Details
-                    </summary>
-                    <p className="mt-1 leading-5">{o.description}</p>
-                    {visibleVariants.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {visibleVariants.map((v) => (
-                          <li key={v.id}>
-                            {v.name} ·{" "}
-                            {priceText(variantPrice(o, v.id), currency)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </details>
-                  {selections.some(
-                    (selection) => selection.offeringId === o.id,
-                  ) && (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() =>
-                        onChange(
-                          selections.filter(
-                            (selection) => selection.offeringId !== o.id,
-                          ),
-                        )
-                      }
-                      className="mt-2 min-h-11 text-xs font-semibold underline"
-                    >
-                      Remove selected {o.name}
-                    </button>
-                  )}
                 </article>
               );
             })}

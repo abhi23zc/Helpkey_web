@@ -1,0 +1,462 @@
+{
+  "evaluatedAt": 1798761600000,
+  "expiresAt": 1798761630000,
+  "candidates": [
+    {
+      "id": "alpha",
+      "slug": "alpha",
+      "name": "alpha",
+      "propertyType": "hotel",
+      "city": "Test City",
+      "state": null,
+      "ratingAverage": 4.8,
+      "ratingCount": 10,
+      "minimumPricePaise": 100000,
+      "currency": "INR",
+      "coverImageUrl": null,
+      "coverImageSrcSet": "",
+      "coverImageWidth": 1,
+      "coverImageHeight": 1,
+      "amenityCodes": [
+        "wifi"
+      ],
+      "freeCancellation": false,
+      "offers": [
+        {
+          "roomTypeId": "alpha-room",
+          "ratePlanId": "cheap",
+          "roomName": "Room",
+          "beds": [],
+          "amenityCodes": [
+            "wifi"
+          ],
+          "payableNowPaise": 50000,
+          "balanceDuePaise": 50000,
+          "totalPaise": 100000,
+          "subtotalPaise": 99000,
+          "taxPaise": 500,
+          "customerFeePaise": 500,
+          "breakfastIncluded": false,
+          "cancellation": {
+            "freeCancellation": false,
+            "deadline": "2027-02-01T08:30:00.000Z",
+            "feePercent": 100,
+            "name": "Policy"
+          },
+          "startAt": "2027-02-02T08:30:00Z",
+          "endAt": "2027-02-04T05:30:00Z",
+          "timezone": "Asia/Kolkata",
+          "nights": 2,
+          "durationMinutes": 2880,
+          "bookingMode": "overnight",
+          "validUntil": 1798761630000
+        },
+        {
+          "roomTypeId": "alpha-room",
+          "ratePlanId": "refundable",
+          "roomName": "Room",
+          "beds": [],
+          "amenityCodes": [
+            "wifi",
+            "swimming_pool"
+          ],
+          "payableNowPaise": 90000,
+          "balanceDuePaise": 90000,
+          "totalPaise": 180000,
+          "subtotalPaise": 179000,
+          "taxPaise": 500,
+          "customerFeePaise": 500,
+          "breakfastIncluded": false,
+          "cancellation": {
+            "freeCancellation": true,
+            "deadline": "2027-02-01T08:30:00.000Z",
+            "feePercent": 0,
+            "name": "Policy"
+          },
+          "startAt": "2027-02-02T08:30:00Z",
+          "endAt": "2027-02-04T05:30:00Z",
+          "timezone": "Asia/Kolkata",
+          "nights": 2,
+          "durationMinutes": 2880,
+          "bookingMode": "overnight",
+          "validUntil": 1798761630000
+        }
+      ],
+      "coordinates": {
+        "latitude": 26,
+        "longitude": 80
+      }
+    },
+    {
+      "id": "beta",
+      "slug": "beta",
+      "name": "beta",
+      "propertyType": "resort",
+      "city": "Test City",
+      "state": null,
+      "ratingAverage": 4.5,
+      "ratingCount": 10,
+      "minimumPricePaise": 150000,
+      "currency": "INR",
+      "coverImageUrl": null,
+      "coverImageSrcSet": "",
+      "coverImageWidth": 1,
+      "coverImageHeight": 1,
+      "amenityCodes": [
+        "wifi",
+        "swimming_pool"
+      ],
+      "freeCancellation": false,
+      "offers": [
+        {
+          "roomTypeId": "beta-room",
+          "ratePlanId": "standard",
+          "roomName": "Room",
+          "beds": [],
+          "amenityCodes": [
+            "wifi",
+            "swimming_pool"
+          ],
+          "payableNowPaise": 75000,
+          "balanceDuePaise": 75000,
+          "totalPaise": 150000,
+          "subtotalPaise": 149000,
+          "taxPaise": 500,
+          "customerFeePaise": 500,
+          "breakfastIncluded": false,
+          "cancellation": {
+            "freeCancellation": true,
+            "deadline": "2027-02-01T08:30:00.000Z",
+            "feePercent": 0,
+            "name": "Policy"
+          },
+          "startAt": "2027-02-02T08:30:00Z",
+          "endAt": "2027-02-04T05:30:00Z",
+          "timezone": "Asia/Kolkata",
+          "nights": 2,
+          "durationMinutes": 2880,
+          "bookingMode": "overnight",
+          "validUntil": 1798761630000
+        }
+      ],
+      "coordinates": {
+        "latitude": 26,
+        "longitude": 80
+      }
+    },
+    {
+      "id": "gamma",
+      "slug": "gamma",
+      "name": "gamma",
+      "propertyType": "villa",
+      "city": "Test City",
+      "state": null,
+      "ratingAverage": 3.5,
+      "ratingCount": 10,
+      "minimumPricePaise": 90000,
+      "currency": "INR",
+      "coverImageUrl": null,
+      "coverImageSrcSet": "",
+      "coverImageWidth": 1,
+      "coverImageHeight": 1,
+      "amenityCodes": [
+        "parking"
+      ],
+      "freeCancellation": false,
+      "offers": [
+        {
+          "roomTypeId": "gamma-room",
+          "ratePlanId": "standard",
+          "roomName": "Room",
+          "beds": [],
+          "amenityCodes": [
+            "parking"
+          ],
+          "payableNowPaise": 45000,
+          "balanceDuePaise": 45000,
+          "totalPaise": 90000,
+          "subtotalPaise": 89000,
+          "taxPaise": 500,
+          "customerFeePaise": 500,
+          "breakfastIncluded": false,
+          "cancellation": {
+            "freeCancellation": false,
+            "deadline": "2027-02-01T08:30:00.000Z",
+            "feePercent": 100,
+            "name": "Policy"
+          },
+          "startAt": "2027-02-02T08:30:00Z",
+          "endAt": "2027-02-04T05:30:00Z",
+          "timezone": "Asia/Kolkata",
+          "nights": 2,
+          "durationMinutes": 2880,
+          "bookingMode": "overnight",
+          "validUntil": 1798761630000
+        }
+      ],
+      "coordinates": {
+        "latitude": 26,
+        "longitude": 80
+      }
+    },
+    {
+      "id": "delta",
+      "slug": "delta",
+      "name": "delta",
+      "propertyType": "apartment",
+      "city": "Test City",
+      "state": null,
+      "ratingAverage": 4.9,
+      "ratingCount": 10,
+      "minimumPricePaise": 250000,
+      "currency": "INR",
+      "coverImageUrl": null,
+      "coverImageSrcSet": "",
+      "coverImageWidth": 1,
+      "coverImageHeight": 1,
+      "amenityCodes": [
+        "business_ready",
+        "wifi"
+      ],
+      "freeCancellation": false,
+      "offers": [
+        {
+          "roomTypeId": "delta-room",
+          "ratePlanId": "standard",
+          "roomName": "Room",
+          "beds": [],
+          "amenityCodes": [
+            "business_ready",
+            "wifi"
+          ],
+          "payableNowPaise": 125000,
+          "balanceDuePaise": 125000,
+          "totalPaise": 250000,
+          "subtotalPaise": 249000,
+          "taxPaise": 500,
+          "customerFeePaise": 500,
+          "breakfastIncluded": false,
+          "cancellation": {
+            "freeCancellation": false,
+            "deadline": "2027-02-01T08:30:00.000Z",
+            "feePercent": 100,
+            "name": "Policy"
+          },
+          "startAt": "2027-02-02T08:30:00Z",
+          "endAt": "2027-02-04T05:30:00Z",
+          "timezone": "Asia/Kolkata",
+          "nights": 2,
+          "durationMinutes": 2880,
+          "bookingMode": "overnight",
+          "validUntil": 1798761630000
+        }
+      ],
+      "coordinates": {
+        "latitude": 26,
+        "longitude": 80
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "budget and rating",
+      "route": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "minPricePaise": "120000",
+        "maxPricePaise": "200000",
+        "minRating": "4"
+      },
+      "query": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "minPricePaise": "120000",
+        "maxPricePaise": "200000",
+        "minRating": "4",
+        "limit": "20",
+        "sort": "top_picks"
+      },
+      "expectedIds": [
+        "beta"
+      ]
+    },
+    {
+      "name": "multiple amenities and types",
+      "route": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "amenities": "wifi,swimming_pool",
+        "propertyTypes": "hotel,resort"
+      },
+      "query": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "amenity": [
+          "swimming_pool",
+          "wifi"
+        ],
+        "propertyType": [
+          "hotel",
+          "resort"
+        ],
+        "limit": "20",
+        "sort": "top_picks"
+      },
+      "expectedIds": [
+        "alpha",
+        "beta"
+      ]
+    },
+    {
+      "name": "refundable qualifying offer",
+      "route": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "freeCancellation": "1",
+        "amenities": "wifi",
+        "maxPricePaise": "200000"
+      },
+      "query": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "maxPricePaise": "200000",
+        "amenity": [
+          "wifi"
+        ],
+        "freeCancellation": "true",
+        "limit": "20",
+        "sort": "top_picks"
+      },
+      "expectedIds": [
+        "alpha",
+        "beta"
+      ]
+    },
+    {
+      "name": "nonrefundable default",
+      "route": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "propertyType": "hotel"
+      },
+      "query": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "propertyType": [
+          "hotel"
+        ],
+        "limit": "20",
+        "sort": "top_picks"
+      },
+      "expectedIds": [
+        "alpha"
+      ]
+    },
+    {
+      "name": "no matches",
+      "route": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "minPricePaise": "500000"
+      },
+      "query": {
+        "destination": "Test City",
+        "checkIn": "2027-02-02",
+        "checkOut": "2027-02-04",
+        "adults": "2",
+        "children": "1",
+        "infants": "1",
+        "placeLat": "26",
+        "placeLng": "80",
+        "placeId": "city-id",
+        "placeName": "City centre",
+        "placeAddress": "Test City",
+        "minPricePaise": "500000",
+        "limit": "20",
+        "sort": "top_picks"
+      },
+      "expectedIds": []
+    }
+  ]
+}

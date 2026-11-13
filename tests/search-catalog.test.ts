@@ -29,6 +29,20 @@ describe("search selection before pagination", () => {
     state.properties = [hotel("expensive", 90000, 3.5), hotel("cheap", 10000, 4.5), hotel("mid", 40000, 4, "resort", ["parking"])];
   });
   afterEach(() => vi.useRealTimers());
+  it("orders GPS results across cities without a radius, before pagination, with missing coordinates last", async () => {
+    state.properties = [
+      { ...hotel("far", 100, 5), normalizedCity: "mumbai", geoPoint: { latitude: 19.07, longitude: 72.88 } },
+      { ...hotel("missing", 100, 5) },
+      { ...hotel("near", 100, 3), geoPoint: { latitude: 28.551, longitude: 77.2 } },
+      { ...hotel("invalid", 100, 5), geoPoint: { latitude: 500, longitude: 77 } },
+    ];
+    const criteria = catalogSearchFromParams(new URLSearchParams("sort=distance_from_downtown&placeLat=28.55&placeLng=77.2&limit=1"));
+    const page = await searchCatalogPage(criteria);
+    expect(page.total).toBe(4); expect(page.properties.map(p => p.id)).toEqual(["near"]);
+    const next = await searchCatalogPage({ ...criteria, cursor: page.nextCursor! });
+    expect(next.properties.map(p => p.id)).toEqual(["far"]);
+    expect((await searchCatalogPage({ ...criteria, limit: 20 })).properties.slice(2).map(p => p.id).sort()).toEqual(["invalid", "missing"]);
+  });
   it("sorts the complete eligible set and reports an exact count", async () => {
     const page = await searchCatalogPage(input("sort=price_low_to_high&limit=1"));
     expect(page.properties.map(value => value.id)).toEqual(["cheap"]);

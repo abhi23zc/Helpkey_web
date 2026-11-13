@@ -122,6 +122,7 @@ export function AuthCard({
       throw new Error(data.error ?? "Unable to create session.");
     }
 
+    localStorage.setItem("helpkey-auth-event", crypto.randomUUID());
     await refreshUser();
     resetState();
     if (onSuccess) {

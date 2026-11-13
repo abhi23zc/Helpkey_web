@@ -56,7 +56,7 @@ export type CatalogDetailProperty = CatalogProperty & GuestPolicies & {
   checkOutTime: string;
 };
 type CatalogSearchProperty = CatalogProperty & { coordinates: { latitude: number; longitude: number } | null; offers?: SearchOffer[] };
-export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean; total: number; evaluatedAt: number; expiresAt: number; availableAmenities: string[]; clientSnapshot?: ClientSearchSnapshot };
+export type CatalogPage = { properties: CatalogProperty[]; nextCursor: string | null; hasMore: boolean; total: number; serverNow: number; availablePropertyTypes: string[]; evaluatedAt: number; expiresAt: number; availableAmenities: string[]; clientSnapshot?: ClientSearchSnapshot };
 
 async function filterAvailability(cards: CatalogSearchProperty[], input: CatalogSearch, documents: FirebaseFirestore.QueryDocumentSnapshot[]) {
   if (!input.checkIn || !cards.length) return cards;
@@ -313,7 +313,7 @@ export async function searchCatalogPage(input: CatalogSearch, options: { include
     };
     if (Buffer.byteLength(JSON.stringify(candidate)) <= 256 * 1024) clientSnapshot = candidate;
   }
-  return { properties, total: items.length, hasMore, nextCursor: hasMore && last ? encodeCursor({ id: last.id, values: [queryHash, fingerprint, cursor?.values[2] ?? snapshot.expiresAt] }) : null, evaluatedAt: snapshot.evaluatedAt, expiresAt: snapshot.expiresAt, availableAmenities: amenities, ...(clientSnapshot ? { clientSnapshot } : {}) };
+  return { properties, serverNow: Date.now(), availablePropertyTypes: derived.availablePropertyTypes, total: items.length, hasMore, nextCursor: hasMore && last ? encodeCursor({ id: last.id, values: [queryHash, fingerprint, cursor?.values[2] ?? snapshot.expiresAt] }) : null, evaluatedAt: snapshot.evaluatedAt, expiresAt: snapshot.expiresAt, availableAmenities: amenities, ...(clientSnapshot ? { clientSnapshot } : {}) };
 }
 
 /** Current public summaries for saved hotels; never return private source fields. */
@@ -358,8 +358,17 @@ export async function searchSuggestions(query: string): Promise<CatalogSuggestio
     const city = typeof data.address?.city === "string" ? data.address.city : "";
     const tokens = Array.isArray(data.searchTokens) ? data.searchTokens.filter((token: unknown): token is string => typeof token === "string") : [];
     // publicCover is written by the search projection worker once a cover
-    // image has been processed; reuse it here rather than issuing another read.
-    const imageUrl = typeof data.publicCover?.imageUrl === "string" ? data.publicCover.imageUrl : null;
+    // image has been processed; reuse it here or fall back to any direct cover image.
+    const imageUrl =
+      typeof data.publicCover?.imageUrl === "string"
+        ? data.publicCover.imageUrl
+        : typeof data.coverImageUrl === "string"
+        ? data.coverImageUrl
+        : typeof data.coverImage?.url === "string"
+        ? data.coverImage.url
+        : Array.isArray(data.images) && typeof data.images[0]?.url === "string"
+        ? data.images[0].url
+        : null;
     return { label: name, city, slug: typeof data.slug === "string" ? data.slug : doc.id, type: "property" as const, imageUrl, rank: score(name, city, tokens) };
   }).filter((item) => item.rank > 0)
     .sort((a, b) => b.rank - a.rank || a.label.localeCompare(b.label));

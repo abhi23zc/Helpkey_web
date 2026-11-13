@@ -47,15 +47,8 @@ export const stepSchema = z.object({ step: z.number().int().min(1).max(8), compl
 export async function requireRole(uid: string, role: "partner" | "admin") { const contextual = apiContext.actor(); const user = contextual?.uid === uid ? contextual : await getUserByUid(uid); if (!user || !user.isActive || !user.roles.includes(role)) throw new Error("FORBIDDEN"); return user; }
 export async function propertyOwner(uid: string, propertyId: string) {
   await requireRole(uid, "partner");
-  const key = cacheKey("membership", uid, propertyId);
-  const strict = apiContext.current()?.authMode === "strict";
-  if (!strict) {
-    const cached = await withRedis((redis) => redis.get(key));
-    if (cached === "owner") return adminDb.collection("properties").doc(propertyId);
-  }
-  const membership = await adminDb.collection("propertyMemberships").doc(`${propertyId}_${uid}`).get();
-  if (!membership.exists || membership.data()?.status !== "active" || membership.data()?.role !== "owner") throw new Error("FORBIDDEN");
-  await withRedis((redis) => redis.set(key, "owner", "EX", 60));
+  const { propertyAccess } = await import("@/lib/partner/pms/access");
+  try { await propertyAccess(uid, propertyId, "property.manage"); } catch (error) { if (error && typeof error === "object" && "status" in error && error.status === 403) throw new Error("FORBIDDEN"); throw error; }
   return adminDb.collection("properties").doc(propertyId);
 }
 const slug = (name: string, id: string) => `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70)}-${id.slice(0, 6)}`;

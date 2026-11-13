@@ -23,13 +23,15 @@ const compareTopPicks = (a: CatalogProperty, b: CatalogProperty) =>
   comparePriceAscending(a, b) ||
   compareText(a, b);
 const distanceKm = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) => {
+  if (![from, to].every(point => Number.isFinite(point.latitude) && Math.abs(point.latitude) <= 90 &&
+    Number.isFinite(point.longitude) && Math.abs(point.longitude) <= 180)) return Number.POSITIVE_INFINITY;
   const radians = Math.PI / 180;
   const deltaLatitude = (to.latitude - from.latitude) * radians;
   const deltaLongitude = (to.longitude - from.longitude) * radians;
   const originLatitude = from.latitude * radians;
   const destinationLatitude = to.latitude * radians;
   const haversine = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(deltaLongitude / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return 6371 * 2 * Math.atan2(Math.sqrt(Math.min(1, haversine)), Math.sqrt(Math.max(0, 1 - haversine)));
 };
 
 export function sortCatalog(properties: CatalogSearchProperty[], input: CatalogSearch) {
@@ -92,5 +94,6 @@ export function deriveCatalogResults(cards: CatalogCandidate[], input: CatalogSe
   const selected = selectCatalogCards(cards, input).filter(card =>
     (input.minPricePaise === undefined || (card.minimumPricePaise !== null && card.minimumPricePaise >= input.minPricePaise)) &&
     (input.maxPricePaise === undefined || (card.minimumPricePaise !== null && card.minimumPricePaise <= input.maxPricePaise)));
-  return { properties: sortCatalog(selected, input), availableAmenities };
+  const availablePropertyTypes = [...new Set(cards.map(card => card.propertyType.toLowerCase()))].sort();
+  return { properties: sortCatalog(selected, input), availableAmenities, availablePropertyTypes };
 }

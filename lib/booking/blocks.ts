@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import { unitCalendar } from "@/lib/partner/reservations/physical";
 import "server-only";
 import { invalidatePublic } from "@/lib/api/cache";
@@ -12,6 +13,7 @@ export async function createCapacityBlock(actorId: string, propertyId: string, r
   const input = capacityBlockInput.parse(raw);
   const ref = adminDb.collection("inventoryBlocks").doc();
   await adminDb.runTransaction(async (tx) => {
+    await operationalAccess(actorId, propertyId, "maintenance", tx);
     const [member, property, room] = await Promise.all([
       tx.get(adminDb.collection("propertyMemberships").doc(`${propertyId}_${actorId}`)),
       tx.get(adminDb.collection("properties").doc(propertyId)),
@@ -33,6 +35,7 @@ export async function createCapacityBlock(actorId: string, propertyId: string, r
 }
 export async function releaseCapacityBlock(actorId: string, propertyId: string, blockId: string) {
   await adminDb.runTransaction(async (tx) => {
+    await operationalAccess(actorId, propertyId, "maintenance", tx);
     const ref = adminDb.collection("inventoryBlocks").doc(blockId);
     const [block, member] = await Promise.all([tx.get(ref), tx.get(adminDb.collection("propertyMemberships").doc(`${propertyId}_${actorId}`))]);
     const data = block.data();
@@ -56,6 +59,7 @@ export async function releaseCapacityBlock(actorId: string, propertyId: string, 
 export async function setStopSell(actorId: string, propertyId: string, roomTypeId: string, date: string, enabled: boolean) {
   if (!validDate(date)) throw new Error("INVALID_DATE");
   await adminDb.runTransaction(async (tx) => {
+    await operationalAccess(actorId, propertyId, "maintenance", tx);
     const [member, property, room] = await Promise.all([tx.get(adminDb.collection("propertyMemberships").doc(`${propertyId}_${actorId}`)), tx.get(adminDb.collection("properties").doc(propertyId)), tx.get(adminDb.collection("roomTypes").doc(roomTypeId))]);
     if (member.data()?.status !== "active" || room.data()?.propertyId !== propertyId) throw new Error("FORBIDDEN");
     if (property.data()?.inventoryEngine !== "interval_v1") throw new Error("INVENTORY_CUTOVER_REQUIRED");

@@ -18,6 +18,12 @@ export function amenityLabel(value: string) {
     wifi: "Wi-Fi",
     wi_fi: "Wi-Fi",
     fast_wifi: "Fast Wi-Fi",
+    tv: "TV",
+    air_conditioning: "Air conditioning",
+    hot_water: "Hot water",
+    room_service: "Room service",
+    mini_fridge: "Mini fridge",
+    hair_dryer: "Hair dryer",
   };
   if (specialLabels[key]) return specialLabels[key];
   return key.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
@@ -63,8 +69,13 @@ export function resolveAmenityCodes(
   for (const id of amenityIds) {
     if (typeof id !== "string" || !id.trim()) continue;
     const code = codesById.get(id) ?? id;
-    const key = amenityKey(code);
-    if (key) unique.set(key, code);
+    const key = canonicalAmenityKey(code);
+    if (key) unique.set(key, key);
   }
   return [...unique.values()];
+}
+
+/** Meals are promises made by the selected rate, not permanent room features. */
+export function accommodationAmenityCodes(codes: readonly string[]) {
+  return codes.filter(code => !["breakfast", "breakfast_included", "free_breakfast"].includes(canonicalAmenityKey(code)));
 }

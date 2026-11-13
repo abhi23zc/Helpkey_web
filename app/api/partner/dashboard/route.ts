@@ -6,4 +6,4 @@ const rawGET = async function GET() {
   return Response.json(await loadPartnerShell(actorFromRequest()));
 };
 
-export const GET = withApiHandler(rawGET, { route: "/api/partner/dashboard", auth: "read", requireAuth: true, cache: "private" });
+export const GET = withApiHandler(rawGET, { route: "/api/partner/dashboard", auth: "strict", requireAuth: true, cache: "private" });

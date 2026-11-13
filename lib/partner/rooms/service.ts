@@ -1,9 +1,9 @@
+import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
-import { authorize } from "@/lib/partner/reservations/access";
 import { safeData } from "@/lib/partner/reservations/operations";
 import { unitCalendar } from "@/lib/partner/reservations/physical";
 import {
@@ -48,7 +48,7 @@ export async function workspace(
   start: string,
   end: string,
 ) {
-  await authorize(uid, propertyId);
+  await propertyAccess(uid, propertyId, "rooms.read");
   const dates = days(start, end);
   const [p, rooms, rates, units, bookings, blocks] = await Promise.all([
     adminDb.collection("properties").doc(propertyId).get(),
@@ -152,7 +152,7 @@ async function readBulk(
   raw: unknown,
 ) {
   enabled("calendar");
-  await authorize(uid, propertyId, tx);
+  await propertyAccess(uid, propertyId, "rates.manage", tx);
   const { cells } = bulkInput.parse(raw);
   const prop = await tx.get(adminDb.collection("properties").doc(propertyId));
   const refs = cells.flatMap((c) => [
@@ -255,7 +255,7 @@ export async function bulk(uid: string, propertyId: string, raw: unknown) {
     const p = snap.data();
     if (!p || p.uid !== uid || p.propertyId !== propertyId)
       throw new Error("INVALID_PREVIEW");
-    await authorize(uid, propertyId, tx);
+    await propertyAccess(uid, propertyId, "rates.manage", tx);
     if (p.applied) return;
     if (p.expiresAt.toMillis() < Date.now()) throw new Error("PREVIEW_EXPIRED");
     const current = await readBulk(tx, uid, propertyId, { cells: p.cells });
@@ -331,7 +331,7 @@ export async function housekeeping(
   enabled("housekeeping");
   const input = housekeepingInput.parse(raw);
   await adminDb.runTransaction(async (tx) => {
-    await authorize(uid, propertyId, tx);
+    await operationalAccess(uid, propertyId, "housekeeping", tx);
     const ref = adminDb.collection("physicalUnits").doc(input.unitId);
     const unit = await tx.get(ref);
     if (
@@ -380,7 +380,7 @@ export async function maintenance(
     .update(`${propertyId}:${uid}:${input.requestId}`)
     .digest("hex");
   await adminDb.runTransaction(async (tx) => {
-    await authorize(uid, propertyId, tx);
+    await operationalAccess(uid, propertyId, "maintenance", tx);
     const ref = adminDb.collection("inventoryBlocks").doc(blockId);
     const previous = await tx.get(ref);
     if (previous.exists) {
@@ -491,7 +491,7 @@ export async function exactAvailability(
   propertyId: string,
   raw: unknown,
 ) {
-  await authorize(uid, propertyId);
+  await propertyAccess(uid, propertyId, "rooms.read");
   const input = z
     .object({
       roomTypeId: id,
@@ -544,7 +544,7 @@ export async function pricingPreview(
   propertyId: string,
   raw: unknown,
 ) {
-  await authorize(uid, propertyId);
+  await propertyAccess(uid, propertyId, "rooms.read");
   const { bookingInput } = await import("@/lib/booking/contracts");
   const input = bookingInput.omit({ propertySlug: true }).parse(raw);
   const [property, room, rate] = await Promise.all([
@@ -598,7 +598,7 @@ export async function roomHistory(
   propertyId: string,
   unitId: string,
 ) {
-  await authorize(uid, propertyId);
+  await propertyAccess(uid, propertyId, "rooms.read");
   id.parse(unitId);
   const ref = adminDb.collection("physicalUnits").doc(unitId);
   if ((await ref.get()).get("propertyId") !== propertyId)

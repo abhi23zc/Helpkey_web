@@ -1,3 +1,5 @@
+import { loadRoomAmenityOptions } from "@/lib/partner/room-amenities-server";
+import { validateRoomAmenities } from "@/lib/partner/room-amenities";
 import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { propertyOwner, roomTypePatchSchema } from "@/lib/partner/service";
@@ -34,6 +36,7 @@ const rawPATCH = async function PATCH(
       }
     }
 
+    const amenityOptions = input.amenityIds !== undefined ? await loadRoomAmenityOptions() : [];
     const update: Record<string, unknown> = { ...input, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid };
     // Keep denormalized maxOccupancy consistent when adult/child limits change.
     if (input.maxAdults !== undefined || input.maxChildren !== undefined || input.maxInfants !== undefined) {
@@ -58,6 +61,10 @@ const rawPATCH = async function PATCH(
           if ([...keys].some((key) => Number(key) >= firstInterval && (data.reserved?.[key] ?? 0) + (data.blocked?.[key] ?? 0) > input.totalInventory!)) throw new Error("CAPACITY_BELOW_COMMITMENTS");
         }
         if (legacy?.docs.some((doc) => doc.id.slice(-10) >= new Date().toISOString().slice(0, 10) && Number(doc.data().reserved ?? 0) > input.totalInventory!)) throw new Error("CAPACITY_BELOW_COMMITMENTS");
+      }
+      if (input.amenityIds !== undefined) {
+        input.amenityIds = validateRoomAmenities(input.amenityIds, Array.isArray(current.amenityIds) ? current.amenityIds : [], amenityOptions);
+        update.amenityIds = input.amenityIds;
       }
       tx.update(ref, update);
     });

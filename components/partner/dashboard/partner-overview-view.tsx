@@ -145,7 +145,7 @@ export function PartnerOverviewView({
           from: dates.from,
           to: dates.to,
         })}`,
-        { signal, cache: "no-store" },
+        { signal, cache: "no-store", timeoutMs: 20_000 },
       ),
     refetchInterval: () =>
       typeof document !== "undefined" && document.visibilityState === "visible"

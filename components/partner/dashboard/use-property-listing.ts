@@ -1,4 +1,5 @@
 "use client";
+import type { RoomAmenityOption } from "@/lib/partner/room-amenities";
 import type { GuestPolicies } from "@/lib/partner/guest-policies";
 
 import { eligiblePricing } from "@/lib/booking/duration-pricing";
@@ -110,6 +111,7 @@ export type RoomWithPrice = {
 };
 
 export type ListingResponse = {
+  amenityOptions?: RoomAmenityOption[];
   property: ListingProperty;
   roomTypes: ListingRoomType[];
   ratePlans: ListingRatePlan[];

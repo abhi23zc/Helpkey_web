@@ -41,6 +41,7 @@ export type BookableRoom = {
 };
 
 export type Availability = {
+  arrivalStepMinutes?: number;
   ratePlanModes?: Record<string, "overnight" | "hourly">;
   rooms: BookableRoom[];
   hourlyDurations: HourlyDurationOption[];

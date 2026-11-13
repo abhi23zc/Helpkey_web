@@ -1,9 +1,11 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { providerFetch } from "@/lib/providers/http";
 import { paymentVerificationInput } from "@/lib/booking/contracts";
+import type { ExtrasOffer } from "./offer-domain";
 import type { StayRequest } from "./contracts";
 import { assertLiveQuote } from "./agreements";
 import { queueQuoteRefund } from "./requests";
@@ -50,15 +52,28 @@ export async function quotePaymentSession(
     const bookingRef = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(bookingRef)).data();
     const saved = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))
       throw new Error("This booking is closed for payments.");
+    const offer = (b.extrasOffers as ExtrasOffer[] | undefined)?.find(o => o.id === requestId);
+    if (offer && (offer.status !== "accepted" || offer.version !== version || Date.parse(offer.expiresAt) <= Date.now())) throw new Error("Review the current offer before paying.");
+    const selectedIds = offer?.selectedRequestIds ?? [requestId];
+    const selected = (b.customizations as StayRequest[]).filter(r => selectedIds.includes(r.id));
+    if (offer && selected.length !== selectedIds.length) throw new Error("Offer items changed.");
+    for (const item of selected) {
+      if (item.offerDraft || (item.offerId && item.offerId !== offer?.id)) throw new Error("Pay through the combined offer.");
+      if (offer) {
+        const allocation = offer.items.find(i => i.requestId === item.id)!;
+        const quote = assertLiveQuote(item, allocation.quoteVersion);
+        if (item.settlement !== "awaiting_payment" || quote.status !== "accepted" || quote.amountPaise !== allocation.amountPaise) throw new Error("Offer changed.");
+      }
+    }
     const r = (b.customizations as StayRequest[]).find(
-      (r) => r.id === requestId,
+      (r) => r.id === selectedIds[0],
     );
     if (!r || r.settlement !== "awaiting_payment")
       throw new Error("Accept the current hotel quote before payment.");
-    const q = assertLiveQuote(r, version);
+    const q = assertLiveQuote(r, offer ? offer.items.find(i => i.requestId === r.id)!.quoteVersion : version);
     if (q.status !== "accepted" || q.amountPaise <= 0)
       throw new Error("Payment is not required for this quote.");
     if (saved) {
@@ -73,7 +88,8 @@ export async function quotePaymentSession(
       bookingId,
       requestId,
       version,
-      amountPaise: q.amountPaise,
+      ...(offer ? { offerId: offer.id, allocations: offer.items.filter(i => selectedIds.includes(i.requestId)) } : {}),
+      amountPaise: offer ? offer.items.filter(i => selectedIds.includes(i.requestId)).reduce((n,i) => n + i.amountPaise, 0) : q.amountPaise,
       currency: b.currency ?? "INR",
       guestId: uid,
     };
@@ -136,7 +152,7 @@ export async function verifyQuotePayment(
   )
     throw new Error("Payment signature is invalid.");
   const b = (await adminDb.collection("bookings").doc(bookingId).get()).data();
-  if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+  if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
   const orders = await adminDb
     .collection("stayQuoteOrders")
     .where("orderId", "==", input.razorpay_order_id)
@@ -188,18 +204,13 @@ export async function captureQuotePayment(
       return { refunded: existing.get("status") === "refund_pending" };
     }
     const requests = (b.customizations ?? []) as StayRequest[];
-    const r = requests.find((r) => r.id === order.requestId);
-    const live =
-      r &&
-      r.status === "requested" &&
-      r.settlement === "awaiting_payment" &&
-      r.quote?.version === order.version &&
-      r.quote?.status === "accepted" &&
-      !r.quote?.paymentId &&
-      Date.parse(r.quote!.expiresAt) > Date.now() &&
-      ["confirmed", "checked_in"].includes(b.bookingStatus) &&
-      Date.parse(b.endAt) > Date.now() &&
-      order.paymentId === undefined;
+    const allocations: { requestId: string; quoteVersion: number; amountPaise: number; scope: string }[] = order.allocations ?? [{ requestId: order.requestId, quoteVersion: order.version, amountPaise: order.amountPaise, scope: requests.find(r => r.id === order.requestId)?.quote?.scope ?? "Extra" }];
+    const offer = (b.extrasOffers as ExtrasOffer[] | undefined)?.find(o => o.id === order.offerId);
+    const live = (!order.offerId || (offer?.status === "accepted" && offer.version === order.version && Date.parse(offer.expiresAt) > Date.now())) &&
+      allocations.every(a => {
+        const r = requests.find(r => r.id === a.requestId);
+        return r && r.status === "requested" && r.settlement === "awaiting_payment" && r.quote?.version === a.quoteVersion && r.quote.status === "accepted" && r.quote.amountPaise === a.amountPaise && !r.quote.paymentId && Date.parse(r.quote.expiresAt) > Date.now();
+      }) && ["confirmed", "checked_in"].includes(b.bookingStatus) && Date.parse(b.endAt) > Date.now() && !order.paymentId;
     tx.create(receipt, {
       bookingId: order.bookingId,
       propertyId: b.propertyId,
@@ -223,13 +234,13 @@ export async function captureQuotePayment(
     else
       tx.update(ref, {
         customizations: requests.map((item) =>
-          item.id === r.id
+          allocations.some(a => a.requestId === item.id)
             ? {
                 ...item,
                 status: "confirmed",
                 settlement: "paid",
                 quote: {
-                  ...r.quote!,
+                  ...item.quote!,
                   paymentId,
                   orderId,
                   paymentStatus: "paid",
@@ -241,21 +252,13 @@ export async function captureQuotePayment(
         stayRevision: (b.stayRevision ?? 0) + 1,
         updatedAt: FieldValue.serverTimestamp(),
       });
+    if (live && offer) tx.update(ref, { extrasOffers: (b.extrasOffers as ExtrasOffer[]).map(o => o.id === offer.id ? { ...o, status: "paid" } : o) });
     tx.update(ref, {
       stayPaymentReceipts: [
         ...(b.stayPaymentReceipts ?? []),
-        {
-          requestId: order.requestId,
-          quoteVersion: order.version,
-          paymentId,
-          orderId,
-          amountPaise: payment.amount,
-          status: live ? "paid" : "refund_pending",
-          scope:
-            r?.quote && r.quote.version === order.version
-              ? r.quote.scope
-              : "Payment for a closed or changed quote",
-        },
+        ...allocations.map(a => ({ requestId: a.requestId, quoteVersion: a.quoteVersion, paymentId, orderId,
+          amountPaise: a.amountPaise, status: live ? "paid" : "refund_pending", scope: a.scope,
+          ...(order.offerId ? { offerId: order.offerId } : {}) })),
       ],
       stayRevision: (b.stayRevision ?? 0) + 1,
     });

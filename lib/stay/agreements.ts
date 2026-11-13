@@ -16,6 +16,7 @@ export function requestLabel(r: StayRequest, now = Date.now()) {
     return "Quote withdrawn · awaiting hotel";
   if (r.quote && Date.parse(r.quote.expiresAt) <= now)
     return "Quote expired · request a new quote";
+  if (r.offerDraft) return "Hotel reviewing combined offer · not charged";
   if (r.settlement === "awaiting_payment") return "Awaiting payment";
   if (r.settlement === "awaiting_customer")
     return "Awaiting your price acceptance";

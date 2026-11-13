@@ -1,4 +1,5 @@
 "use client";
+import { useHotelCapabilities } from "./hotel-capabilities";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -164,6 +165,7 @@ function Reservations({
   propertyName: string;
   date: string;
 }) {
+  const permits = useHotelCapabilities();
   const searchParams = useSearchParams(),
     searchString = searchParams.toString();
   const scope =
@@ -501,7 +503,8 @@ function Reservations({
 
           <button
             className={reservationButton}
-            disabled={exporting || !data}
+            disabled={exporting || !data || !permits("guest.export")}
+            title={!permits("guest.export") ? "Guest exports require owner or manager permission." : undefined}
             onClick={() => void exportCsv()}
           >
             <ArrowDownToLine size={15} className="text-slate-500" />

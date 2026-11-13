@@ -95,4 +95,15 @@ describe("live search availability", () => {
     f.getAll.mockRejectedValueOnce(new Error("UNAVAILABLE"));
     await expect(minimumAvailablePrice(f.db, f.property, input)).rejects.toThrow("UNAVAILABLE");
   });
+
+it("does not combine amenities from different room types to qualify an offer", async () => {
+  const f = fixture();
+  Object.assign(f.room, { amenityIds: ["wifi"] });
+  f.rates[1].roomTypeId = "deluxe";
+  f.records.set("roomTypes/deluxe", { ...f.room, amenityIds: ["bathtub"] });
+  const bathtub = await minimumAvailableOffer(f.db, f.property, input, { amenities: ["bathtub"] });
+  expect(bathtub?.roomTypeId).toBe("deluxe");
+  expect(await minimumAvailableOffer(f.db, f.property, input, { amenities: ["wifi", "bathtub"] })).toBeNull();
+});
+
 });

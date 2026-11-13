@@ -72,6 +72,9 @@ async function fixture(
         body: '"Reference","Guest"\n"KNP123456","Ada Guest"',
       });
       return;
+    } else if (url.pathname === "/api/partner/bookings/quote") {
+      const input = route.request().postDataJSON();
+      body = { requestedDurationPriced: true, durationPrices: [], subtotalPaise: 100000, totalPaise: 123000, startAt: `${input.checkIn}T08:30:00Z`, endAt: `${input.checkOut}T05:30:00Z`, timezone: "Asia/Kolkata" };
     } else if (url.pathname === "/api/partner/bookings" && method === "POST")
       body = {
         bookingId: booking.id,
@@ -97,6 +100,8 @@ async function fixture(
         ratePlans: [],
         features: { allocation: true, payments: true, amendments: true },
       };
+    else if (url.pathname.endsWith("/extras-offers"))
+      body = { enabled: false, offers: [], revision: currentBooking.stayRevision };
     else if (url.pathname.endsWith("/operations")) {
       if (method === "POST") {
         const input = route.request().postDataJSON();
@@ -325,6 +330,7 @@ test("shows recoverable errors without fabricated reservations", async ({
 test("manual bookings show taxes and fees, submit an idempotency key and open the saved reservation", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-01T06:00Z"));
   await fixture(page);
   await page.goto("/partner/reservations?propertyId=hotel-one&date=2026-11-03");
   await page
@@ -335,7 +341,6 @@ test("manual bookings show taxes and fees, submit an idempotency key and open th
     exact: true,
   });
   await dialog.getByLabel("Guest name", { exact: true }).fill("Ada Guest");
-  await page.clock.setFixedTime(new Date("2026-11-01T06:00Z"));
   for (const [label, day] of [
     ["Check-in date", "3rd"],
     ["Check-out date", "4th"],
@@ -894,3 +899,57 @@ test("Razorpay bookings hide refund actions in both the buttons and payment sele
     drawer.getByRole("button", { name: "View / print receipt", exact: true }),
   ).toBeVisible();
 });
+
+for (const width of [320, 390, 768, 1366]) {
+  test(`combined offer confirmation is responsive and prompts once at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const request = {
+      id: "cake", offeringId: "cake", offeringVersion: 1, name: "Birthday cake with a personalized celebration setup",
+      description: "Chocolate cake", kind: "service", quantity: 1, unitPricePaise: 50000, totalPaise: 50000,
+      maxQuantity: 1, confirmation: "approval", deadlineAt: "2099-11-03T06:30:00Z", status: "requested",
+      preparationStarted: false, response: null, updatedAt: "2026-11-03T06:00:00Z", agreementVersion: 2,
+      source: "catalog", settlement: "awaiting_customer", offerDraft: true,
+      quote: { version: 1, amountPaise: 50000, scope: "Cake", conditions: "All charges included", status: "offered", expiresAt: "2099-11-04T06:30:00Z" },
+    };
+    const pillow = { ...request, id: "pillow", offeringId: "pillow", name: "Extra pillow", quote: undefined, offerDraft: false, settlement: "pending_hotel", unitPricePaise: 0, totalPaise: 0 };
+    const f = await fixture(page, { customizations: [request, pillow] });
+    let sent = 0, reviewed = false;
+    await page.route("**/api/partner/bookings/booking-one/stay-requests", async route => {
+      expect(route.request().postDataJSON().action).toBe("approve_free");
+      reviewed = true;
+      f.setBooking({ customizations: [request, { ...pillow, status: "confirmed", settlement: "included" }], stayRevision: 1 });
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.route("**/api/partner/bookings/booking-one/extras-offers", async route => {
+      if (route.request().method() === "POST") {
+        expect(route.request().postDataJSON().action).toBe("publish");
+        sent++;
+        f.setBooking({ customizations: [{ ...request, offerId: "sent", offerDraft: false }], stayRevision: 2 });
+        await route.fulfill({ json: { ok: true } });
+      } else await route.fulfill({ json: { enabled: true, offers: [], revision: sent ? 2 : reviewed ? 1 : 0 } });
+    });
+    await page.goto("/partner/reservations?propertyId=hotel-one&date=2026-11-03");
+    await page.getByRole("button", { name: "Manage", exact: true }).click();
+    const modal = page.getByRole("dialog", { name: "Send this offer to the guest?", exact: true });
+    await expect(modal).not.toBeVisible();
+    await page.getByRole("button", { name: "Approve for free", exact: true }).click();
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("₹500");
+    expect(await modal.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/partner-dashboard/offer-modal-${width}.png` });
+    await page.keyboard.press("Escape");
+    await expect(modal).not.toBeVisible();
+    const drawer = page.getByRole("dialog", { name: "Reservation details", exact: true });
+    await expect(drawer).toBeVisible();
+    await expect.poll(() => drawer.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/partner-dashboard/offer-drawer-${width}.png` });
+    await page.getByRole("button", { name: "Review & send offer" }).click();
+    await expect(modal).toBeVisible();
+    await modal.getByRole("button", { name: "Not now" }).click();
+    await expect(modal).not.toBeVisible();
+    await page.getByRole("button", { name: "Review & send offer" }).click();
+    await modal.getByRole("button", { name: "Send offer to guest", exact: true }).click();
+    await expect(modal).not.toBeVisible();
+    expect(sent).toBe(1);
+  });
+}

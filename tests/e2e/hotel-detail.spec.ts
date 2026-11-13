@@ -349,3 +349,26 @@ test("late availability cannot replace a newer stay and fresh mode caches are re
   await expect(page.locator("#reserve").getByRole("button", { name: "Overnight stay", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(requests).toHaveLength(1);
 });
+
+test("room amenity disclosures stay with their room and meal inclusions stay with rates", async ({ page }) => {
+  await page.route("**/api/properties/garden", route => route.fulfill({ json: { property } }));
+  await page.route("**/api/properties/garden/bookable?**", route => {
+    const data = availability();
+    const baseRoom = data.rooms[0];
+    return route.fulfill({ json: { ...data, rooms: [
+      { ...baseRoom, id: "normal", name: "Normal", amenityCodes: ["wifi", "tv", "hot_water", "workspace", "wardrobe", "breakfast_included"], rates: [{ ...offer(), breakfastIncluded: false }] },
+      { ...baseRoom, id: "deluxe", name: "Deluxe", amenityCodes: ["bathtub", "balcony"], rates: [offer(35000)] },
+    ] } });
+  });
+  await page.goto(`/hotels/garden?${stayQuery}`);
+  const normal = page.locator("article").filter({ has: page.getByRole("heading", { name: "Normal", exact: true }) });
+  const deluxe = page.locator("article").filter({ has: page.getByRole("heading", { name: "Deluxe", exact: true }) });
+  await expect(normal).toContainText("Room amenities");
+  await expect(normal).not.toContainText("Bathtub");
+  await expect(normal).not.toContainText("Breakfast included");
+  await normal.getByText("Show all 5 room amenities", { exact: true }).click();
+  await expect(normal.getByRole("list")).toContainText("Wardrobe");
+  await expect(deluxe).toContainText("Bathtub");
+  await expect(deluxe).toContainText("Breakfast included");
+  await expect(page.locator("#amenities")).not.toContainText("Bathtub");
+});

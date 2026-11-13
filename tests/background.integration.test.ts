@@ -85,7 +85,9 @@ describe.skipIf(!enabled)("background recovery (real Redis and Firestore emulato
   });
   it("coalesces edits and refreshes price without loading rooms, media, or all amenities", async () => {
     const id = await property(), ref = db.collection("properties").doc(id);
-    await ref.update({ searchProjectionVersion: 2, amenityCodes: ["wifi"], publicCover: { imageUrl: "unchanged" } });
+    // A current projection permits a pricing-only refresh. Older versions
+    // intentionally rebuild every component as part of migration.
+    await ref.update({ searchProjectionVersion: 3, amenityCodes: ["wifi"], publicCover: { imageUrl: "unchanged" } });
     await db.collection("ratePlans").doc(`${id}-rate`).set({ propertyId: id, status: "active", pricingModel: "nightly", basePricePaise: 120000 });
     const events: string[] = [];
     for (let i = 0; i < 5; i++) { const batch = db.batch(); events.push(writeProjection(db, batch, "property_search", id, 1, { components: ["pricing"] })); await batch.commit(); }

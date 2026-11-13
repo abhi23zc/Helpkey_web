@@ -1,4 +1,8 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
+import { operationalAccess } from "@/lib/partner/pms/access";
+import { StaySelectionError } from "./domain";
 import "server-only";
+import { offersEnabled } from "./offers";
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -17,7 +21,7 @@ export function unlistedSnapshots(
   return input.map((v, i) => {
     const when = Date.parse(v.neededAt);
     if (when < Math.max(now, Date.parse(startAt)) || when >= Date.parse(endAt))
-      throw new Error(
+      throw new StaySelectionError(
         "Choose an upcoming request time within your booked stay.",
       );
     return {
@@ -88,8 +92,9 @@ export async function decideRequest(
   await adminDb.runTransaction(async (tx) => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(ref)).data();
-    if (!b || (!staff && b.guestId !== uid)) throw new Error("NOT_FOUND");
+    if (!b || (!staff && (!customerOwnsBooking(b, uid)))) throw new Error("NOT_FOUND");
     if (staff) {
+      await operationalAccess(uid, b.propertyId, "requests.manage", tx);
       const member = await tx.get(
         adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${uid}`),
       );
@@ -105,6 +110,8 @@ export async function decideRequest(
     const r = requests.find((r) => r.id === input.requestId);
     if (!r || r.agreementVersion !== 2 || r.settlement === "included")
       throw new Error("NOT_FOUND");
+    if (!staff && r.offerDraft) throw new Error("Wait for the hotel to send the combined offer.");
+    if (r.offerId) throw new Error("Manage this request through its combined offer.");
     if (r.status !== "requested" || r.preparationStarted || r.quote?.paymentId)
       throw new Error(
         "This request is already agreed or closed. Refresh before updating it.",
@@ -201,6 +208,7 @@ export async function decideRequest(
         status: "offered",
       });
     }
+    if (["approve_price", "quote"].includes(input.action) && offersEnabled()) next = { ...next, offerDraft: true };
     const revision = (b.stayRevision ?? 0) + 1;
     tx.update(ref, {
       customizations: requests.map((r) => (r.id === next.id ? next : r)),
@@ -217,7 +225,7 @@ export async function decideRequest(
       agreed: next,
       createdAt: FieldValue.serverTimestamp(),
     });
-    enqueueStayNotification(
+    if (!next.offerDraft) enqueueStayNotification(
       tx,
       bookingId,
       b.propertyId,
@@ -227,8 +235,8 @@ export async function decideRequest(
     );
   });
 }
-export function quoteRefundId(paymentId: string) {
-  return `stay_${createHash("sha256").update(paymentId).digest("hex")}`;
+export function quoteRefundId(paymentId: string, allocationId?: string) {
+  return `stay_${createHash("sha256").update(allocationId ? `${paymentId}:${allocationId}` : paymentId).digest("hex")}`;
 }
 export function queueQuoteRefund(
   tx: FirebaseFirestore.Transaction,
@@ -237,12 +245,14 @@ export function queueQuoteRefund(
   requestId: string,
   paymentId: string,
   amountPaise: number,
+  allocationId?: string,
 ) {
-  tx.create(adminDb.collection("refunds").doc(quoteRefundId(paymentId)), {
+  tx.create(adminDb.collection("refunds").doc(quoteRefundId(paymentId, allocationId)), {
     bookingId,
     propertyId,
     requestId,
     stayQuote: true,
+    ...(allocationId ? { allocationId } : {}),
     paymentId,
     amountPaise,
     status: "pending",
@@ -272,6 +282,7 @@ export function cancelQuotePayments(
       r.id,
       r.quote.paymentId,
       r.quote.amountPaise,
+      r.offerId ? r.id : undefined,
     );
     return {
       ...r,
@@ -296,7 +307,7 @@ export async function addUnlistedRequest(
   await adminDb.runTransaction(async (tx) => {
     const ref = adminDb.collection("bookings").doc(bookingId),
       b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))
       throw new Error("This booking is closed for requests.");

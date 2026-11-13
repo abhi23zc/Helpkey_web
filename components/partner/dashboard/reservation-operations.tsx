@@ -43,11 +43,12 @@ type Row = {
 type Operations = {
   events: Row[];
   nextEventCursor: string | null;
+  paymentRecordsVisible?: boolean;
   payments: Row[];
   onlinePayments: Row[];
   refunds: Row[];
   units: Row[];
-  features: { allocation: boolean; payments: boolean; amendments: boolean };
+  features: { allocation: boolean; payments: boolean; refunds?: boolean; amendments: boolean };
   revision: number;
   assignedUnitId: string | null;
   assignedUnitLabel: string | null;
@@ -127,6 +128,7 @@ export function ReservationOperations({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const data = query.data;
   const allowRefund =
+    data?.features.refunds !== false &&
     !["online", "razorpay"].includes(booking.paymentMethod ?? "") &&
     !data?.onlinePayments?.length;
   const dirty = Boolean(
@@ -636,7 +638,7 @@ export function ReservationOperations({
         )}
       </>
     ),
-    paymentRecords: (
+    paymentRecords: data.paymentRecordsVisible === false ? <p className="text-sm text-slate-500">Ask a cashier or manager for individual payment records. The reservation summary shows the stay balance.</p> : (
       <>
         {" "}
         <section className="space-y-3 border-t border-slate-200 pt-4">

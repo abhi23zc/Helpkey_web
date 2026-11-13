@@ -62,4 +62,41 @@ describe("account-owned saved hotels", () => {
     state.uid = "bob";
     expect((await GET(request("GET", `?cursor=${encodeURIComponent(page.nextCursor)}`), {})).status).toBe(422);
   });
+  it("paginates all saved IDs exactly once, including when the cursor entry is removed", async () => {
+    for (let i = 0; i < 81; i++) state.saved.set(`users/alice/savedProperties/hotel_${String(i).padStart(3, "0")}`, {});
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const params = new URLSearchParams({ limit: "17" });
+      if (cursor) params.set("cursor", cursor);
+      const page = (await (await GET(request("GET", `?${params}`), {})).json()).data;
+      ids.push(...page.items.map((item: { propertyId: string }) => item.propertyId));
+      cursor = page.hasMore ? page.nextCursor : null;
+      if (ids.length === 17) state.saved.delete(`users/alice/savedProperties/${ids.at(-1)}`);
+    } while (cursor);
+    expect(ids).toHaveLength(81);
+    expect(new Set(ids).size).toBe(81);
+  });
+  it("bounds membership lookups at fifty IDs and deduplicates repeated inputs", async () => {
+    const params = new URLSearchParams({ ids: "true" });
+    for (let i = 0; i < 60; i++) {
+      const id = `hotel_${i}`;
+      state.saved.set(`users/alice/savedProperties/${id}`, {});
+      params.append("propertyId", id);
+      params.append("propertyId", id);
+    }
+    const result = (await (await GET(request("GET", `?${params}`), {})).json()).data;
+    expect(result.propertyIds).toHaveLength(50);
+    expect(new Set(result.propertyIds).size).toBe(50);
+  });
+  it("retains unavailable entries across pages and permits their removal", async () => {
+    state.active = false;
+    for (let i = 0; i < 3; i++) state.saved.set(`users/alice/savedProperties/hotel${i}`, {});
+    const page = (await (await GET(request("GET", "?limit=2"), {})).json()).data;
+    expect(page.items).toEqual([{ propertyId:"hotel0",property:null },{ propertyId:"hotel1",property:null }]);
+    expect(page.hasMore).toBe(true);
+    expect((await DELETE(request("DELETE"), { params:Promise.resolve({ propertyId:"hotel0" }) })).status).toBe(200);
+    expect(state.saved.has("users/alice/savedProperties/hotel0")).toBe(false);
+  });
+
 });

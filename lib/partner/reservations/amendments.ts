@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import { withDatePrices } from "@/lib/booking/date-prices";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
@@ -18,7 +19,6 @@ import {
   writeAllocation,
 } from "@/lib/booking/inventory";
 import { amenitySnapshotFor } from "@/lib/bookings";
-import { authorize } from "./access";
 import { assignPhysical } from "./physical";
 import { requireFeature, safeData } from "./operations";
 import type { RecordData } from "@/lib/partner/dashboard/domain";
@@ -88,7 +88,7 @@ async function readAmendment(
   const ref = adminDb.collection("bookings").doc(bookingId),
     b = (await tx.get(ref)).data();
   if (!b) throw new ApiException("NOT_FOUND", 404);
-  await authorize(uid, b.propertyId, tx);
+  await operationalAccess(uid, b.propertyId, "reservation.amend", tx);
   if (
     b.bookingStatus !== "confirmed" ||
     b.inventoryReleased ||
@@ -126,9 +126,6 @@ async function readAmendment(
     hold = holdDoc.data();
   if (
     p.inventoryEngine !== "interval_v1" ||
-    p.status !== "active" ||
-    p.approvalStatus !== "approved" ||
-    p.isBookable !== true ||
     room.propertyId !== b.propertyId ||
     room.status !== "active" ||
     rate.propertyId !== b.propertyId ||
@@ -319,7 +316,7 @@ export async function confirmAmendment(
     if (existing.exists) {
       const b = (await tx.get(ref)).data();
       if (!b) throw new ApiException("NOT_FOUND", 404);
-      await authorize(uid, b.propertyId, tx);
+      await operationalAccess(uid, b.propertyId, "reservation.amend", tx);
       if (existing.get("previewToken") !== token)
         throw new ApiException("IDEMPOTENCY_CONFLICT", 409);
       return;

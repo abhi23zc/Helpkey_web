@@ -1,3 +1,4 @@
+import { bookingFailure } from "@/lib/booking/api-error";
 import { withApiHandler } from "@/lib/api/handler";
 import { getAuthenticatedUser } from "@/lib/auth/session";
 import { bookingError, cancelBookingForUser } from "@/lib/bookings";
@@ -10,7 +11,7 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
     await cancelBookingForUser(user.uid, bookingId);
     return Response.json({ ok: true });
   } catch (error) {
-    return Response.json({ error: bookingError(error) }, { status: 422 });
+    return Response.json(bookingFailure(error, bookingError(error)), { status: 422 });
   }
 }
 

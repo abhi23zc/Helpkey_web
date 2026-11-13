@@ -31,11 +31,12 @@ const navItems = [
   { label: "Payouts", href: "", icon: WalletCards },
   { label: "Promotions", href: "", icon: Tag },
   { label: "Messages", href: "", icon: Mail },
-  { label: "Settings", href: "", icon: Settings },
+  { label: "Settings", href: "/partner/settings", icon: Settings },
 ] as const;
 
 export function PartnerSidebar({
   propertyId,
+  permissions,
   date,
   open,
   collapsed,
@@ -43,6 +44,7 @@ export function PartnerSidebar({
   onToggleCollapse,
 }: {
   propertyId?: string;
+  permissions?: readonly string[];
   date?: string;
   open: boolean;
   collapsed: boolean;
@@ -65,7 +67,7 @@ export function PartnerSidebar({
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-[#061224] text-white shadow-2xl transition-[transform,width] duration-300 lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
-        } ${isExpanded ? "w-[248px]" : "w-[248px] lg:w-20"}`}
+        } ${isExpanded ? "w-[264px]" : "w-[264px] lg:w-20"}`}
       >
         <div
           className={`flex h-16 lg:h-20 items-center border-b border-white/10 px-4 transition-all duration-300 ${
@@ -112,7 +114,12 @@ export function PartnerSidebar({
         </div>
 
         <nav aria-label="Partner navigation" className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4">
-          {navItems.map(({ label, href, icon: Icon }) => {
+          {[...navItems, { label: "My hotel operations", href: "/partner/operations", icon: ShieldCheck }].filter(item => {
+            if (!permissions) return item.href !== "/partner/operations";
+            const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
+            if (item.href === "/partner/operations") return permissions.some(p => ["housekeeping", "maintenance", "payment.read"].includes(p));
+            return !required[item.href] || permissions.includes(required[item.href]);
+          }).map(({ label, href, icon: Icon }) => {
             const isActive = href ? pathname === href : false;
             const baseClass = `group relative flex h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
               !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"
@@ -169,37 +176,20 @@ export function PartnerSidebar({
         </nav>
 
         <div className={`mt-auto p-3 transition-opacity duration-300 ${!isExpanded ? "hidden" : "block"}`}>
-          <div className="rounded-2xl border border-[#c89b3c]/25 bg-[#0d1e38]/80 p-3 backdrop-blur-xs shadow-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-                <span className="text-[10px] font-bold text-white/80">Helpkey Partner</span>
-              </div>
-              <ShieldCheck className="h-3.5 w-3.5 text-[#c89b3c]" />
-            </div>
-
-            <div className="mt-2.5 border-t border-white/10 pt-2.5">
-              <p className="text-[11px] font-bold text-white">Need Support?</p>
-              <p className="text-[10px] text-white/60">Find answers and contact Helpkey</p>
-              <Link
-                href="/help"
-                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#c89b3c]/60 bg-[#c89b3c]/10 py-1.5 text-xs font-bold text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
-              >
-                <Headphones className="h-3.5 w-3.5" />
-                Contact Support
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div className={`mt-auto flex justify-center border-t border-white/10 px-3 py-4 ${isExpanded ? "hidden" : "block"}`}>
           <Link
             href="/help"
-            className="grid h-10 w-10 place-items-center rounded-xl border border-[#c89b3c]/30 bg-[#0d1e38] text-[#c89b3c] transition-all hover:bg-[#c89b3c] hover:text-[#061224] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c]"
-            title="Contact Support"
+            className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-xs font-semibold text-slate-300 transition-all hover:bg-white/10 hover:text-white"
+          >
+            <Headphones className="h-4 w-4 text-[#c89b3c]" />
+            <span>Need Support?</span>
+          </Link>
+        </div>
+
+        <div className={`mt-auto flex justify-center border-t border-white/10 px-3 py-3 ${isExpanded ? "hidden" : "block"}`}>
+          <Link
+            href="/help"
+            className="grid h-9 w-9 place-items-center rounded-xl text-[#c89b3c] hover:bg-white/10 transition-all"
+            title="Need Support?"
           >
             <Headphones className="h-4 w-4" />
           </Link>

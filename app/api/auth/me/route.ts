@@ -11,4 +11,4 @@ const rawGET = async function GET() {
   return Response.json({ user });
 }
 
-export const GET = withApiHandler(rawGET, { route: "/api/auth/me", auth: "read", requireAuth: true, cache: "private" });
+export const GET = withApiHandler(rawGET, { route: "/api/auth/me", auth: "strict", requireAuth: true, cache: "private" });

@@ -1,3 +1,6 @@
+import { customerOwnsBooking } from "@/lib/booking/customer-access";
+import { operationalAccess } from "@/lib/partner/pms/access";
+import { queueQuoteRefund } from "./requests";
 import { includedOffering } from "./inclusions";
 import { propertyAllowsPets } from "./recommendations";
 import { billableUnits, mergeVariantPrices, variantPrice } from "./pricing";
@@ -152,7 +155,7 @@ export function bookingBounds(b: FirebaseFirestore.DocumentData) {
 export async function guestStayOptions(uid: string, bookingId: string) {
   const doc = await adminDb.collection("bookings").doc(bookingId).get();
   const b = doc.data();
-  if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+  if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
   const bounds = bookingBounds(b);
   const open =
     b.bookingStatus === "confirmed" &&
@@ -217,7 +220,7 @@ export async function savePreCheckin(
   const ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async (tx) => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now();
     const bounds = bookingBounds(b);
@@ -450,6 +453,7 @@ export async function updateStayRequest(
   await adminDb.runTransaction(async (tx) => {
     const b = (await tx.get(ref)).data();
     if (!b) throw new Error("NOT_FOUND");
+    await operationalAccess(uid, b.propertyId, input.status === "declined" ? "requests.manage" : "requests.prepare", tx);
     const member = await tx.get(
       adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${uid}`),
     );
@@ -472,7 +476,9 @@ export async function updateStayRequest(
       throw new Error(
         "Use the request decision controls to approve or quote this request.",
       );
-    const credit = input.status === "declined" ? target.totalPaise : 0;
+    const supplementalRefund = input.status === "declined" && target.settlement === "paid" && target.quote?.paymentStatus === "paid" && target.quote.paymentId;
+    if (supplementalRefund) queueQuoteRefund(tx, bookingId, b.propertyId, target.id, target.quote!.paymentId!, target.quote!.amountPaise, target.offerId ? target.id : undefined);
+    const credit = input.status === "declined" && !supplementalRefund ? target.totalPaise : 0;
     const refund = credit > 0 && b.paymentMethod === "online" ? credit : 0;
     if (
       refund > 0 &&
@@ -509,6 +515,7 @@ export async function updateStayRequest(
           ? {
               ...r,
               status: input.status,
+              ...(supplementalRefund ? { quote: { ...r.quote!, paymentStatus: "refund_pending" as const } } : {}),
               preparationStarted:
                 r.preparationStarted || input.status === "preparing",
               response: input.response || r.response,
@@ -516,6 +523,7 @@ export async function updateStayRequest(
             }
           : r,
       ),
+      ...(supplementalRefund ? { stayPaymentReceipts: (b.stayPaymentReceipts ?? []).map((r: import("./contracts").StayPaymentReceipt) => r.requestId === target.id && r.paymentId === target.quote!.paymentId ? { ...r, status: "refund_pending" } : r) } : {}),
       customizationCreditPaise: (b.customizationCreditPaise ?? 0) + credit,
       refundDuePaise: (b.refundDuePaise ?? 0) + refund,
       ...(refund ? { paymentStatus: "refund_pending" } : {}),
@@ -559,7 +567,7 @@ export async function patchArrival(uid: string, bookingId: string, raw: unknown)
   const ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async tx => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);
     if (b.bookingStatus !== "confirmed" || !bounds || now >= Date.parse(bounds.endAt))

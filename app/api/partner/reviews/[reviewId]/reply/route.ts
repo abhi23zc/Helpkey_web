@@ -22,6 +22,8 @@ const rawPUT = async function PUT(request: Request, { params }: { params: Promis
     await propertyOwner(user.uid, data.propertyId);
     const previous = data.partnerReply && typeof data.partnerReply === "object" ? data.partnerReply : {};
     await adminDb.runTransaction(async tx => {
+      const { operationalAccess } = await import("@/lib/partner/pms/access");
+      await operationalAccess(user.uid, data.propertyId, "reviews.manage", tx);
       const current = await tx.get(ref);
       if (current.get("propertyId") !== data.propertyId || current.get("status") !== "approved") throw new Error("REVIEW_NOT_FOUND");
       tx.update(ref, { partnerReply: { ...previous, text: input.text, repliedBy: user.uid, repliedAt: FieldValue.serverTimestamp() }, replyState: "replied", updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });

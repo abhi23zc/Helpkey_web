@@ -1,5 +1,7 @@
 "use client";
 
+import { BUILTIN_ROOM_AMENITIES, normalizeRoomAmenities, roomAmenitySelections, type RoomAmenityOption } from "@/lib/partner/room-amenities";
+import { RoomAmenitiesEditor } from "./room-amenities-editor";
 import { PriceOptionEditor } from "./price-option-editor";
 import {
   eligiblePricing,
@@ -122,20 +124,6 @@ function MetricCard({
   );
 }
 
-const ROOM_AMENITIES = [
-  "Wi-Fi",
-  "Air conditioning",
-  "Hot water",
-  "Room service",
-  "TV",
-  "Mini fridge",
-  "Balcony",
-  "Workspace",
-  "Wardrobe",
-  "Safe",
-  "Hair dryer",
-  "Bathtub",
-];
 const primaryButtonClass =
   "inline-flex w-full items-center justify-center rounded-xl bg-[#061224] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#0c1f3b] disabled:cursor-not-allowed disabled:opacity-50";
 type EditorTab = "details" | "amenities" | "photos" | "inventory" | "rates";
@@ -152,6 +140,9 @@ function RoomEditor({
   onRateAdded,
   onRateUpdated,
   onDirty,
+  onBusy,
+  amenityOptions,
+  rooms,
 }: {
   propertyId: string;
   timezone: string;
@@ -164,6 +155,9 @@ function RoomEditor({
   onRateAdded: (rate: ListingRatePlan) => void;
   onRateUpdated: (rate: ListingRatePlan) => void;
   onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
+  amenityOptions: RoomAmenityOption[];
+  rooms: ListingRoomType[];
 }) {
   const [tab, setTab] = useState<EditorTab>(initialTab);
   const [rateDirty, setRateDirty] = useState(false);
@@ -175,6 +169,7 @@ function RoomEditor({
     onDirty(dirtyTabs.length > 0 || rateDirty);
   }, [dirtyTabs, rateDirty, onDirty]);
   const [saving, setSaving] = useState(false);
+  useEffect(() => { onBusy(saving); return () => onBusy(false); }, [saving, onBusy]);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
@@ -200,7 +195,7 @@ function RoomEditor({
     String(room.cleaningBufferMinutes ?? 30),
   );
   const [status, setStatus] = useState<"active" | "paused">(room.status);
-  const [amenities, setAmenities] = useState(room.amenityIds);
+  const [amenities, setAmenities] = useState(() => normalizeRoomAmenities(room.amenityIds, amenityOptions));
   const [mediaIds, setMediaIds] = useState(room.mediaIds);
   const [coverMediaId, setCoverMediaId] = useState<string | null>(
     room.coverMediaId,
@@ -224,6 +219,7 @@ function RoomEditor({
       );
       if (!response.roomType)
         throw new Error("The room update was not returned.");
+      if (body.amenityIds !== undefined) setAmenities(normalizeRoomAmenities(response.roomType.amenityIds, amenityOptions));
       onRoomUpdated(response.roomType);
       markSaved();
       setNotice(true, success);
@@ -241,14 +237,6 @@ function RoomEditor({
     if (!Number.isInteger(number) || number < min)
       throw new Error(`${label} must be a whole number of at least ${min}.`);
     return number;
-  };
-  const toggleAmenity = (amenity: string) => {
-    markDirty();
-    setAmenities((current) =>
-      current.includes(amenity)
-        ? current.filter((item) => item !== amenity)
-        : [...current, amenity],
-    );
   };
   const toggleMedia = (id: string) =>
     setMediaIds((current) => {
@@ -292,7 +280,7 @@ function RoomEditor({
     ];
 
   return (
-    <div onChangeCapture={markDirty} className="space-y-4">
+    <div onChangeCapture={() => { if (tab !== "amenities") markDirty(); }} className="space-y-4">
       {/* Segmented Tab Navigation */}
       <div aria-label="Room settings" className="sticky -top-5 z-10 grid grid-cols-5 gap-1 border-b border-slate-100 bg-white pb-3 pt-1">
         {editorTabs.map((item) => {
@@ -322,7 +310,7 @@ function RoomEditor({
         })}
       </div>
 
-      <div className="space-y-4 pt-1">
+      <fieldset disabled={saving} className="min-w-0 space-y-4 pt-1">
         {tab === "details" && (
           <div className="space-y-4">
             <div>
@@ -559,34 +547,8 @@ function RoomEditor({
 
         {tab === "amenities" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500 font-medium">
-                Select amenities available specifically in this room.
-              </p>
-              <span className="text-[11px] font-bold text-[#b78929]">
-                {amenities.length} selected
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ROOM_AMENITIES.map((amenity) => {
-                const isSelected = amenities.includes(amenity);
-                return (
-                  <button
-                    key={amenity}
-                    type="button"
-                    onClick={() => toggleAmenity(amenity)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
-                      isSelected
-                        ? "bg-[#061224] text-white shadow-xs"
-                        : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    {isSelected && <Check className="h-3 w-3 text-[#c89b3c]" />}
-                    <span>{amenity}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <RoomAmenitiesEditor room={room} rooms={rooms} options={amenityOptions} value={amenities}
+              onChange={(next) => { setAmenities(next); markDirty(); setMessage(null); }} />
             <button
               type="button"
               disabled={saving}
@@ -816,14 +778,15 @@ function RoomEditor({
             }}
           />
         )}
-        {message && (
+        {message && tab !== "rates" && (
           <p
+            role={message.ok ? "status" : "alert"}
             className={`rounded-lg px-3 py-2 font-semibold ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
           >
             {message.text}
           </p>
         )}
-      </div>
+      </fieldset>
     </div>
   );
 }
@@ -1020,6 +983,7 @@ export function PartnerRoomsRatesView({
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [editorDirty]);
+  const [editorBusy, setEditorBusy] = useState(false);
   const [photoEditor, setPhotoEditor] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -1027,6 +991,7 @@ export function PartnerRoomsRatesView({
   const [settingsError, setSettingsError] = useState("");
   const listing = usePropertyListing(propertyId, "rooms");
   const { data, property } = listing;
+  const amenityOptions = data?.amenityOptions ?? BUILTIN_ROOM_AMENITIES;
   // The platform is INR-only; narrow the string to the currency literal.
   const currency = listing.currency as CurrencyCode;
 
@@ -1061,6 +1026,7 @@ export function PartnerRoomsRatesView({
     setEditorOpen(true);
   };
   const closeEditor = () => {
+    if (editorBusy) return;
     if (editorDirty && !window.confirm("Discard unsaved room changes?")) return;
     setEditorDirty(false);
     setEditorOpen(false);
@@ -1380,6 +1346,7 @@ export function PartnerRoomsRatesView({
                   (statusFilter === "all" || room.status === statusFilter),
               )
               .map(({ room, rate, image }) => {
+                const selectedAmenities = roomAmenitySelections(room.amenityIds, amenityOptions);
                 return (
                   <div
                     key={room.id}
@@ -1492,6 +1459,15 @@ export function PartnerRoomsRatesView({
                       </div>
                     </div>
 
+                    <div className="mt-4 flex items-start justify-between gap-3 border-t border-slate-100 pt-3">
+                      <div className="flex min-w-0 flex-wrap gap-1.5 text-[11px] text-slate-600">
+                        {selectedAmenities.length === 0 ? <span>No amenities configured</span> : selectedAmenities.slice(0, 3).map(amenity =>
+                          <span key={amenity.id} className="rounded-md bg-slate-50 px-2 py-1">{amenity.label}</span>)}
+                        {selectedAmenities.length > 3 && <span className="py-1">+{selectedAmenities.length - 3} more</span>}
+                      </div>
+                      <button type="button" aria-label={`Amenities for ${room.name}`} onClick={event => { event.stopPropagation(); openEditor(room.id, "amenities"); }}
+                        className="shrink-0 text-xs font-semibold text-[#061224] underline">Amenities</button>
+                    </div>
                     <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
                       <button
                         type="button"
@@ -1568,6 +1544,9 @@ export function PartnerRoomsRatesView({
             rates={(data?.ratePlans ?? []).filter(
               (rate) => rate.roomTypeId === selected.room.id,
             )}
+            amenityOptions={amenityOptions}
+            rooms={data?.roomTypes ?? []}
+            onBusy={setEditorBusy}
             onDirty={setEditorDirty}
             onRoomUpdated={(room) => listing.updateRoomType(room.id, room)}
             onRateAdded={listing.addRatePlan}

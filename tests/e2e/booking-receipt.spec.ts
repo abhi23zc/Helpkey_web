@@ -70,12 +70,13 @@ for (const width of [390, 768, 1366]) {
     await page.setViewportSize({ width, height: 900 });
     const receipt = await openReceipt(page);
     await expect(
-      receipt.getByText("Booking payment receipt", { exact: true }),
+      receipt.getByText("Official Booking Payment Receipt", { exact: true }),
     ).toBeVisible();
     await expect(receipt.getByText("KNP835224", { exact: true })).toBeVisible();
     await expect(receipt.locator(row("Total amount"))).toContainText("₹700.00");
     await expect(receipt.locator(row("Amount paid"))).toContainText("₹700.00");
-    await expect(receipt.locator(row("Balance due"))).toContainText("₹0.00");
+    await expect(receipt.getByText("✓ Paid in full • ₹0 Due at check-in", { exact: true })).toBeVisible();
+    await expect(receipt.locator(row("Balance due at check-in"))).toHaveCount(0);
     await expect(receipt.getByText("Wi-Fi", { exact: false })).toBeVisible();
     await expect(
       receipt.getByText("Present at check-in", { exact: true }),
@@ -154,7 +155,7 @@ test("partial payments, missing breakdown and refund totals remain accurate", as
     receipt.getByText("Partially paid", { exact: true }),
   ).toBeVisible();
   await expect(receipt.locator(row("Amount paid"))).toContainText("₹300.00");
-  await expect(receipt.locator(row("Balance due"))).toContainText("₹400.00");
+  await expect(receipt.locator(row("Balance due at check-in"))).toContainText("₹400.00");
   await expect(receipt.getByText("Room charges", { exact: false })).toHaveCount(
     0,
   );

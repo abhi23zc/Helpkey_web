@@ -1,4 +1,6 @@
 "use client";
+import { ReservationGuests } from "./reservation-guests";
+import { useHotelCapabilities } from "./hotel-capabilities";
 
 import {
   useId,
@@ -8,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   BedDouble,
@@ -79,6 +81,8 @@ function ReservationDetails({
   onClose,
   onChanged,
 }: WorkspaceProps) {
+  const permits = useHotelCapabilities();
+  const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -92,13 +96,15 @@ function ReservationDetails({
   const paymentDetails = useRef<HTMLDetailsElement>(null);
   const dirty = Object.values(drafts).some((d) => d.dirty);
   const saving = Object.values(drafts).some((d) => d.busy);
+  const draftsRef = useRef(drafts);
   const reportDraft = useCallback(
     (section: string, changed: boolean, busy = false) => {
-      setDrafts((old) =>
-        old[section]?.dirty === changed && old[section]?.busy === busy
-          ? old
-          : { ...old, [section]: { dirty: changed, busy } },
-      );
+      const old = draftsRef.current;
+      if (old[section]?.dirty === changed && old[section]?.busy === busy) return;
+      const next = { ...old, [section]: { dirty: changed, busy } };
+      // Closing can race React's next render while a request starts.
+      draftsRef.current = next;
+      setDrafts(next);
     },
     [],
   );
@@ -140,6 +146,7 @@ function ReservationDetails({
       ? query.data.booking
       : undefined;
   const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["partner", propertyId, "registration", bookingId] });
     void query.refetch();
     onChanged();
   };
@@ -173,8 +180,9 @@ function ReservationDetails({
       setReceiptOpen(false);
       return;
     }
-    if (mutation.isPending || saving) return;
-    if (dirty) setCloseWarning(true);
+    const currentDrafts = Object.values(draftsRef.current);
+    if (mutation.isPending || currentDrafts.some((draft) => draft.busy)) return;
+    if (currentDrafts.some((draft) => draft.dirty)) setCloseWarning(true);
     else onClose();
   }
   const local = (value?: string | null) =>
@@ -197,7 +205,7 @@ function ReservationDetails({
   const stayEnded = !!booking?.endAt && Date.parse(booking.endAt) <= now;
   const checkInUnavailable =
     primary === "checked_in" && (tooEarly || stayEnded);
-  const secondary =
+  const secondary = !permits("reservation.cancel") ? [] :
     status === "confirmed"
       ? [
           ["no_show", "Mark no-show"],
@@ -397,7 +405,7 @@ function ReservationDetails({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     {primary && (
                       <button
                         className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#061224] px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -515,6 +523,7 @@ function ReservationDetails({
           onDraftChange={reportDraft}
           render={(sections) => (
             <div className="space-y-5 pb-3 text-xs text-[#061224]">
+              <ReservationGuests bookingId={booking.id} propertyId={propertyId} onChanged={refresh} onDraftChange={reportDraft} />
               {query.isError && (
                 <p
                   role="alert"
@@ -534,7 +543,7 @@ function ReservationDetails({
               {/* 1. Guest Profile Hero Card */}
               <section
                 aria-label="Guest"
-                className="rounded-2xl border border-[#ede7dc] bg-white p-5 shadow-xs transition-shadow"
+                className="rounded-2xl border border-[#ede7dc] bg-white p-3 sm:p-5 shadow-xs transition-shadow"
               >
                 <div className="flex items-start gap-3.5">
                   <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#061224] text-white shadow-xs ring-2 ring-[#c89b3c]/25">
@@ -585,7 +594,7 @@ function ReservationDetails({
               {/* 2. Stay & Arrival Card */}
               <section
                 aria-labelledby="reservation-stay-heading"
-                className="rounded-2xl border border-[#ede7dc] bg-white p-5 shadow-xs space-y-4"
+                className="rounded-2xl border border-[#ede7dc] bg-white p-3 sm:p-5 shadow-xs space-y-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f3efe8] pb-3">
                   <div className="flex items-center gap-2.5">
@@ -603,7 +612,7 @@ function ReservationDetails({
                   </span>
                 </div>
 
-                <dl className="grid grid-cols-2 gap-3">
+                <dl className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
                   <Detail label="Booked check-in">
                     {booking.startAt ? local(booking.startAt) : booking.checkIn}
                   </Detail>
@@ -653,7 +662,7 @@ function ReservationDetails({
               {needsAttention ? (
                 <section
                   aria-labelledby="reservation-attention-heading"
-                  className="rounded-2xl border border-amber-200/90 bg-[#fefdfa] p-5 shadow-xs space-y-3.5"
+                  className="rounded-2xl border border-amber-200/90 bg-[#fefdfa] p-3 sm:p-5 shadow-xs space-y-3.5"
                 >
                   <div className="flex items-center gap-2 border-b border-amber-200/60 pb-2.5">
                     <span className="grid h-6 w-6 place-items-center rounded-lg bg-amber-100 text-amber-700">
@@ -726,9 +735,9 @@ function ReservationDetails({
               {/* 4. Payment Summary Card */}
               <section
                 aria-labelledby="reservation-payment-heading"
-                className="rounded-2xl border border-[#ede7dc] bg-white p-5 shadow-xs space-y-4"
+                className="rounded-2xl border border-[#ede7dc] bg-white p-3 sm:p-5 shadow-xs space-y-4"
               >
-                <div className="flex items-center justify-between border-b border-[#f3efe8] pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f3efe8] pb-3">
                   <div className="flex items-center gap-2.5">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#fbf5e8] text-[#c89b3c]">
                       <CreditCard className="h-4 w-4" />
@@ -816,7 +825,7 @@ function ReservationDetails({
               </section>
 
               {otherRequests.length > 0 && (
-                <details className="rounded-2xl border border-[#ede7dc] bg-white p-5 shadow-xs group">
+                <details className="rounded-2xl border border-[#ede7dc] bg-white p-3 sm:p-5 shadow-xs group">
                   <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-xs font-bold uppercase tracking-[0.06em] text-[#061224]">
                     <span>
                       {active ? "Closed guest requests" : "Guest requests"} (
@@ -862,7 +871,7 @@ function Detail({
   return (
     <div className="min-w-0 rounded-xl border border-[#f0ece4] bg-[#fdfdfc] p-3.5">
       <dt className="text-[11px] font-semibold text-[#8b96aa]">{label}</dt>
-      <dd className="mt-1 flex items-center gap-1.5 break-words text-sm font-bold text-[#061224]">
+      <dd className="mt-1 flex min-w-0 items-center gap-1.5 break-words [overflow-wrap:anywhere] text-sm font-bold text-[#061224]">
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-[#c89b3c]" />}
         <span>{children}</span>
       </dd>
@@ -943,7 +952,7 @@ function GuestContactDetails({
       {open && (
         <div className="w-full rounded-xl border border-[#ede7dc] bg-[#fafaf8] p-3 text-xs space-y-2 shadow-2xs">
           {leadGuest?.phone && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-[#68758c]">
                 <Phone size={12} className="text-[#8b96aa] shrink-0" />
                 <span className="font-medium">Phone</span>
@@ -957,7 +966,7 @@ function GuestContactDetails({
             </div>
           )}
           {leadGuest?.email && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-[#68758c]">
                 <Mail size={12} className="text-[#8b96aa] shrink-0" />
                 <span className="font-medium">Email</span>

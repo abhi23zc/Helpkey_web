@@ -37,6 +37,25 @@ export const offeringCategoryLabels: Record<string, string> = {
   room_essentials: "Comfort & bedding",
   devices: "Technology & connectivity",
 };
+export const offeringCategoryIcons: Record<string, string> = {
+  comfort: "🛏",
+  bathroom: "🛁",
+  food_drinks: "🍰",
+  celebrations: "🎉",
+  family: "🧸",
+  business: "💼",
+  technology: "🔌",
+  room_preferences: "🤫",
+  housekeeping: "🧺",
+  transport: "🚗",
+  wellness: "💆",
+  experiences: "✨",
+  groups: "👥",
+  pets: "🐾",
+  other: "🛎",
+  room_essentials: "🛏",
+  devices: "🔌",
+};
 export function offeringCategory(
   offering: Pick<OfferingInput, "category" | "kind">,
 ) {
@@ -76,14 +95,14 @@ export const formTypes = [
   "custom",
 ] as const;
 export const formTypeLabels: Record<(typeof formTypes)[number], string> = {
-  simple: "Yes / no request (no quantity)",
-  choice: "Choose one option (no quantity)",
-  quantity: "Quantity",
-  variants: "Options with quantities",
-  package: "Packages / tiers",
-  scheduled: "People, date & time",
-  text: "Short text",
-  custom: "Custom request",
+  simple: "Free Request",
+  choice: "Single Choice (e.g. Style, Aroma)",
+  quantity: "Per-Item Count",
+  variants: "Options & Flavors",
+  package: "Curated Package",
+  scheduled: "Scheduled Service (Date & Time)",
+  text: "Guest Note Request",
+  custom: "Custom Hotel Quote",
 };
 export const pricingUnits = [
   "item",
@@ -264,6 +283,8 @@ export type RequestQuote = {
 };
 export type RequestRules = Pick<OfferingInput, "formType" | "responseConfig" | "maxQuantity" | "noteRequired" | "noteLabel" | "peopleRequired" | "timeRequired" | "choiceGroups">;
 export type StayRequest = {
+  offerId?: string;
+  offerDraft?: boolean;
   requestRules?: RequestRules;
   agreementVersion?: 2;
   priceOnRequest?: boolean;
