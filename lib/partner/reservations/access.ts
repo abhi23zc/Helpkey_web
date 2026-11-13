@@ -1,17 +1,13 @@
 import "server-only";
-import { adminDb } from "@/lib/firebase/admin";
-import { ApiException } from "@/lib/api/errors";
+import { propertyAccess } from "@/lib/partner/pms/access";
+import type { Permission } from "@/lib/partner/pms/domain";
 export async function authorize(
   uid: string,
   propertyId: string,
   tx?: FirebaseFirestore.Transaction,
+  permission: Permission = "reservation.read",
 ) {
-  const ref = adminDb
-    .collection("propertyMemberships")
-    .doc(`${propertyId}_${uid}`);
-  const membership = tx ? await tx.get(ref) : await ref.get();
-  if (membership.data()?.status !== "active")
-    throw new ApiException("FORBIDDEN", 403, "Property access required.");
+  return propertyAccess(uid, propertyId, permission, tx);
 }
 export function features() {
   const enabled = (key: string) =>

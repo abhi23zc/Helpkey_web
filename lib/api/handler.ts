@@ -95,6 +95,10 @@ export function withApiHandler<C = unknown>(handler: RouteHandler<C>, options: A
           context.authMs = performance.now() - started;
           if (options.requireAuth && !context.actor) throw new ApiException("UNAUTHENTICATED", 401, "Authentication is required.");
         }
+        if (context.actor && options.route.startsWith("/api/partner/")) {
+          const { authorizePartnerRequest } = await import("@/lib/partner/pms/route-access");
+          await authorizePartnerRequest(context.actor.uid, request);
+        }
         return await decorateResponse(await handler(request, routeContext), context, options);
       } catch (error) {
         const known = toApiException(error);

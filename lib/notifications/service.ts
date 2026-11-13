@@ -140,6 +140,22 @@ export interface NotificationDto {
   createdAt: string | null;
 }
 
+/** Recheck property access at read time: retained notifications are not retained authorization. */
+async function visibleNotification(userId: string, notification: { data?: Record<string, string>; eventType?: string }) {
+  const propertyId = notification.data?.propertyId;
+  if (!propertyId) return true;
+  const user = (await adminDb.collection("users").doc(userId).get()).data();
+  if (!user || user.isActive === false || ["suspended", "disabled", "deleted"].includes(user.accountStatus)) return false;
+  if (user.roles?.includes("admin")) return true;
+  if (notification.data?.bookingId) {
+    const b = (await adminDb.collection("bookings").doc(notification.data.bookingId).get()).data();
+    if (b?.guestId === userId && b.source !== "manual_partner" && b.propertyId === propertyId) return true;
+  }
+  const { propertyAccess } = await import("@/lib/partner/pms/access");
+  try { const access = await propertyAccess(userId, propertyId, notification.eventType?.startsWith("booking.") ? "reservation.read" : "listing.manage"); return !access.block; }
+  catch (error) { if (error && typeof error === "object" && "status" in error && error.status === 403) return false; throw error; }
+}
+
 /** Lists a user's notifications, newest-first, with an unread count. */
 export async function listNotifications(
   userId: string,
@@ -155,16 +171,7 @@ export async function listNotifications(
     if (typeof createdAt !== "number") throw new Error("INVALID_CURSOR");
     query = query.startAfter(new Date(createdAt), cursor.id);
   }
-  const [ownedSnap, unreadSnap] = await Promise.all([
-    query.limit(limit + 1).get(),
-    adminDb
-      .collection("notifications")
-      .where("userId", "==", userId)
-      .where("readAt", "==", null)
-      .count()
-      .get()
-      .catch(() => null),
-  ]);
+  const ownedSnap = await query.limit(limit + 1).get();
 
   const hasMore = ownedSnap.size > limit;
   const rows = ownedSnap.docs.slice(0, limit).map((doc) => {
@@ -181,7 +188,9 @@ export async function listNotifications(
         createdAt: iso(d.createdAt),
       };
     });
-  const notifications: NotificationDto[] = rows.map(({ id, eventType, title, body, data, readAt, createdAt }) => ({
+  const visible = await Promise.all(rows.map(row => visibleNotification(userId, row)));
+  const allowedRows = rows.filter((_row, i) => visible[i]);
+  const notifications: NotificationDto[] = allowedRows.map(({ id, eventType, title, body, data, readAt, createdAt }) => ({
     id,
     eventType,
     title,
@@ -191,7 +200,7 @@ export async function listNotifications(
     createdAt,
   }));
 
-  const unreadCount = unreadSnap ? unreadSnap.data().count : rows.filter((n) => n.readAtRaw == null).length;
+  const unreadCount = allowedRows.filter(n => n.readAtRaw == null).length;
   const last = rows.at(-1);
   return { notifications, unreadCount, hasMore, nextCursor: hasMore && last ? encodeCursor({ values: [last.createdAtMs], id: last.id }) : null };
 }
@@ -208,7 +217,7 @@ export async function markNotificationsRead(userId: string, ids: string[]): Prom
   let updated = 0;
   for (const snap of snaps) {
     const data = snap.data();
-    if (!data || data.userId !== userId || data.readAt != null) continue;
+    if (!data || data.userId !== userId || data.readAt != null || !await visibleNotification(userId, data)) continue;
     batch.update(snap.ref, { readAt: now, status: "completed", updatedAt: now, updatedBy: userId });
     updated += 1;
   }

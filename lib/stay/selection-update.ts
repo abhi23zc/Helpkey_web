@@ -15,7 +15,7 @@ export async function patchRequestSelection(uid: string, bookingId: string, raw:
   const input = patch.parse(raw), ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async tx => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);
     if (!bounds || !["confirmed", "checked_in"].includes(b.bookingStatus) || now >= Date.parse(bounds.endAt)) throw new Error("This booking is closed for requests.");

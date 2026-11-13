@@ -48,7 +48,7 @@ import {
   normalizedStay,
   type StaySearch,
 } from "@/lib/customer/stay-search";
-import { canonicalAmenityKey, amenityLabel } from "@/lib/customer/amenities";
+import { accommodationAmenityCodes, canonicalAmenityKey, amenityLabel } from "@/lib/customer/amenities";
 import {
   keepPreviousData,
   useQuery,
@@ -617,12 +617,12 @@ export function LiveHotelDetail({ slug }: { slug: string }) {
                                 (bed) =>
                                   `${bed.count} ${bed.bedType.replaceAll("_", " ")} ${bed.count === 1 ? "bed" : "beds"}`,
                               ),
-                            ...room.amenityCodes.map(amenityLabel),
                             room.maxInfants
                               ? `Up to ${room.maxInfants} ${room.maxInfants === 1 ? "infant" : "infants"}`
                               : null,
                           ].filter(Boolean) as string[]
                         }
+                        amenities={accommodationAmenityCodes(room.amenityCodes)}
                         price={pricesUnavailable ? null : cheapest.totalPaise ?? cheapest.basePricePaise}
                         checking={checking}
                         disabled={pricesUnavailable}
@@ -997,6 +997,7 @@ function RoomCard({
   title,
   description,
   tags,
+  amenities,
   price,
   currency,
   image,
@@ -1017,6 +1018,7 @@ function RoomCard({
   title: string;
   description: string;
   tags: string[];
+  amenities: string[];
   price: number | null;
   currency: string;
   image: string | null;
@@ -1092,6 +1094,15 @@ function RoomCard({
               </span>
             ))}
           </div>
+          {amenities.length > 0 && <div className="mt-3 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">Room amenities</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">{amenities.slice(0, 4).map(code =>
+              <span key={code} className="rounded-lg bg-slate-100 px-2.5 py-1">{amenityLabel(code)}</span>)}</div>
+            {amenities.length > 4 && <details className="mt-2">
+              <summary className="cursor-pointer font-semibold">Show all {amenities.length} room amenities</summary>
+              <ul className="mt-2 grid grid-cols-2 gap-2">{amenities.map(code => <li key={code}>{amenityLabel(code)}</li>)}</ul>
+            </details>}
+          </div>}
         </div>
 
         <div className="mt-5 flex items-end justify-between border-t border-slate-100 pt-4">

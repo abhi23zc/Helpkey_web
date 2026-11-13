@@ -40,6 +40,8 @@
     "test:e2e:hotel-next": "playwright test --config playwright.hotel-next.config.ts",
     "test:e2e:stay": "playwright test --config playwright.stay.config.ts",
     "test:e2e:partner": "playwright test --config playwright.partner.config.ts",
+    "test:e2e:pms": "playwright test --config playwright.pms.config.ts",
+    "test:pms:emulator": "vitest run tests/pms-foundation.emulator.test.ts",
     "test:partner:emulator": "vitest run tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts"
   },
   "dependencies": {

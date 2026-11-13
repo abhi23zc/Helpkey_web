@@ -16,7 +16,7 @@ const rawGET = async function GET(request: Request) {
   const snapshot = await query.limit(limit + 1).get();
   const hasMore = snapshot.size > limit;
   const pageRows = snapshot.docs.slice(0, limit);
-  const bookings = await serializeBookingsWithResolvedMedia(pageRows);
+  const bookings = await serializeBookingsWithResolvedMedia(pageRows.filter(d => d.get("source") !== "manual_partner"));
   const propertyIds = [...new Set(bookings.map((booking) => booking.propertyId).filter((id): id is string => typeof id === "string" && id.length > 0))];
   const reviewDocs = propertyIds.length
     ? await adminDb.getAll(...propertyIds.map((propertyId) => adminDb.collection(REVIEW_COLLECTION).doc(`${propertyId}_${user.uid}`)))

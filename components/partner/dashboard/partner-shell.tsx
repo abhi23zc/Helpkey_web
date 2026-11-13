@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Building2, Check, ChevronDown, CircleHelp, Loader2, LogOut, Menu, UserRound } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { HotelCapabilitiesProvider } from "./hotel-capabilities";
+import { useAuth } from "@/components/auth/auth-provider";
+import { landing } from "@/lib/partner/pms/domain";
 import { ReservationSearch } from "./reservation-search";
 import { PropertyImage } from "./property-image";
 import { PartnerSidebar } from "./partner-sidebar";
@@ -66,6 +69,7 @@ function PropertyDropdown({
         onClick={() => !loading && setIsOpen((prev) => !prev)}
         disabled={loading}
         aria-busy={loading}
+        aria-label={`Selected hotel: ${selectedProperty?.name || "Choose a hotel"}`}
         className={`flex h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-white px-3.5 shadow-xs transition-all duration-200 disabled:cursor-progress ${
           isOpen ? "border-[#c89b3c] ring-1 ring-[#c89b3c]" : "border-slate-200 hover:border-slate-300"
         }`}
@@ -146,7 +150,8 @@ export function PartnerShell({
   contentLoading?: boolean;
 }) {
   const data = usePartnerDashboardData();
-  const router = useRouter();
+  const pathname = usePathname();
+  const { logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -186,16 +191,18 @@ export function PartnerShell({
     setSigningOut(true);
     setAccountError("");
     try {
-      const response = await fetch("/api/auth/logout", { method: "POST" });
-      if (!response.ok) throw new Error("We could not sign you out. Please try again.");
-      router.replace("/");
-      router.refresh();
+      await logout();
+
     } catch (cause) {
       setAccountError(cause instanceof Error ? cause.message : "We could not sign you out. Please try again.");
       setSigningOut(false);
     }
   };
 
+  const selected = data.selectedProperty;
+  const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
+  const denied = selected?.permissions && required[pathname] && !selected.permissions.includes(required[pathname]);
+  const blocked = selected?.operationsReason && ["/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname);
   return (
     <>
     {(data.loading || contentLoading) ? <div className="fixed inset-0 z-[100] overflow-y-auto"><PartnerWorkspaceSkeleton /></div> : null}
@@ -204,7 +211,7 @@ export function PartnerShell({
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-[264px]"
       }`}
     >
-      <PartnerSidebar propertyId={data.selectedPropertyId} date={data.reportingDate}
+      <PartnerSidebar permissions={selected?.permissions} propertyId={data.selectedPropertyId} date={data.reportingDate}
         open={menuOpen}
         collapsed={sidebarCollapsed}
         onClose={() => setMenuOpen(false)}
@@ -235,7 +242,7 @@ export function PartnerShell({
             loading={data.loading}
           />
 
-          <ReservationSearch key={data.selectedPropertyId} propertyId={data.selectedPropertyId} date={data.reportingDate} />
+          {(!selected?.permissions || selected.permissions.includes("reservation.read")) && <ReservationSearch key={data.selectedPropertyId} propertyId={data.selectedPropertyId} date={data.reportingDate} />}
 
           <div className="flex items-center justify-end gap-3 md:justify-self-end">
             <NotificationBell partner />
@@ -254,7 +261,7 @@ export function PartnerShell({
                 ) : (
                   <div className="grid h-11 w-11 place-items-center rounded-full bg-[#061224] text-xs font-bold text-white shadow-xs ring-2 ring-[#c89b3c]/30">{initials}</div>
                 )}
-                <div className="hidden text-left sm:block"><p className="text-sm font-bold leading-tight text-[#061224]">{displayName}</p><p className="text-[11px] font-semibold text-slate-500">Partner Admin</p></div>
+                <div className="hidden text-left sm:block"><p className="text-sm font-bold leading-tight text-[#061224]">{displayName}</p><p className="text-[11px] font-semibold text-slate-500">{selected?.role || "Owner"}</p></div>
                 <ChevronDown className={`hidden h-4 w-4 text-slate-400 transition-transform sm:block ${accountMenuOpen ? "rotate-180" : ""}`} />
               </button>
 
@@ -282,7 +289,7 @@ export function PartnerShell({
           </div>
         )}
 
-        {children(data)}
+        {data.loading ? null : data.error ? <a className="underline" href="/partner/settings">Reload assigned hotels</a> : denied || blocked ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><h2 className="font-bold">{blocked ? "Hotel operations unavailable" : "This page is not available for your role"}</h2><p className="mt-2">{blocked || "Choose a permitted workspace for this hotel."}</p><Link className="mt-3 inline-block underline" href={`${blocked ? "/partner/settings" : landing(selected?.role)}?propertyId=${data.selectedPropertyId}`}>Open your hotel workspace</Link></div> : <div key={`${data.user?.uid}:${selected?.id}:${selected?.role}:${selected?.accessRevision}`}><HotelCapabilitiesProvider value={selected?.permissions ?? null}>{children(data)}</HotelCapabilitiesProvider></div>}
       </section>
     </main>
     </>

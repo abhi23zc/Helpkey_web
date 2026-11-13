@@ -1,4 +1,5 @@
 "use client";
+import { useHotelCapabilities } from "./hotel-capabilities";
 
 import {
   useId,
@@ -79,6 +80,7 @@ function ReservationDetails({
   onClose,
   onChanged,
 }: WorkspaceProps) {
+  const permits = useHotelCapabilities();
   const [now, setNow] = useState(() => Date.now());
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -197,7 +199,7 @@ function ReservationDetails({
   const stayEnded = !!booking?.endAt && Date.parse(booking.endAt) <= now;
   const checkInUnavailable =
     primary === "checked_in" && (tooEarly || stayEnded);
-  const secondary =
+  const secondary = !permits("reservation.cancel") ? [] :
     status === "confirmed"
       ? [
           ["no_show", "Mark no-show"],

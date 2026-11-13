@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.HELPKEY_TEST_DIST_DIR || ".next",
   // Produces a minimal, traced Node runtime for the production Docker image.
   output: "standalone",
   // BullMQ selects optional Redis backends at runtime; keep its Node entrypoint intact.

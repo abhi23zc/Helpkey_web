@@ -12,7 +12,7 @@ import { publicPropertySource, publicRoomSources, publicRateSources } from "@/li
 import { adminDb } from "@/lib/firebase/admin";
 import { resolvePublicImage } from "@/lib/media-resolver";
 import { amenityCodeMap } from "@/lib/customer/catalog";
-import { resolveAmenityCodes } from "@/lib/customer/amenities";
+import { accommodationAmenityCodes, resolveAmenityCodes } from "@/lib/customer/amenities";
 import type { z } from "zod";
 import type { staySearchSchema } from "@/lib/customer/stay-search";
 
@@ -73,7 +73,7 @@ async function evaluateBookableProperty(slug: string, stay: Stay, configurationD
       return [{ breakfastIncluded: item.breakfastIncluded === true, cancellationTerms: terms, id: rate.id, name: item.name ?? "Standard rate", code: item.code ?? null, bookingMode: item.bookingMode ?? "overnight", pricingModel: item.pricingModel ?? "nightly", subtotalPaise: evaluated?.subtotalPaise ?? null, taxPaise: evaluated?.taxPaise ?? null, payableNowPaise: evaluated?.payableNowPaise ?? null, balanceDuePaise: evaluated?.balanceDuePaise ?? null, nights: evaluated?.nights ?? null, validUntil: evaluated?.validUntil ?? null, durationMinutes: evaluated?.durationMinutes ?? item.durationMinutes ?? null, totalPaise: evaluated?.totalPaise ?? null, startAt: evaluated?.startAt ?? null, endAt: evaluated?.endAt ?? null, durationPrices: item.durationPrices ?? [], basePricePaise: item.basePricePaise ?? 0, paymentMode: item.paymentMode ?? "full", taxBasisPoints: item.taxBasisPoints ?? 0, customerFeePaise: item.customerFeePaise ?? 0, cancellation: cancellation ? { name: cancellation.name ?? "Cancellation policy", description: cancellation.description ?? "" } : null }];
     }))).flat();
     if (!rates.length) return null;
-    return { id: room.id, name: data.name ?? "Room", description: data.description ?? "", totalInventory: data.totalInventory ?? 0, maxAdults: data.maxAdults ?? 1, maxChildren: data.maxChildren ?? 0, maxInfants: data.maxInfants ?? 10, maxOccupancy: data.maxOccupancy ?? Number(data.maxAdults ?? 1) + Number(data.maxChildren ?? 0), roomSizeSqFt: data.roomSizeSqFt ?? null, bedConfigurations: data.bedConfigurations ?? [], amenityCodes: resolveAmenityCodes(data.amenityIds, amenityCodesById), imageUrl: image?.imageUrl ?? null, imageSrcSet: image?.imageSrcSet ?? "", imageWidth: image?.width ?? 1, imageHeight: image?.height ?? 1, rates };
+    return { id: room.id, name: data.name ?? "Room", description: data.description ?? "", totalInventory: data.totalInventory ?? 0, maxAdults: data.maxAdults ?? 1, maxChildren: data.maxChildren ?? 0, maxInfants: data.maxInfants ?? 10, maxOccupancy: data.maxOccupancy ?? Number(data.maxAdults ?? 1) + Number(data.maxChildren ?? 0), roomSizeSqFt: data.roomSizeSqFt ?? null, bedConfigurations: data.bedConfigurations ?? [], amenityCodes: accommodationAmenityCodes(resolveAmenityCodes(data.amenityIds, amenityCodesById)), imageUrl: image?.imageUrl ?? null, imageSrcSet: image?.imageSrcSet ?? "", imageWidth: image?.width ?? 1, imageHeight: image?.height ?? 1, rates };
   }));
   // Keep configured choices available even when the requested duration has no matching offer.
   const pricingDate = stay.checkIn ?? configurationDate;

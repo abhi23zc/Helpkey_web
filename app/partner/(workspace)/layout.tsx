@@ -1,3 +1,4 @@
+import { PrivateIdentityBoundary } from "@/components/auth/private-identity-boundary";
 import type { ReactNode } from "react";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
@@ -9,5 +10,5 @@ export default async function PartnerWorkspaceLayout({ children }: { children: R
   const user = await requireAuthenticatedUser("read");
   const queryClient = new QueryClient();
   await queryClient.prefetchQuery({ queryKey: queryKeys.partnerShell, queryFn: () => loadPartnerShell(user), staleTime: 30_000 });
-  return <HydrationBoundary state={dehydrate(queryClient)}>{children}</HydrationBoundary>;
+  return <PrivateIdentityBoundary uid={user.uid}><HydrationBoundary state={dehydrate(queryClient)}>{children}</HydrationBoundary></PrivateIdentityBoundary>;
 }

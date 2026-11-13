@@ -17,7 +17,7 @@ export function offerHandler(staff: boolean) {
           await requireRole(user.uid, "partner");
           const m = await adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${user.uid}`).get();
           if (m.get("status") !== "active") throw new Error("FORBIDDEN");
-        } else if (b.guestId !== user.uid) throw new Error("FORBIDDEN");
+        } else if (b.guestId !== user.uid || b.source === "manual_partner") throw new Error("FORBIDDEN");
         return Response.json({ enabled: offersEnabled(), offers: b.extrasOffers ?? [], revision: b.stayRevision ?? 0 });
       }
       await manageOffer(user.uid, bookingId, await request.json(), staff);

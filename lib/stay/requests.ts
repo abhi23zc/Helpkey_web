@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import { StaySelectionError } from "./domain";
 import "server-only";
 import { offersEnabled } from "./offers";
@@ -90,8 +91,9 @@ export async function decideRequest(
   await adminDb.runTransaction(async (tx) => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(ref)).data();
-    if (!b || (!staff && b.guestId !== uid)) throw new Error("NOT_FOUND");
+    if (!b || (!staff && (b.guestId !== uid || b.source === "manual_partner"))) throw new Error("NOT_FOUND");
     if (staff) {
+      await operationalAccess(uid, b.propertyId, "requests.manage", tx);
       const member = await tx.get(
         adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${uid}`),
       );
@@ -304,7 +306,7 @@ export async function addUnlistedRequest(
   await adminDb.runTransaction(async (tx) => {
     const ref = adminDb.collection("bookings").doc(bookingId),
       b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))
       throw new Error("This booking is closed for requests.");

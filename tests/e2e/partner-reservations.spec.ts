@@ -97,6 +97,8 @@ async function fixture(
         ratePlans: [],
         features: { allocation: true, payments: true, amendments: true },
       };
+    else if (url.pathname.endsWith("/extras-offers"))
+      body = { enabled: false, offers: [], revision: currentBooking.stayRevision };
     else if (url.pathname.endsWith("/operations")) {
       if (method === "POST") {
         const input = route.request().postDataJSON();
@@ -325,6 +327,7 @@ test("shows recoverable errors without fabricated reservations", async ({
 test("manual bookings show taxes and fees, submit an idempotency key and open the saved reservation", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-01T06:00Z"));
   await fixture(page);
   await page.goto("/partner/reservations?propertyId=hotel-one&date=2026-11-03");
   await page
@@ -335,7 +338,6 @@ test("manual bookings show taxes and fees, submit an idempotency key and open th
     exact: true,
   });
   await dialog.getByLabel("Guest name", { exact: true }).fill("Ada Guest");
-  await page.clock.setFixedTime(new Date("2026-11-01T06:00Z"));
   for (const [label, day] of [
     ["Check-in date", "3rd"],
     ["Check-out date", "4th"],

@@ -31,11 +31,12 @@ const navItems = [
   { label: "Payouts", href: "", icon: WalletCards },
   { label: "Promotions", href: "", icon: Tag },
   { label: "Messages", href: "", icon: Mail },
-  { label: "Settings", href: "", icon: Settings },
+  { label: "Settings", href: "/partner/settings", icon: Settings },
 ] as const;
 
 export function PartnerSidebar({
   propertyId,
+  permissions,
   date,
   open,
   collapsed,
@@ -43,6 +44,7 @@ export function PartnerSidebar({
   onToggleCollapse,
 }: {
   propertyId?: string;
+  permissions?: readonly string[];
   date?: string;
   open: boolean;
   collapsed: boolean;
@@ -112,7 +114,12 @@ export function PartnerSidebar({
         </div>
 
         <nav aria-label="Partner navigation" className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4">
-          {navItems.map(({ label, href, icon: Icon }) => {
+          {[...navItems, { label: "My hotel operations", href: "/partner/operations", icon: ShieldCheck }].filter(item => {
+            if (!permissions) return item.href !== "/partner/operations";
+            const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
+            if (item.href === "/partner/operations") return permissions.some(p => ["housekeeping", "maintenance", "payment.read"].includes(p));
+            return !required[item.href] || permissions.includes(required[item.href]);
+          }).map(({ label, href, icon: Icon }) => {
             const isActive = href ? pathname === href : false;
             const baseClass = `group relative flex h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
               !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"

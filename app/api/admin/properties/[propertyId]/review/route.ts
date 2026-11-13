@@ -40,7 +40,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
       const now = FieldValue.serverTimestamp();
 
       const update = input.decision === "approve"
-        ? { status: "active", approvalStatus: "approved", approvedAt: now, rejectionReason: null, isBookable: true }
+        ? { status: "active", approvalStatus: "approved", approvedAt: now, rejectionReason: null, isBookable: data.marketplaceOwnerPaused !== true }
         : { status: "draft", approvalStatus: input.decision === "reject" ? "rejected" : "changes_requested", rejectionReason: input.reason, isBookable: false };
 
       tx.update(ref, { ...update, updatedAt: now, updatedBy: user.uid });

@@ -1,4 +1,5 @@
 "use client";
+import { PropertyPmsControl } from "./property-pms-control";
 
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -187,6 +188,7 @@ export function AdminPropertyReviewPage({ propertyId }: { propertyId: string }) 
         </Button>
       </div>
 
+      <PropertyPmsControl propertyId={propertyId} />
       <header className="rounded-[18px] border border-line bg-white p-5 shadow-card">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label(String(property.propertyType ?? "Property"))}</span>

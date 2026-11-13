@@ -17,7 +17,7 @@ export async function listReservations(
   exporting = false,
 ) {
   const f = reservationFilters.parse(raw);
-  await authorize(uid, f.propertyId);
+  await authorize(uid, f.propertyId, undefined, exporting ? "guest.export" : "reservation.read");
   const property = (
     await adminDb.collection("properties").doc(f.propertyId).get()
   ).data();

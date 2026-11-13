@@ -1,4 +1,9 @@
 export type Property = {
+  role?: string;
+  permissions?: readonly string[];
+  accessRevision?: number;
+  pmsState?: string;
+  operationsReason?: string | null;
   timezone?: string;
   isBookable?: boolean;
   id: string;

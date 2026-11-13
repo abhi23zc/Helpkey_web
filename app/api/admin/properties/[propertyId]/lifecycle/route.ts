@@ -33,10 +33,10 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
       const changes = action === "pause"
         ? { status: "paused", isBookable: false, pausedAt: FieldValue.serverTimestamp() }
         : action === "resume"
-          ? { status: "active", isBookable: true, pausedAt: null }
+          ? { status: "active", isBookable: data.marketplaceOwnerPaused !== true, pausedAt: null }
           : action === "archive"
             ? { status: "archived", isBookable: false, archivedAt: FieldValue.serverTimestamp() }
-            : { status: data.approvalStatus === "approved" ? "active" : data.approvalStatus === "pending" ? "pending_review" : "draft", isBookable: data.approvalStatus === "approved", archivedAt: null };
+            : { status: data.approvalStatus === "approved" ? "active" : data.approvalStatus === "pending" ? "pending_review" : "draft", isBookable: data.approvalStatus === "approved" && data.marketplaceOwnerPaused !== true, archivedAt: null };
       tx.update(ref, { ...changes, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
       recordReviewEvent(tx, {
         propertyId,

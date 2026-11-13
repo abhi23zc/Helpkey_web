@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import { queueQuoteRefund } from "./requests";
 import { includedOffering } from "./inclusions";
 import { propertyAllowsPets } from "./recommendations";
@@ -153,7 +154,7 @@ export function bookingBounds(b: FirebaseFirestore.DocumentData) {
 export async function guestStayOptions(uid: string, bookingId: string) {
   const doc = await adminDb.collection("bookings").doc(bookingId).get();
   const b = doc.data();
-  if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+  if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
   const bounds = bookingBounds(b);
   const open =
     b.bookingStatus === "confirmed" &&
@@ -218,7 +219,7 @@ export async function savePreCheckin(
   const ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async (tx) => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now();
     const bounds = bookingBounds(b);
@@ -451,6 +452,7 @@ export async function updateStayRequest(
   await adminDb.runTransaction(async (tx) => {
     const b = (await tx.get(ref)).data();
     if (!b) throw new Error("NOT_FOUND");
+    await operationalAccess(uid, b.propertyId, input.status === "declined" ? "requests.manage" : "requests.prepare", tx);
     const member = await tx.get(
       adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${uid}`),
     );
@@ -564,7 +566,7 @@ export async function patchArrival(uid: string, bookingId: string, raw: unknown)
   const ref = adminDb.collection("bookings").doc(bookingId);
   await adminDb.runTransaction(async tx => {
     const b = (await tx.get(ref)).data();
-    if (!b || b.guestId !== uid) throw new Error("NOT_FOUND");
+    if (!b || b.guestId !== uid || b.source === "manual_partner") throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);
     if (b.bookingStatus !== "confirmed" || !bounds || now >= Date.parse(bounds.endAt))

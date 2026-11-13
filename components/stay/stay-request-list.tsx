@@ -1,4 +1,5 @@
 "use client";
+import { useHotelCapabilities } from "@/components/partner/dashboard/hotel-capabilities";
 import { ExtrasOffers } from "./extras-offers";
 import {
   ChevronDown,
@@ -40,6 +41,7 @@ export function StayRequestList({
     refresh: () => void;
   };
 }) {
+  const permits = useHotelCapabilities();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [responses, setResponses] = useState<Record<string, string>>({});
@@ -81,7 +83,7 @@ export function StayRequestList({
   }
   return (
     <div className="space-y-3">
-      {(staff || guest) && <ExtrasOffers actor={(staff ?? guest)!} staff={Boolean(staff)} requests={requests} currency={currency} timezone={timezone} />}
+      {((staff && permits("requests.manage")) || guest) && <ExtrasOffers actor={(staff ?? guest)!} staff={Boolean(staff)} requests={requests} currency={currency} timezone={timezone} />}
       {!requests.length && (
         <p className="text-sm text-slate-500">No customizations requested.</p>
       )}
@@ -282,7 +284,7 @@ export function StayRequestList({
               r.settlement !== "included" &&
               !(guest && (r.offerId || r.offerDraft)) &&
               !(staff && r.offerId) &&
-              (staff || guest) && (
+              ((staff && permits("requests.manage")) || guest) && (
                 <RequestAgreementControls
                   request={r}
                   actor={(staff ?? guest)!}
@@ -317,7 +319,7 @@ export function StayRequestList({
                   refunded through your original payment method.
                 </p>
               )}
-            {staff?.enabled &&
+            {staff?.enabled && permits("requests.prepare") &&
               (r.agreementVersion !== 2 ||
                 ["included", "paid"].includes(r.settlement ?? "")) &&
               ["requested", "confirmed", "preparing", "ready"].includes(
@@ -356,7 +358,7 @@ export function StayRequestList({
                   </ResponseContainer>
                   <div className="flex flex-wrap gap-2">
                     {(r.status === "requested"
-                      ? ["confirmed", "declined"]
+                      ? (permits("requests.manage") ? ["confirmed", "declined"] : ["confirmed"])
                       : r.status === "confirmed"
                         ? ["preparing"]
                         : r.status === "preparing"

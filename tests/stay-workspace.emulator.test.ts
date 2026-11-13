@@ -21,7 +21,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       await db
         .collection("propertyMemberships")
         .doc(`${id}_${uid}`)
-        .set({ propertyId: id, status: "active", role: "staff" });
+        .set({ propertyId: id, status: "active", role: "owner", userId: uid });
       const batch = db.batch();
       for (let i = 0; i < 203; i++)
         batch.set(

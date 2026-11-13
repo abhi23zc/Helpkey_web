@@ -19,6 +19,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     process.env.RAZORPAY_KEY_ID = "test_key";
     process.env.RAZORPAY_KEY_SECRET = "test_secret";
     db = (await import("@/lib/firebase/admin")).adminDb;
+    for (const actor of ["partner", "owner"]) await db.collection("users").doc(actor).set({ roles: ["partner"], accountStatus: "active", isActive: true });
     bookings = await import("@/lib/bookings");
   }, 30000);
   afterAll(async () => { await db?.terminate(); });
@@ -234,12 +235,12 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
 
   it("rejects maintenance conflicts and cross-property writes, then releases blocks once", async () => {
     const { input, propertyId } = await fixture();
-    await db.collection("propertyMemberships").doc(`${propertyId}_partner`).set({ propertyId, userId: "partner", status: "active" });
+    await db.collection("propertyMemberships").doc(`${propertyId}_partner`).set({ propertyId, userId: "partner", role: "owner", status: "active" });
     const { createCapacityBlock, releaseCapacityBlock } = await import("@/lib/booking/blocks");
     const { resolveLocal } = await import("@/lib/booking/domain");
     const start = resolveLocal(input.checkIn, "10:00", "Asia/Kolkata");
     const block = { roomTypeId: input.roomTypeId, startAt: new Date(start).toISOString(), endAt: new Date(start + 3600000).toISOString(), quantity: 1, reason: "Maintenance" };
-    await expect(createCapacityBlock("intruder", propertyId, block)).rejects.toThrow("FORBIDDEN");
+    await expect(createCapacityBlock("intruder", propertyId, block)).rejects.toMatchObject({ code: "FORBIDDEN" });
     const held = await createCapacityBlock("partner", propertyId, block);
     await expect(bookings.createBooking("guest", input, "blocked")).rejects.toThrow("SOLD_OUT_FOR_DATES");
     await Promise.all([releaseCapacityBlock("partner", propertyId, held.blockId), releaseCapacityBlock("partner", propertyId, held.blockId)]);
@@ -295,7 +296,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
   }, 30000);
   it("reserves manual bookings with audited negotiated prices and server-calculated tax", async () => {
     const { input, propertyId } = await fixture();
-    await db.collection("propertyMemberships").doc(`${propertyId}_partner`).set({ propertyId, userId: "partner", status: "active" });
+    await db.collection("propertyMemberships").doc(`${propertyId}_partner`).set({ propertyId, userId: "partner", role: "owner", status: "active" });
     await db.collection("ratePlans").doc(input.ratePlanId).update({ taxBasisPoints: 1800 });
     const manual = { ...input, propertyId, guestName: "Manual Guest", negotiatedSubtotalPaise: 80000, negotiatedPriceReason: "Agreed corporate price", paymentMethod: "paid" };
     await expect(bookings.createManualReservation("intruder", manual, "manual")).rejects.toThrow("FORBIDDEN");
@@ -350,7 +351,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     const { propertyId } = await fixture();
     const ref = db.collection("bookingNotificationOutbox").doc(`${propertyId}_notification`);
     await ref.set({ propertyId, bookingId: "test", guestId: "guest", bookingStatus: "confirmed", status: "pending", nextAttemptAt: Timestamp.now() });
-    await db.collection("propertyMemberships").doc(`${propertyId}_owner`).set({ propertyId, userId: "owner", status: "active" });
+    await db.collection("propertyMemberships").doc(`${propertyId}_owner`).set({ propertyId, userId: "owner", role: "owner", status: "active" });
     const notification = db.collection("notifications").doc(`${ref.id}_guest`);
     await notification.set({ userId: "guest", status: "read", readAt: Timestamp.now() });
     const { processBookingNotifications } = await import("@/lib/booking/notifications");

@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import { guestReservationDetails } from "@/lib/booking/guest-details";
 import { withDatePrices } from "@/lib/booking/date-prices";
 import { publicGuestPolicies } from "@/lib/partner/guest-policies";
@@ -242,7 +243,7 @@ export async function quoteWithTiming(input: z.input<typeof bookingInput>): Prom
   return { quote, timing };
 }
 
-async function buildQuote(input: BookingInput, timing: QuoteTiming) {
+async function buildQuote(input: BookingInput, timing: QuoteTiming, staffUid?: string) {
   let stage = performance.now();
   const propertyRead = (async () => {
     const started = performance.now();
@@ -261,7 +262,8 @@ async function buildQuote(input: BookingInput, timing: QuoteTiming) {
   })();
   const [property, [room, rate]] = await Promise.all([propertyRead, roomRateRead]);
   const propertyData = property?.data();
-  if (!property || propertyData?.status !== "active" || propertyData?.approvalStatus !== "approved" || propertyData?.isBookable !== true) throw new Error("PROPERTY_NOT_AVAILABLE");
+  if (staffUid && property) await operationalAccess(staffUid, property.id, "reservation.create");
+  if (!property || (!staffUid && (propertyData?.status !== "active" || propertyData?.approvalStatus !== "approved" || propertyData?.isBookable !== true || propertyData?.marketplaceOwnerPaused === true))) throw new Error("PROPERTY_NOT_AVAILABLE");
 
   const roomData = room.data();
   const rateData = rate.data();
@@ -348,6 +350,9 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     }
     if ((await tx.get(adminDb.collection("bookingSubmissionClosures").doc(id))).exists) throw new Error("SUBMISSION_CLOSED");
     if (manual) {
+      await operationalAccess(uid, quoteData.propertyId, "reservation.create", tx);
+      if (manual.paid) await operationalAccess(uid, quoteData.propertyId, "payment.collect", tx);
+      if (manual.reason !== "Published rate") await operationalAccess(uid, quoteData.propertyId, "rates.manage", tx);
       const membership = await tx.get(adminDb.collection("propertyMemberships").doc(`${quoteData.propertyId}_${uid}`));
       if (membership.data()?.status !== "active") throw new Error("FORBIDDEN");
     }
@@ -356,7 +361,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     const rateRef = adminDb.collection("ratePlans").doc(quoteData.ratePlan.id);
     const [propertySnap, roomSnap, rateSnap] = await Promise.all([tx.get(propertyRef), tx.get(roomRef), tx.get(rateRef)]);
     const property = propertySnap.data() ?? {}, room = roomSnap.data() ?? {}, rate = rateSnap.data() ?? {};
-    if (property.status !== "active" || property.approvalStatus !== "approved" || !property.isBookable || room.status !== "active" || room.propertyId !== propertyRef.id || rate.status !== "active" || rate.propertyId !== propertyRef.id || rate.roomTypeId !== roomRef.id) throw new Error("RATE_NOT_AVAILABLE");
+    if ((!manual && (property.status !== "active" || property.approvalStatus !== "approved" || !property.isBookable || property.marketplaceOwnerPaused === true)) || room.status !== "active" || room.propertyId !== propertyRef.id || rate.status !== "active" || rate.propertyId !== propertyRef.id || rate.roomTypeId !== roomRef.id) throw new Error("RATE_NOT_AVAILABLE");
     if (rate.cancellationPolicyId) {
       const policy = (await tx.get(adminDb.collection("cancellationPolicies").doc(rate.cancellationPolicyId))).data();
       if (!policy || policy.propertyId !== propertyRef.id || policy.status !== "active") throw new Error("RATE_NOT_AVAILABLE");
@@ -473,10 +478,11 @@ export async function releaseBookingHold(bookingId: string, actorId: string, nex
 
     const now = Date.now();
     if (reason.startsWith("PARTNER_")) {
+      await operationalAccess(actorId, data.propertyId, "reservation.cancel", tx);
       const member = await tx.get(adminDb.collection("propertyMemberships").doc(`${data.propertyId}_${actorId}`));
       if (member.data()?.status !== "active") throw new Error("FORBIDDEN");
     }
-    if (reason === "CUSTOMER_CANCELLED" && data.guestId !== actorId) throw new Error("BOOKING_NOT_FOUND");
+    if (reason === "CUSTOMER_CANCELLED" && (data.guestId !== actorId || data.source === "manual_partner")) throw new Error("BOOKING_NOT_FOUND");
     if (nextStatus === "expired" && (data.backgroundAttention?.expiry || data.expiryRetryAt?.toMillis() > now || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() > now || data.bookingStatus !== "pending_payment")) return false;
     if (reason === "CUSTOMER_CANCELLED" && data.startAt && Date.parse(data.startAt) <= now) throw new Error("BOOKING_NOT_CANCELLABLE");
     if (nextStatus === "no_show" && (!data.startAt || Date.parse(data.startAt) > now)) throw new Error("INVALID_BOOKING_TRANSITION");
@@ -669,7 +675,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
 
 export async function cancelBookingForUser(uid: string, bookingId: string) {
   const snap = await adminDb.collection("bookings").doc(bookingId).get();
-  if (!snap.exists || snap.data()?.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+  if (!snap.exists || snap.data()?.guestId !== uid || snap.data()?.source === "manual_partner") throw new Error("BOOKING_NOT_FOUND");
   if (snap.data()?.bookingStatus === "cancelled" && snap.data()?.inventoryReleased) return;
   if (!cancellableStatuses.has(String(snap.data()?.bookingStatus))) throw new Error("BOOKING_NOT_CANCELLABLE");
   await releaseBookingHold(bookingId, uid, "cancelled", "CUSTOMER_CANCELLED");
@@ -842,7 +848,7 @@ export async function serializeBookingWithResolvedMedia(id: string, data: Fireba
 /** Customer-safe booking lookup for itinerary pages and private API responses. */
 export async function bookingForGuest(uid: string, bookingId: string) {
   const snap = await adminDb.collection("bookings").doc(bookingId).get();
-  if (!snap.exists || snap.data()?.guestId !== uid) throw new Error("BOOKING_NOT_FOUND");
+  if (!snap.exists || snap.data()?.guestId !== uid || snap.data()?.source === "manual_partner") throw new Error("BOOKING_NOT_FOUND");
   const data = snap.data()!;
   const [media, online, propertyPayments] = await Promise.allSettled([
     serializeBookingWithResolvedMedia(snap.id, data),
@@ -891,6 +897,7 @@ export async function transitionBooking(bookingId: string, actorId: string, next
     if (!data) throw new Error("BOOKING_NOT_FOUND");
     const membership = await tx.get(adminDb.collection("propertyMemberships").doc(`${data.propertyId}_${actorId}`));
     if (membership.data()?.status !== "active") throw new Error("FORBIDDEN");
+    await operationalAccess(actorId, data.propertyId, "reservation.operate", tx);
     assertTransition(data.bookingStatus, next);
     if (next === "checked_in" && ((data.startAt && Date.parse(data.startAt) > Date.now()) || (data.endAt && Date.parse(data.endAt) <= Date.now()))) throw new Error("INVALID_BOOKING_TRANSITION");
     if (next === "checked_out" && data.physicalUnitId && (process.env.PARTNER_ROOMS_HOUSEKEEPING === "true" || (process.env.NODE_ENV !== "production" && process.env.PARTNER_ROOMS_HOUSEKEEPING !== "false"))) {
@@ -935,7 +942,8 @@ export async function createManualReservation(uid: string, raw: unknown, key: st
   }
   const property = await adminDb.collection("properties").doc(input.propertyId).get();
   if (!property.exists) throw new Error("PROPERTY_NOT_AVAILABLE");
-  const quoteData = await quote({ ...input, propertySlug: property.data()!.slug });
+  await operationalAccess(uid, input.propertyId, "reservation.create");
+  const quoteData = await buildQuote(bookingInput.parse({ ...input, propertySlug: property.data()!.slug }), { property: 0, roomRate: 0, inventory: 0, policy: 0, total: 0 }, uid);
   if (input.negotiatedSubtotalPaise !== undefined && !input.negotiatedPriceReason) throw new Error("NEGOTIATED_PRICE_REASON_REQUIRED");
   const customerInput: CreateBookingInput = { ...input, propertySlug: property.data()!.slug, paymentMethod: "pay_at_property", leadEmail: input.guestEmail ?? "", leadPhone: input.guestPhone ?? "", adultGuestNames: Array.from({ length: input.adults }, () => input.guestName), billing: null, termsAccepted: true };
   const subtotalPaise = input.negotiatedSubtotalPaise ?? quoteData.subtotalPaise;

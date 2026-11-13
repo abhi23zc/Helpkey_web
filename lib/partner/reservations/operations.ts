@@ -1,10 +1,11 @@
+import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { ApiException } from "@/lib/api/errors";
-import { authorize, features } from "./access";
+import { features } from "./access";
 import { assignPhysical } from "./physical";
 import { netBalance, operationInput, receiptRemaining } from "./domain";
 import type { RecordData } from "@/lib/partner/dashboard/domain";
@@ -43,7 +44,7 @@ export async function bookingOperations(
   const ref = adminDb.collection("bookings").doc(bookingId),
     b = (await ref.get()).data();
   if (!b) throw new ApiException("NOT_FOUND", 404, "Reservation not found.");
-  await authorize(uid, b.propertyId);
+  const access = await propertyAccess(uid, b.propertyId, "reservation.read");
   let query = ref.collection("events").orderBy("createdAt", "desc").limit(51);
   if (before) {
     const cursor = await ref.collection("events").doc(before).get();
@@ -103,12 +104,15 @@ export async function bookingOperations(
             : null,
       })),
     nextEventCursor: events.size > 50 ? events.docs[49].id : null,
-    payments: rows(payments),
-    onlinePayments: rows(online).filter((p) => !p.stayQuote),
-    refunds: rows(refunds).filter((p) => !p.stayQuote),
+    paymentRecordsVisible: access.permissions.includes("payment.read"),
+    payments: access.permissions.includes("payment.read") ? rows(payments) : [],
+    onlinePayments: access.permissions.includes("payment.read") ? rows(online).filter((p) => !p.stayQuote) : [],
+    refunds: access.permissions.includes("payment.read") ? rows(refunds).filter((p) => !p.stayQuote) : [],
     units: rows(units),
     features: {
       ...features(),
+      payments: features().payments && access.permissions.includes("payment.collect"),
+      refunds: access.permissions.includes("payment.refund"),
       amendments: features().amendments && b.inventoryEngine === "interval_v1",
     },
     revision: b.reservationRevision ?? 0,
@@ -154,7 +158,7 @@ export async function performOperation(
     const ref = adminDb.collection("bookings").doc(bookingId),
       b = (await tx.get(ref)).data();
     if (!b) throw new ApiException("NOT_FOUND", 404);
-    await authorize(uid, b.propertyId, tx);
+    await operationalAccess(uid, b.propertyId, ({ note: "reservation.note", assign: "reservation.assign", collect: "payment.collect", reverse: "payment.reverse", refund: "payment.refund" } as const)[input.action], tx);
     const eventRef = ref.collection("events").doc(id),
       previous = await tx.get(eventRef);
     if (previous.exists) {
@@ -408,7 +412,7 @@ export async function saveUnit(uid: string, raw: unknown) {
   const input = unitInput.parse(raw);
   const id = input.id ?? randomUUID();
   await adminDb.runTransaction(async (tx) => {
-    await authorize(uid, input.propertyId, tx);
+    await propertyAccess(uid, input.propertyId, "rooms.manage", tx);
     const ref = adminDb.collection("physicalUnits").doc(id),
       old = (await tx.get(ref)).data();
     const room = (

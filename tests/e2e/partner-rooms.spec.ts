@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { buildRoomAmenityOptions } from "../../lib/partner/room-amenities";
 const room = {
   id: "room-one",
   name: "Deluxe",
@@ -411,3 +412,108 @@ for (const width of [390, 768, 1366])
       dialog.getByRole("button", { name: "Save price option", exact: true }),
     ).toBeInViewport();
   });
+
+async function amenitiesFixture(page: Page) {
+  await fixture(page);
+  const state = {
+    rooms: [
+      { ...room, id: "normal", name: "Normal", amenityIds: ["catalog-wifi", "Legacy lamp"] },
+      { ...room, id: "standard", name: "Standard", amenityIds: [] as string[] },
+      { ...room, id: "deluxe", name: "Deluxe", amenityIds: ["bathtub", "balcony", "air_conditioning", "wifi", "tv"] },
+    ],
+    patches: [] as { id: string; body: { amenityIds: string[] } }[],
+    failNext: false,
+    hold: undefined as Promise<void> | undefined,
+  };
+  await page.route("**/api/partner/properties/hotel-one?*", route => route.fulfill({ json: {
+    amenityOptions: buildRoomAmenityOptions([{ id: "catalog-wifi", code: "wifi", name: "Wi-Fi" }]),
+    property: { id: "hotel-one", name: "First Hotel", slug: "first-hotel", timezone: "Asia/Kolkata", inventoryEngine: "interval_v1", status: "active", approvalStatus: "approved", currency: "INR", amenityIds: ["parking"], cancellationPolicyIds: [], coverMediaId: null },
+    roomTypes: state.rooms, ratePlans: state.rooms.map(item => ({ ...rate, id: `rate-${item.id}`, roomTypeId: item.id })), policies: [], media: [], documents: [],
+  } }));
+  await page.route("**/api/partner/properties/hotel-one/room-types/*", async route => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const body = route.request().postDataJSON();
+    state.patches.push({ id, body });
+    if (state.hold) await state.hold;
+    if (state.failNext) { state.failNext = false; return route.fulfill({ status: 422, json: { error: "Save failed. Try again." } }); }
+    const selected = state.rooms.find(item => item.id === id)!;
+    Object.assign(selected, body);
+    await route.fulfill({ json: { ok: true, roomType: selected } });
+  });
+  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03");
+  await expect(page.getByRole("button", { name: "Amenities for Normal", exact: true })).toBeVisible();
+  return state;
+}
+
+for (const width of [390, 768, 1366]) test(`room amenities stay independent and persist at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const state = await amenitiesFixture(page);
+  await page.getByRole("button", { name: "Amenities for Normal", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Normal", exact: true });
+  await expect(dialog).toContainText("Available in every Normal room.");
+  await expect(dialog.getByRole("checkbox", { name: "Wi-Fi", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "Legacy Lamp", exact: true })).toBeChecked();
+  await dialog.getByRole("searchbox", { name: "Search amenities" }).fill("bathtub");
+  await dialog.getByRole("checkbox", { name: "Bathtub", exact: true }).check();
+  await dialog.getByRole("searchbox", { name: "Search amenities" }).fill("no-such-amenity");
+  await expect(dialog).toContainText("No amenities match");
+  await dialog.getByRole("searchbox", { name: "Search amenities" }).clear();
+  await expect(dialog).toContainText("3 selected");
+  await page.screenshot({ path: `/private/tmp/helpkey-room-amenities/ui-${width}.png`, animations: "disabled" });
+  const bounds = await dialog.boundingBox();
+  expect(bounds?.x).toBe(0);
+  expect(bounds?.y).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await dialog.getByRole("button", { name: "Save amenities", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Room amenities saved.");
+  expect(state.patches.at(-1)).toEqual({ id: "normal", body: { amenityIds: ["catalog-wifi", "Legacy lamp", "bathtub"] } });
+  expect(state.rooms.find(item => item.id === "standard")?.amenityIds).toEqual([]);
+  await dialog.getByRole("button", { name: "Close panel" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Amenities for Normal", exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: "Bathtub", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "Legacy Lamp", exact: true })).toBeChecked();
+});
+
+test("copy merges into a draft, failed saves retain it, and saving prevents close", async ({ page }) => {
+  const state = await amenitiesFixture(page);
+  await page.getByRole("button", { name: "Amenities for Normal", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Normal", exact: true });
+  await dialog.getByRole("combobox", { name: "Copy from room type" }).selectOption("deluxe");
+  await expect(dialog).toContainText("6 selected");
+  expect(state.patches).toHaveLength(0);
+  await dialog.getByRole("combobox", { name: "Copy from room type" }).selectOption("deluxe");
+  await expect(dialog).toContainText("6 selected");
+  state.failNext = true;
+  await dialog.getByRole("button", { name: "Save amenities", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Save failed");
+  await expect(dialog.getByRole("checkbox", { name: "Balcony", exact: true })).toBeChecked();
+  let release!: () => void;
+  state.hold = new Promise<void>(resolve => { release = resolve; });
+  await dialog.getByRole("button", { name: "Save amenities", exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: "Balcony", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Close panel" }).click();
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(dialog.getByRole("status").filter({ hasText: "Room amenities saved." })).toBeVisible();
+  expect(state.rooms.find(item => item.id === "normal")?.amenityIds).toEqual(["catalog-wifi", "Legacy lamp", "bathtub", "balcony", "air_conditioning", "tv"]);
+});
+
+test("search is not dirty; clearing requires save and unsaved close can be cancelled", async ({ page }) => {
+  const state = await amenitiesFixture(page);
+  await page.getByRole("button", { name: "Amenities for Normal", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Normal", exact: true });
+  await dialog.getByRole("searchbox", { name: "Search amenities" }).fill("wifi");
+  await dialog.getByRole("button", { name: "Close panel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Amenities for Normal", exact: true }).click();
+  await dialog.getByRole("button", { name: "Clear all", exact: true }).click();
+  page.once("dialog", prompt => prompt.dismiss());
+  await dialog.getByRole("button", { name: "Close panel" }).click();
+  await expect(dialog).toBeVisible();
+  expect(state.rooms[0].amenityIds).toEqual(["catalog-wifi", "Legacy lamp"]);
+  await dialog.getByRole("button", { name: "Save amenities", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Room amenities saved.");
+  await dialog.getByRole("button", { name: "Close panel" }).click();
+  await expect(page.getByText("No amenities configured", { exact: true })).toHaveCount(2);
+});

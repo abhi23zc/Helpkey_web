@@ -1420,3 +1420,16 @@ provider refund amounts.
 - `physicalUnits` gains optional `housekeepingStatus`, note, updater, timestamp and `revision`; missing status means unknown. Cleaning events are under the unit's `events` subcollection. Checkout records dirty status transactionally.
 - Numbered-room maintenance reuses `inventoryBlocks`, adding optional `unitId` and idempotency fingerprint. The same transaction reserves room-type blocked capacity and physical calendar slots identified as `maintenance:<blockId>`. Release removes only that block's slots/capacity.
 - Property `roomEvents` stores bulk edit audit records. New collections are server-only; existing default-deny client rules apply.
+
+## Partner PMS foundation (2026-11-13)
+
+This additive extension implements partner-wide PMS preparation, not a complete front desk or accounting system.
+
+- Membership IDs remain `{propertyId}_{uid}`. Fixed roles are owner, manager, receptionist, cashier, housekeeper and maintenance. Server role presets are authoritative; arbitrary client permission arrays never grant access. `accessRevision` increments on role/access changes. Primary ownership cannot be changed through staff management.
+- `propertyInvitations/{id}` stores propertyId, normalized email, staff role, SHA-256 tokenHash, pending/accepted/cancelled status, expiresAt, acceptedBy and actor/timestamps. Raw tokens are returned only on creation/rotation; links carry tokens in the fragment. Acceptance requires the matching Firebase-verified email and atomically grants membership and the existing partner application role. Expiry is enforced without TTL.
+- `properties/{id}/pmsEvents/{id}` is append-only team/activation/marketplace history, with actorId, type, targetId, before/after and createdAt. Never store invitation secrets in events.
+- `properties.pms` stores version 1, activatedAt/By, ownerDisabled, adminDisabled, adminReason, openingData (`none` or `external`), teamReviewed and actor/timestamps. Ready is derived from saved setup and inventory integrity, never a user-supplied status. External opening reservations/balances block readiness; imports and manual overrides are not implemented.
+- `properties.marketplaceOwnerPaused` is an independent voluntary public-sales pause. It never clears admin pause/suspension/archive/revoked approval. Public bookability remains server-derived. Internal commands may bypass public publication only through an explicit authorized, ready PMS context; prices, time rules, holds and shared capacity remain unchanged.
+- Staff/private DTOs and notifications are permission-filtered. Customer ownership never follows the operator UID on `manual_partner` reservations. Existing genuine customer records retain their behavior.
+- Missing PMS settings preserve existing owner marketplace workflows. Once activated, disabled/incomplete PMS cannot fall back to those workflows. Owners can always access setup/team recovery controls while their account remains eligible; admin restrictions prevent operational commands.
+- Revocation is enforced on each server request and transaction. Visible clients revalidate at most every 15 seconds and clear private state on account/access changes; no promise of instantaneous erasure of information already viewed or downloaded is made.

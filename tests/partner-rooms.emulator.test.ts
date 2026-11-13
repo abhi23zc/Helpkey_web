@@ -19,6 +19,7 @@ describe.skipIf(!safe)("room workspace transactions", () => {
     process.env.PARTNER_ROOMS_CALENDAR = "true";
     process.env.PARTNER_ROOMS_HOUSEKEEPING = "true";
     db = (await import("@/lib/firebase/admin")).adminDb;
+    await db.collection("users").doc(uid).set({ roles: ["partner"], accountStatus: "active", isActive: true });
     service = await import("@/lib/partner/rooms/service");
     bookings = await import("@/lib/bookings");
   }, 30000);
@@ -49,6 +50,7 @@ describe.skipIf(!safe)("room workspace transactions", () => {
       }
       await db.recursiveDelete(db.collection("properties").doc(propertyId));
     }
+    await db.collection("users").doc(uid).delete();
     await db.terminate();
   }, 30000);
   async function fixture() {
@@ -74,7 +76,7 @@ describe.skipIf(!safe)("room workspace transactions", () => {
     await db
       .collection("propertyMemberships")
       .doc(`${propertyId}_${uid}`)
-      .set({ propertyId, status: "active" });
+      .set({ propertyId, userId: uid, role: "owner", status: "active" });
     await db
       .collection("roomTypes")
       .doc(roomTypeId)

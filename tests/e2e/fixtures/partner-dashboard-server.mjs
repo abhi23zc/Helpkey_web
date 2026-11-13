@@ -48,7 +48,7 @@ const bundle = await build({
           namespace: "auth-fixture",
         }));
         b.onLoad({ filter: /.*/, namespace: "auth-fixture" }, () => ({
-          contents: `export const useAuth = () => ({ appUser: { uid: 'guest', fullName: 'Test Guest', email: 'guest@example.com', phoneNumber: '+919876543210', roles: ['customer','partner'] }, loading: false, refreshUser: async () => {} });`,
+          contents: `export const useAuth = () => ({ appUser: { uid: 'owner', fullName: 'Test Owner', email: 'guest@example.com', phoneNumber: '+919876543210', roles: ['customer','partner'] }, loading: false, refreshUser: async () => {} });`,
         }));
       },
     },

@@ -1,4 +1,5 @@
 "use client";
+import { useHotelCapabilities } from "./hotel-capabilities";
 
 import { PartnerDatePicker } from "./partner-date-picker";
 import { eligiblePricing, type DurationPrice } from "@/lib/booking/duration-pricing";
@@ -129,6 +130,7 @@ export function ManualBookingDialog({
   onClose: () => void;
   onCreated: (bookingId?: string) => void;
 }) {
+  const permits = useHotelCapabilities();
   const [createdId, setCreatedId] = useState<string>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const requestKey = useRef("");
@@ -797,6 +799,7 @@ export function ManualBookingDialog({
                         min={1}
                         step={1}
                         placeholder="5000"
+                        disabled={!permits("rates.manage")}
                         value={form.nightlyRateRupees || ""}
                         onChange={(e) => set("nightlyRateRupees", Number(e.target.value))}
                         className={`${INPUT_CLS} pl-8`}
@@ -809,6 +812,8 @@ export function ManualBookingDialog({
                     <label className={FIELD_LABEL_CLS}>Payment Status</label>
                     <select
                       aria-label="Payment status"
+                      disabled={!permits("payment.collect")}
+                      title={!permits("payment.collect") ? "Ask a cashier to record payment after creating the reservation." : undefined}
                       value={form.paymentMethod}
                       onChange={(e) => set("paymentMethod", e.target.value)}
                       className={INPUT_CLS}
@@ -819,7 +824,7 @@ export function ManualBookingDialog({
                   </div>
 
                   {/* Negotiated Price Reason */}
-                  {(negotiated || effectiveRate?.datePricingEnabled) && (
+                  {permits("rates.manage") && (negotiated || effectiveRate?.datePricingEnabled) && (
                     <div className="sm:col-span-2">
                       <label className={FIELD_LABEL_CLS}>
                         Negotiated Price Reason{" "}

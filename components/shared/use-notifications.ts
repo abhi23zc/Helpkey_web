@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/components/auth/auth-provider";
 import { queryKeys } from "@/lib/query/keys";
 import { apiFetch } from "@/lib/api/client";
 
@@ -21,8 +22,9 @@ export type NotificationItem = {
  */
 export function useNotifications(pollMs = 60_000) {
   const client = useQueryClient();
-  const key = queryKeys.notifications(false);
-  const query = useQuery({ queryKey: key, queryFn: ({ signal }) => apiFetch<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications?limit=20", { signal, cache: "no-store" }), refetchInterval: () => typeof document !== "undefined" && document.visibilityState === "visible" ? pollMs : false, refetchOnWindowFocus: true, staleTime: 10_000 });
+  const { appUser } = useAuth();
+  const key = ["private", appUser?.uid, ...queryKeys.notifications(false)];
+  const query = useQuery({ queryKey: key, enabled: !!appUser, queryFn: ({ signal }) => apiFetch<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications?limit=20", { signal, cache: "no-store" }), refetchInterval: () => typeof document !== "undefined" && document.visibilityState === "visible" ? pollMs : false, refetchOnWindowFocus: true, staleTime: 10_000 });
   const items = useMemo(() => query.data?.notifications ?? [], [query.data?.notifications]);
   const unreadCount = query.data?.unreadCount ?? 0;
   const mutation = useMutation({ mutationFn: (ids: string[]) => apiFetch("/api/notifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }), onMutate: async (ids) => { await client.cancelQueries({ queryKey: key }); const previous = client.getQueryData(key); client.setQueryData(key, { notifications: items.map((item) => ids.includes(item.id) ? { ...item, readAt: new Date().toISOString() } : item), unreadCount: Math.max(0, unreadCount - ids.length) }); return { previous }; }, onError: (_error, _ids, context) => client.setQueryData(key, context?.previous), onSettled: () => client.invalidateQueries({ queryKey: key }) });

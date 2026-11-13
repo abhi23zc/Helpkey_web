@@ -1,3 +1,4 @@
+import { operationalAccess } from "@/lib/partner/pms/access";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -17,8 +18,9 @@ export async function manageOffer(uid: string, bookingId: string, raw: unknown, 
   await adminDb.runTransaction(async tx => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(ref)).data();
-    if (!b || (!staff && b.guestId !== uid)) throw new Error("NOT_FOUND");
+    if (!b || (!staff && (b.guestId !== uid || b.source === "manual_partner"))) throw new Error("NOT_FOUND");
     if (staff) {
+      await operationalAccess(uid, b.propertyId, "requests.manage", tx);
       const m = await tx.get(adminDb.collection("propertyMemberships").doc(`${b.propertyId}_${uid}`));
       if (m.get("status") !== "active") throw new Error("FORBIDDEN");
     }
