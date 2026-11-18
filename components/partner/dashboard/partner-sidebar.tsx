@@ -1,36 +1,38 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BedDouble,
+  Briefcase,
   Building2,
   CalendarDays,
+  ClipboardCheck,
   Grid2X2,
   Headphones,
   KeyRound,
-  Mail,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   ShieldCheck,
   Star,
-  Tag,
-  WalletCards,
+  Wallet,
   X,
 } from "lucide-react";
 
 const navItems = [
+  { label: "Today", href: "/partner/today", icon: CalendarDays },
   { label: "Overview", href: "/partner/dashboard", icon: Grid2X2 },
   { label: "Reservations", href: "/partner/reservations", icon: CalendarDays },
-  { label: "Calendar", href: "", icon: CalendarDays },
-  { label: "Stay Customizations", href: "/partner/stay-customizations", icon: Star },
+  {
+    label: "Stay Customizations",
+    href: "/partner/stay-customizations",
+    icon: Star,
+  },
   { label: "Rooms", href: "/partner/rooms", icon: BedDouble },
   { label: "Property Listing", href: "/partner/listing", icon: Building2 },
   { label: "Reviews", href: "/partner/reviews", icon: Star },
-  { label: "Payouts", href: "", icon: WalletCards },
-  { label: "Promotions", href: "", icon: Tag },
-  { label: "Messages", href: "", icon: Mail },
   { label: "Settings", href: "/partner/settings", icon: Settings },
 ] as const;
 
@@ -54,6 +56,15 @@ export function PartnerSidebar({
   const pathname = usePathname();
   const isExpanded = !collapsed;
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
     <>
       {open && (
@@ -75,7 +86,9 @@ export function PartnerSidebar({
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <KeyRound className={`h-7 w-7 shrink-0 text-[#c89b3c] ${!isExpanded ? "lg:hidden" : ""}`} />
+            <KeyRound
+              className={`h-7 w-7 shrink-0 text-[#c89b3c] ${!isExpanded ? "lg:hidden" : ""}`}
+            />
             <div
               className={`transition-opacity duration-300 ${
                 !isExpanded ? "hidden" : "block"
@@ -94,9 +107,7 @@ export function PartnerSidebar({
             onClick={onToggleCollapse}
             className={`hidden shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] lg:block`}
             aria-label={collapsed ? "Pin sidebar open" : "Collapse sidebar"}
-            title={
-              collapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
               <PanelLeftOpen className="h-4 w-4" />
@@ -107,75 +118,125 @@ export function PartnerSidebar({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto text-white/80 lg:hidden"
+            className="ml-auto flex h-10 w-10 items-center justify-center rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors lg:hidden active:scale-95"
+            aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <nav aria-label="Partner navigation" className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4">
-          {[...navItems, { label: "My hotel operations", href: "/partner/operations", icon: ShieldCheck }].filter(item => {
-            if (!permissions) return item.href !== "/partner/operations";
-            const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
-            if (item.href === "/partner/operations") return permissions.some(p => ["housekeeping", "maintenance", "payment.read"].includes(p));
-            return !required[item.href] || permissions.includes(required[item.href]);
-          }).map(({ label, href, icon: Icon }) => {
-            const isActive = href ? pathname === href : false;
-            const baseClass = `group relative flex h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
-              !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"
-            } ${
-              isActive
-                ? "bg-[#c89b3c]/15 text-white font-bold ring-1 ring-inset ring-[#c89b3c]/55"
-                : "text-slate-300 hover:bg-white/10 hover:text-white"
-            }`;
+        <nav
+          aria-label="Partner navigation"
+          className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-3 py-4"
+        >
+          {[
+            ...navItems,
+            {
+              label: "My shift / Shift history",
+              href: "/partner/cashier-shifts",
+              icon: Wallet,
+            },
+            {
+              label: "Daily closing",
+              href: "/partner/daily-closing",
+              icon: ClipboardCheck,
+            },
+            {
+              label: "My hotel operations",
+              href: "/partner/operations",
+              icon: Briefcase,
+            },
+          ]
+            .filter((item) => {
+              if (!permissions) return item.href !== "/partner/operations";
+              const required: Record<string, string> = {
+                "/partner/cashier-shifts": "shift.operate",
+                "/partner/daily-closing": "closing.manage",
+                "/partner/today": "reservation.read",
+                "/partner/dashboard": "reports.read",
+                "/partner/reservations": "reservation.read",
+                "/partner/rooms": "rooms.manage",
+                "/partner/listing": "listing.manage",
+                "/partner/reviews": "reviews.manage",
+                "/partner/stay-customizations": "listing.manage",
+              };
+              if (item.href === "/partner/operations")
+                return permissions.some((p) =>
+                  ["housekeeping", "maintenance", "payment.read"].includes(p),
+                );
+              return (
+                !required[item.href] ||
+                permissions.includes(required[item.href])
+              );
+            })
+            .map(({ label, href, icon: Icon }) => {
+              const isActive = href
+                ? pathname === href || pathname.startsWith(`${href}/`)
+                : false;
+              const baseClass = `group relative flex h-10 w-full items-center rounded-xl text-left text-xs font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] ${
+                !isExpanded ? "justify-center px-0" : "gap-3 px-3.5"
+              } ${
+                isActive
+                  ? "bg-[#c89b3c]/15 text-white font-bold ring-1 ring-inset ring-[#c89b3c]/55"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`;
 
-            const content = (
-              <>
-                <Icon
-                  className={`h-5 w-5 shrink-0 transition-colors ${
-                    isActive ? "text-[#c89b3c]" : "text-slate-400 group-hover:text-white"
-                  }`}
-                />
-                <span
-                  className={`truncate transition-opacity duration-200 ${
-                    !isExpanded ? "hidden" : "block"
-                  }`}
-                >
-                  {label}
-                </span>
-                {!href && isExpanded && (
-                  <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase text-white/55">
-                    Soon
+              const content = (
+                <>
+                  <Icon
+                    className={`h-5 w-5 shrink-0 transition-colors ${
+                      isActive
+                        ? "text-[#c89b3c]"
+                        : "text-slate-400 group-hover:text-white"
+                    }`}
+                  />
+                  <span
+                    className={`truncate transition-opacity duration-200 ${
+                      !isExpanded ? "hidden" : "block"
+                    }`}
+                  >
+                    {label}
                   </span>
-                )}
-              </>
-            );
+                  {!isExpanded && (
+                    <span className="pointer-events-none fixed left-[72px] z-50 hidden rounded-lg bg-[#0c1f38] px-2.5 py-1 text-xs font-semibold text-white shadow-xl border border-white/10 group-hover:block whitespace-nowrap animate-in fade-in-50 zoom-in-95 duration-150">
+                      {label}
+                    </span>
+                  )}
+                  {!href && isExpanded && (
+                    <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase text-white/55">
+                      Soon
+                    </span>
+                  )}
+                </>
+              );
 
-            return href ? (
-              <Link
-                key={label}
-                href={`${href}?${new URLSearchParams({ ...(propertyId ? { propertyId } : {}), ...(date ? { date } : {}) })}`}
-                onClick={onClose}
-                className={baseClass}
-                title={!isExpanded ? label : undefined}
-              >
-                {content}
-              </Link>
-            ) : (
-              <button
-                key={label}
-                type="button"
-                disabled
-                className={`${baseClass} cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-400`}
-                title={!isExpanded ? `${label} — coming soon` : undefined}
-              >
-                {content}
-              </button>
-            );
-          })}
+              return href ? (
+                <Link
+                  key={label}
+                  href={`${href}?${new URLSearchParams({ ...(propertyId ? { propertyId } : {}), ...(date ? { date } : {}) })}`}
+                  onClick={onClose}
+                  className={baseClass}
+                  title={!isExpanded ? label : undefined}
+                >
+                  {content}
+                </Link>
+              ) : (
+                <button
+                  key={label}
+                  type="button"
+                  disabled
+                  className={`${baseClass} cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-400`}
+                  title={!isExpanded ? `${label} — coming soon` : undefined}
+                >
+                  {content}
+                </button>
+              );
+            })}
         </nav>
 
-        <div className={`mt-auto p-3 transition-opacity duration-300 ${!isExpanded ? "hidden" : "block"}`}>
+        <div
+          className={`mt-auto p-3 transition-opacity duration-300 ${!isExpanded ? "hidden" : "block"}`}
+        >
           <Link
             href="/help"
             className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-xs font-semibold text-slate-300 transition-all hover:bg-white/10 hover:text-white"
@@ -185,7 +246,9 @@ export function PartnerSidebar({
           </Link>
         </div>
 
-        <div className={`mt-auto flex justify-center border-t border-white/10 px-3 py-3 ${isExpanded ? "hidden" : "block"}`}>
+        <div
+          className={`mt-auto flex justify-center border-t border-white/10 px-3 py-3 ${isExpanded ? "hidden" : "block"}`}
+        >
           <Link
             href="/help"
             className="grid h-9 w-9 place-items-center rounded-xl text-[#c89b3c] hover:bg-white/10 transition-all"

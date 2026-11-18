@@ -1,3 +1,4 @@
+import { holdAllocationGroups } from "../lib/booking/assignment-segments";
 /** Read-only drift audit. Never repairs counters without understanding their source. */
 import { db } from "../workers/media/firebase";
 import type { Allocation } from "../lib/booking/domain";
@@ -11,7 +12,7 @@ async function run() {
     const add = (roomTypeId: string, allocations: Allocation[], quantity: number, field: string) => {
       for (const allocation of allocations) for (const interval of allocation.intervals) { const key = `${propertyId}_${roomTypeId}_${allocation.date}/${field}/${interval}`; expected.set(key, (expected.get(key) ?? 0) + quantity); }
     };
-    for (const hold of holds.docs) { const data = hold.data(); if (["held", "committed"].includes(data.status)) add(data.roomTypeId, data.allocations, data.quantity, "reserved"); }
+    for (const hold of holds.docs) { const data = hold.data(); if (["held", "committed"].includes(data.status)) for (const g of holdAllocationGroups(data)) add(g.roomTypeId, g.allocations, data.quantity, "reserved"); }
     for (const block of blocks.docs) { const data = block.data(); if (data.status === "active") add(data.roomTypeId, data.allocations, data.quantity, "blocked"); }
     const drift: { key: string; expected: number; actual: number }[] = [];
     for (const doc of calendars.docs) for (const field of ["reserved", "blocked"]) for (const [interval, raw] of Object.entries(doc.data()[field] ?? {})) {

@@ -375,15 +375,20 @@ export function RequestAgreementControls({
                     <div className="space-y-3 rounded-xl border border-[#c89b3c]/30 bg-white p-3.5 shadow-2xs">
                       <label className="block text-xs font-semibold text-[#061224]">
                         Final price ({currency})
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          placeholder="e.g. 500"
-                          className="mt-1 min-h-10 w-full rounded-lg border border-[#ede7dc] p-2 text-xs focus:border-[#c89b3c] focus:outline-none"
-                        />
+                        <div className="relative mt-1">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            placeholder="e.g. 500"
+                            className="min-h-10 w-full rounded-lg border border-[#ede7dc] p-2 pl-7 text-xs focus:border-[#c89b3c] focus:outline-none"
+                          />
+                        </div>
                       </label>
                       <label className="block text-xs font-semibold text-[#061224]">
                         Exact scope

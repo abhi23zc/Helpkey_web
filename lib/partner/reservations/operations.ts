@@ -1,3 +1,6 @@
+import { prepareCash } from "@/lib/partner/closing/shifts";
+import { assignmentRestriction, collectionRestriction } from "./action-rules";
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
@@ -75,6 +78,28 @@ export async function bookingOperations(
           stayQuote?: boolean;
         } & RecordData,
     );
+  const actorIds = [
+    ...new Set(
+      events.docs
+        .slice(0, 50)
+        .map((d) => d.get("actorId"))
+        .filter(
+          (id): id is string =>
+            typeof id === "string" &&
+            !!id &&
+            !id.includes("/") &&
+            !id.startsWith("system"),
+        ),
+    ),
+  ];
+  const actors = actorIds.length
+    ? await adminDb.getAll(
+        ...actorIds.map((id) => adminDb.collection("users").doc(id)),
+      )
+    : [];
+  const actorNames = new Map(
+    actors.map((d) => [d.id, d.get("fullName") || "Former user"]),
+  );
   return {
     events: rows(events)
       .slice(0, 50)
@@ -86,8 +111,14 @@ export async function bookingOperations(
         text: event.text ?? null,
         reason: event.reason ?? null,
         actorId: event.actorId ?? null,
+        actorName:
+          actorNames.get(event.actorId) ||
+          (String(event.actorId || "").startsWith("system")
+            ? "System"
+            : "Former user"),
         createdAt: event.createdAt ?? null,
         label: event.label ?? null,
+        stayChange: event.stayChangeId ? { id: event.stayChangeId, before: event.before, after: event.after, reason: event.reason, effectiveAt: event.effectiveAt, ...(access.permissions.includes("payment.read") ? { adjustmentPaise: event.adjustmentPaise ?? null } : {}) } : null,
         amountPaise:
           event.amountPaise ?? event.agreed?.quote?.amountPaise ?? null,
         response: event.response ?? event.agreed?.response ?? null,
@@ -106,12 +137,17 @@ export async function bookingOperations(
     nextEventCursor: events.size > 50 ? events.docs[49].id : null,
     paymentRecordsVisible: access.permissions.includes("payment.read"),
     payments: access.permissions.includes("payment.read") ? rows(payments) : [],
-    onlinePayments: access.permissions.includes("payment.read") ? rows(online).filter((p) => !p.stayQuote) : [],
-    refunds: access.permissions.includes("payment.read") ? rows(refunds).filter((p) => !p.stayQuote) : [],
+    onlinePayments: access.permissions.includes("payment.read")
+      ? rows(online).filter((p) => !p.stayQuote)
+      : [],
+    refunds: access.permissions.includes("payment.read")
+      ? rows(refunds).filter((p) => !p.stayQuote)
+      : [],
     units: rows(units),
     features: {
       ...features(),
-      payments: features().payments && access.permissions.includes("payment.collect"),
+      payments:
+        features().payments && access.permissions.includes("payment.collect"),
       refunds: access.permissions.includes("payment.refund"),
       amendments: features().amendments && b.inventoryEngine === "interval_v1",
     },
@@ -127,7 +163,7 @@ export async function bookingOperations(
           ? 0
           : Math.max(
               0,
-              (b.totalPaise ?? 0) - (b.customizationCreditPaise ?? 0),
+              (b.totalPaise ?? 0) - (b.customizationCreditPaise ?? 0) + (b.billingNetPaise ?? 0),
             )),
     ),
   };
@@ -154,11 +190,25 @@ export async function performOperation(
   const fingerprint = createHash("sha256")
     .update(JSON.stringify(input))
     .digest("hex");
-  return adminDb.runTransaction(async (tx) => {
+  return todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId),
       b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b) throw new ApiException("NOT_FOUND", 404);
-    await operationalAccess(uid, b.propertyId, ({ note: "reservation.note", assign: "reservation.assign", collect: "payment.collect", reverse: "payment.reverse", refund: "payment.refund" } as const)[input.action], tx);
+    await operationalAccess(
+      uid,
+      b.propertyId,
+      (
+        {
+          note: "reservation.note",
+          assign: "reservation.assign",
+          collect: "payment.collect",
+          reverse: "payment.reverse",
+          refund: "payment.refund",
+        } as const
+      )[input.action],
+      tx,
+    );
     const eventRef = ref.collection("events").doc(id),
       previous = await tx.get(eventRef);
     if (previous.exists) {
@@ -185,8 +235,8 @@ export async function performOperation(
           409,
           "Reservation changed. Refresh and try again.",
         );
-      if (!["confirmed", "checked_in"].includes(b.bookingStatus) || !b.startAt)
-        throw new ApiException("ASSIGNMENT_NOT_ALLOWED", 409);
+      const restriction = assignmentRestriction(b);
+      if (restriction) throw new ApiException(restriction.code, restriction.status, restriction.message);
       const write = await assignPhysical(tx, bookingId, b, input.unitId);
       Object.assign(patch, write());
       tx.create(eventRef, {
@@ -205,17 +255,10 @@ export async function performOperation(
         (d) => ({ ...d.data(), id: d.id }) as RecordData,
       );
       if (input.action === "collect") {
-        if (
-          !["confirmed", "checked_in", "checked_out", "completed"].includes(
-            b.bookingStatus,
-          ) ||
-          (b.refundDuePaise ?? 0) > 0
-        )
-          throw new ApiException(
-            "COLLECTION_NOT_ALLOWED",
-            409,
-            "Resolve pending refunds before collecting more money.",
-          );
+        const restriction = collectionRestriction(b);
+        if (restriction) throw new ApiException(restriction.code, restriction.status, restriction.message);
+        const { readBillingSources, requireReconciled } = await import("@/lib/partner/billing/service");
+        requireReconciled(b, await readBillingSources(tx, bookingId));
         if (input.amountPaise > netBalance(b))
           throw new ApiException(
             "OVERPAYMENT",
@@ -228,7 +271,10 @@ export async function performOperation(
             422,
             "Enter the UPI or terminal reference.",
           );
+        const cash = input.method === "cash" ? await prepareCash(tx, b.propertyId, uid, "collection", input.amountPaise) : null;
+        cash?.apply();
         tx.create(adminDb.collection("propertyPayments").doc(id), {
+          ...cash?.fields,
           type: "collection",
           amountPaise: input.amountPaise,
           method: input.method,
@@ -302,10 +348,13 @@ export async function performOperation(
               422,
               "Only an unused property collection can be reversed.",
             );
+          const cash = receipt.method === "cash" ? await prepareCash(tx, b.propertyId, uid, "reversal", receipt.amountPaise, receipt.shiftId) : null;
+          cash?.apply();
           patch.paidPaise = (b.paidPaise ?? 0) - receipt.amountPaise;
           patch.propertyLedgerPaise =
             (b.propertyLedgerPaise ?? 0) - receipt.amountPaise;
           tx.create(adminDb.collection("propertyPayments").doc(id), {
+            ...cash?.fields,
             type: "reversal",
             propertyId: b.propertyId,
             bookingId,
@@ -338,7 +387,10 @@ export async function performOperation(
                 422,
                 "Enter confirmation of the money returned to the guest.",
               );
+            const cash = receipt.method === "cash" ? await prepareCash(tx, b.propertyId, uid, "refund", input.amountPaise) : null;
+            cash?.apply();
             tx.create(adminDb.collection("propertyPayments").doc(id), {
+              ...cash?.fields,
               type: "refund",
               propertyId: b.propertyId,
               bookingId,
@@ -411,7 +463,8 @@ export async function saveUnit(uid: string, raw: unknown) {
   requireFeature("allocation");
   const input = unitInput.parse(raw);
   const id = input.id ?? randomUUID();
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(input.propertyId);
     await propertyAccess(uid, input.propertyId, "rooms.manage", tx);
     const ref = adminDb.collection("physicalUnits").doc(id),
       old = (await tx.get(ref)).data();
@@ -460,10 +513,26 @@ export async function saveUnit(uid: string, raw: unknown) {
       )
     )
       throw new ApiException("DUPLICATE_ROOM_LABEL", 409);
-    if (input.status === "active" && (!old || old.status !== "active") && units.docs.filter(d => d.id !== id && d.get("roomTypeId") === input.roomTypeId && d.get("status") === "active").length >= room.totalInventory) throw new ApiException("ROOM_REGISTER_EXCEEDS_CAPACITY", 409);
+    if (
+      input.status === "active" &&
+      (!old || old.status !== "active") &&
+      units.docs.filter(
+        (d) =>
+          d.id !== id &&
+          d.get("roomTypeId") === input.roomTypeId &&
+          d.get("status") === "active",
+      ).length >= room.totalInventory
+    )
+      throw new ApiException("ROOM_REGISTER_EXCEEDS_CAPACITY", 409);
     if (input.status === "inactive") {
-      const blocks = await tx.get(adminDb.collection("inventoryBlocks").where("propertyId", "==", input.propertyId).where("unitId", "==", id));
-      if (blocks.docs.some(d => d.get("status") === "active")) throw new ApiException("RELEASE_MAINTENANCE_FIRST", 409);
+      const blocks = await tx.get(
+        adminDb
+          .collection("inventoryBlocks")
+          .where("propertyId", "==", input.propertyId)
+          .where("unitId", "==", id),
+      );
+      if (blocks.docs.some((d) => d.get("status") === "active"))
+        throw new ApiException("RELEASE_MAINTENANCE_FIRST", 409);
       const bookings = await tx.get(
         adminDb
           .collection("bookings")
@@ -491,6 +560,33 @@ export async function saveUnit(uid: string, raw: unknown) {
         ? { createdBy: uid, createdAt: FieldValue.serverTimestamp() }
         : {}),
     });
+    tx.create(
+      adminDb
+        .collection("properties")
+        .doc(input.propertyId)
+        .collection("pmsEvents")
+        .doc(),
+      {
+        actorId: uid,
+        type: !old
+          ? "room_number_added"
+          : old.status !== input.status
+            ? input.status === "active"
+              ? "room_number_activated"
+              : "room_number_deactivated"
+            : "room_number_updated",
+        targetId: id,
+        before: old
+          ? { label: old.label, status: old.status, roomTypeId: old.roomTypeId }
+          : null,
+        after: {
+          label: input.label,
+          status: input.status,
+          roomTypeId: input.roomTypeId,
+        },
+        createdAt: FieldValue.serverTimestamp(),
+      },
+    );
   });
   return { id };
 }

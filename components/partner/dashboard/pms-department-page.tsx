@@ -1,4 +1,5 @@
 "use client";
+import { ReservationFolio } from "./reservation-folio";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
@@ -183,6 +184,7 @@ function DepartmentView({ propertyId }: { propertyId: string }) {
                 Room {b.room} · {b.status.replaceAll("_", " ")} · Balance{" "}
                 {rupees(b.balancePaise)}
               </p>
+              <CashierFolio bookingId={b.id} propertyId={propertyId} onChanged={() => { void query.refetch(); }} />
               <form
                 className="mt-4 grid gap-3 sm:grid-cols-4"
                 onSubmit={(e) => {
@@ -522,4 +524,9 @@ export function PmsDepartmentPage() {
       }
     </PartnerShell>
   );
+}
+
+function CashierFolio({ bookingId, propertyId, onChanged }: { bookingId: string; propertyId: string; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  return <details className="mt-4" onToggle={event => setOpen(event.currentTarget.open)}><summary className="min-h-11 cursor-pointer">Folio / Billing</summary>{open && <ReservationFolio bookingId={bookingId} propertyId={propertyId} onChanged={onChanged} />}</details>;
 }

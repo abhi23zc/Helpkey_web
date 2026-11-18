@@ -567,6 +567,7 @@ describe.skipIf(!safe)("partner reservations transactions", () => {
       razorpayPaymentId: "provider-mixed",
       paymentStatus: "partially_paid",
     });
+    await db.collection("paymentAttempts").doc("provider-mixed").set({ propertyId: f.propertyId, bookingId: b.id, amountPaise: 4000, status: "captured" });
     await ops.performOperation(
       uid,
       b.id,

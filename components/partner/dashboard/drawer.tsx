@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 /**
@@ -37,6 +38,13 @@ export function Drawer({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  // Render only after hydration so the portal never touches the server DOM.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
   const dialog = useRef<HTMLDivElement>(null);
   const closeHandler = useRef(onClose);
   useEffect(() => {
@@ -48,7 +56,7 @@ export function Drawer({
     const frame = requestAnimationFrame(() =>
       dialog.current
         ?.querySelector<HTMLElement>("button, a[href], input, [tabindex='0']")
-        ?.focus(),
+        ?.focus({ preventScroll: true }),
     );
     const onKey = (event: KeyboardEvent) => {
       // Native confirmation dialogs own keyboard navigation while open.
@@ -86,21 +94,23 @@ export function Drawer({
     return () => {
       document.removeEventListener("keydown", onKey);
       cancelAnimationFrame(frame);
-      previousFocus?.focus();
+      previousFocus?.focus({ preventScroll: true });
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted || typeof document === "undefined") return null;
 
   const panelClass =
-    "relative flex h-[100dvh] min-w-0 w-full max-w-full flex-col bg-[#fbfbf9] shadow-2xl hk-drawer-panel " +
-    (spacious ? "sm:w-[760px] md:w-[840px] lg:w-[900px] xl:w-[960px] " : "sm:w-[580px] ") +
-    "sm:max-w-[96vw] sm:border-l sm:border-[#ede7dc]";
+    "relative flex h-full max-h-screen min-w-0 w-full flex-col bg-[#fbfbf9] shadow-2xl hk-drawer-panel " +
+    (spacious
+      ? "sm:w-[88vw] md:w-[80vw] lg:w-[760px] xl:w-[860px] 2xl:w-[940px] max-w-full "
+      : "sm:w-[540px] md:w-[580px] max-w-full ") +
+    "sm:border-l sm:border-[#ede7dc]";
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex justify-end overflow-hidden"
+      className="fixed inset-0 z-[100] flex justify-end overflow-hidden"
       ref={dialog}
       role="dialog"
       aria-modal="true"
@@ -121,14 +131,14 @@ export function Drawer({
       )}
 
       <div className={panelClass}>
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#ede7dc] bg-white px-4 py-4 sm:px-6">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#ede7dc] bg-white px-4 py-3.5 sm:px-6 sm:py-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-base font-bold tracking-tight text-[#061224]">{title}</h2>
               {badge}
             </div>
             {description && (
-              <p className="mt-0.5 break-words text-xs font-semibold text-[#8b96aa]">
+              <p className="mt-0.5 break-words text-xs font-medium text-slate-500">
                 {description}
               </p>
             )}
@@ -138,7 +148,7 @@ export function Drawer({
             <button
               type="button"
               onClick={onClose}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[#8b96aa] hover:bg-[#f0ece6] hover:text-[#061224] transition-colors"
+              className="flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-[#061224] active:scale-95 transition-all"
               aria-label="Close panel"
             >
               <X className="h-4 w-4" />
@@ -153,11 +163,12 @@ export function Drawer({
         </div>
 
         {footer && (
-          <footer className="max-h-[40dvh] shrink-0 overflow-y-auto border-t border-[#ede7dc] bg-white px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
+          <footer className="max-h-[40dvh] shrink-0 overflow-y-auto border-t border-[#ede7dc] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
             {footer}
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

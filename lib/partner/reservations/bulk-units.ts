@@ -5,6 +5,7 @@ import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
 import { ApiException } from "@/lib/api/errors";
 import { propertyAccess } from "@/lib/partner/pms/access";
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { requireFeature } from "./operations";
 import {
   bulkUnitSource,
@@ -61,7 +62,8 @@ export async function bulkUnits(uid: string, raw: unknown) {
   const previewRef = adminDb
     .collection("physicalUnitBulkOperations")
     .doc(previewId);
-  return adminDb.runTransaction(async (tx) => {
+  return todayTransaction(async (tx, markTodayChanged) => {
+    if (input.action === "create") markTodayChanged(input.propertyId);
     const access = await propertyAccess(
       uid,
       input.propertyId,

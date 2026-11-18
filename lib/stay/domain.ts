@@ -243,11 +243,12 @@ export function stayFinancials(data: {
   refundedPaise?: number;
   refundDuePaise?: number;
   customizationCreditPaise?: number;
+  billingNetPaise?: number;
   bookingStatus?: string;
 }) {
   const effectiveTotalPaise = Math.max(
     0,
-    (data.totalPaise ?? 0) - (data.customizationCreditPaise ?? 0),
+    (data.totalPaise ?? 0) - (data.customizationCreditPaise ?? 0) + (data.billingNetPaise ?? 0),
   );
   const netPaidPaise = Math.max(
     0,
@@ -294,6 +295,7 @@ export function remainingCancellationRefund(
     refundedPaise?: number;
     refundDuePaise?: number;
     customizationCreditPaise?: number;
+  billingNetPaise?: number;
     totalPaise?: number;
     startAt?: string;
     checkIn: string;

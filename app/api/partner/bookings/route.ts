@@ -23,8 +23,10 @@ export const POST = reservationHandler(
       raw,
       request.headers.get("idempotency-key") ?? JSON.stringify(raw),
     );
+    const { adminDb } = await import("@/lib/firebase/admin");
+    const saved = (await adminDb.collection("bookings").doc(result.id).get()).data()!;
     return Response.json(
-      { bookingId: result.id, confirmationCode: result.confirmationCode },
+      { bookingId: result.id, confirmationCode: result.confirmationCode, totalPaise: saved.totalPaise, collectedPaise: saved.paidPaise, balanceDuePaise: saved.balanceDuePaise, physicalUnitLabel: saved.physicalUnitLabel || null },
       { status: 201 },
     );
   },

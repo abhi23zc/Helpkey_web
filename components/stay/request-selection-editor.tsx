@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { type Offering, type StayRequest, type Selection } from "@/lib/stay/contracts";
@@ -32,7 +33,31 @@ export function RequestSelectionEditor({ request: r, requests, actor, timezone }
     {!open ? <button className={button} onClick={() => { setRevision(actor.revision); setOpen(true); }}>Change request</button> : <>
       {q.isPending && <p className="text-xs">Checking available options…</p>}
       {q.isError && <p className="text-xs">Availability could not load. Existing details can still be reduced or removed. <button className="underline" onClick={() => void q.refetch()}>Retry</button></p>}
-      {!!offering.variants.length && <label className="block text-sm">Selected option<select value={variantId ?? ""} disabled={busy || !current} onChange={e => setVariant(e.target.value || null)} className="mt-1 min-h-11 w-full rounded-lg border p-2">{!offering.variants.some(v => v.id === r.variantId) && <option value={r.variantId ?? ""}>{r.variantName ?? "Saved option"}</option>}{offering.variants.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>}
+      {!!offering.variants.length && (
+        <label className="block text-sm">
+          Selected option
+          <div className="relative">
+            <select
+              value={variantId ?? ""}
+              disabled={busy || !current}
+              onChange={(e) => setVariant(e.target.value || null)}
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white p-2 pr-10 text-sm appearance-none outline-none focus:border-[#b58a32] focus:ring-2 focus:ring-[#b58a32]/15"
+            >
+              {!offering.variants.some((v) => v.id === r.variantId) && (
+                <option value={r.variantId ?? ""}>
+                  {r.variantName ?? "Saved option"}
+                </option>
+              )}
+              {offering.variants.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          </div>
+        </label>
+      )}
       <ResponseControls offering={offering} optionName={offering.variants.find(v => v.id === variantId)?.name ?? r.variantName ?? r.name} quantity={quantity} count={count} disabled={busy} blockIncrease={!current} onChange={setQuantity} />
       {quantity > 0 && <GuestInputFields offering={offering} value={inputs} onChange={setInputs} disabled={busy} timezone={timezone} />}
       {conflict && <p role="alert" className="text-sm text-amber-800">This booking changed. Your edits have been kept. <button className="underline" onClick={() => setRevision(actor.revision)}>I’ve reviewed the current requests; retry my edits</button></p>}

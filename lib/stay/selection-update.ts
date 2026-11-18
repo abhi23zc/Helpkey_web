@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 import { z } from "zod";
@@ -14,8 +15,9 @@ import { propertyAllowsPets } from "./recommendations";
 const patch = z.object({ revision: z.number().int().nonnegative(), requestId: z.string().min(1).max(1800), selection: selectionSchema.nullable() }).strict();
 export async function patchRequestSelection(uid: string, bookingId: string, raw: unknown) {
   const input = patch.parse(raw), ref = adminDb.collection("bookings").doc(bookingId);
-  await adminDb.runTransaction(async tx => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);

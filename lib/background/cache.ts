@@ -3,7 +3,7 @@ export function publicCachePrefix() { return `helpkey:${process.env.HELPKEY_ENV 
 export function generationKeys(parts: Array<string | number>) {
   const prefix = `${publicCachePrefix()}:generation`;
   const family = String(parts[0]);
-  return [`${prefix}:all`, `${prefix}:${family}`, ...(parts.length > 1 && ["property", "reviews", "bookable"].includes(family) ? [`${prefix}:${family}:${parts[1]}`] : [])];
+  return [`${prefix}:all`, `${prefix}:${family}`, ...(parts.length > 1 && ["property", "reviews", "bookable", "partner-today"].includes(family) ? [`${prefix}:${family}:${parts[1]}`] : [])];
 }
 export function invalidationKeys(patterns: string[]) {
   const prefix = `${publicCachePrefix()}:generation`;

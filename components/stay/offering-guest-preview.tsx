@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
 import type { Offering, OfferingInput, Selection } from "@/lib/stay/contracts";
 import { billableUnits, variantPrice } from "@/lib/stay/pricing";
@@ -6,6 +7,7 @@ import { replaceSelection, resolveResponse, requiredResponseError } from "@/lib/
 import { formatMoney } from "@/lib/customer/offer";
 import { GuestInputFields } from "./guest-input-fields";
 import { ResponseControls } from "./response-controls";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 
 export function OfferingGuestPreview({ value, currency }: { value: OfferingInput; currency: string }) {
   const [selections, setSelections] = useState<Selection[]>([]);
@@ -43,16 +45,30 @@ export function OfferingGuestPreview({ value, currency }: { value: OfferingInput
                 }}
               />
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-100">
-                <div className="min-w-0">
-                  <span className="text-xs font-bold text-slate-900 block truncate">
-                    {option.name || "Default Option"}
-                  </span>
-                  <span className="text-xs font-medium text-amber-800">
-                    {value.formType === "custom"
-                      ? "Price upon hotel review"
-                      : formatMoney(variantPrice(offering, option.id), currency)}
-                    {value.unitPricePaise > 0 && offering.pricingUnit ? ` / ${offering.pricingUnit}` : ""}
-                  </span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                    <img
+                      src={getOfferingImageUrl(offering)}
+                      alt={option.name || offering.name}
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.src =
+                          "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80";
+                      }}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-slate-900 block truncate">
+                      {option.name || "Default Option"}
+                    </span>
+                    <span className="text-xs font-medium text-amber-800">
+                      {value.formType === "custom"
+                        ? "Price upon hotel review"
+                        : formatMoney(variantPrice(offering, option.id), currency)}
+                      {value.unitPricePaise > 0 && offering.pricingUnit ? ` / ${offering.pricingUnit}` : ""}
+                    </span>
+                  </div>
                 </div>
                 <ResponseControls
                   offering={offering}

@@ -7,6 +7,9 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { HotelCapabilitiesProvider } from "./hotel-capabilities";
 import { useAuth } from "@/components/auth/auth-provider";
 import { WorkspaceAccessNotice } from "./workspace-access-notice";
+import { ShellReservationWorkspace } from "./shell-reservation-workspace";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateOperationalQueries } from "@/lib/partner/operational-queries";
 import { ReservationSearch } from "./reservation-search";
 import { PropertyImage } from "./property-image";
 import { PartnerSidebar } from "./partner-sidebar";
@@ -160,10 +163,14 @@ export function PartnerShell({
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const syncSidebar = () => setSidebarCollapsed(window.innerWidth < 1100);
-    syncSidebar();
-    window.addEventListener("resize", syncSidebar);
-    return () => window.removeEventListener("resize", syncSidebar);
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(true);
+      }
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
@@ -199,10 +206,17 @@ export function PartnerShell({
     }
   };
 
+  const operationalClient = useQueryClient();
+  useEffect(() => {
+    const refresh = () => { if (data.selectedPropertyId) void invalidateOperationalQueries(operationalClient, data.selectedPropertyId); };
+    window.addEventListener("operational-data-changed", refresh);
+    window.addEventListener("stay-request-updated", refresh);
+    return () => { window.removeEventListener("operational-data-changed", refresh); window.removeEventListener("stay-request-updated", refresh); };
+  }, [operationalClient, data.selectedPropertyId]);
   const selected = data.selectedProperty;
-  const required: Record<string, string> = { "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
+  const required: Record<string, string> = { "/partner/cashier-shifts": "shift.operate", "/partner/daily-closing": "closing.manage", "/partner/today": "reservation.read", "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
   const denied = selected?.permissions && required[pathname] && !selected.permissions.includes(required[pathname]);
-  const blockedReason = ["/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname) ? selected?.operationsReason || null : null;
+  const blockedReason = ["/partner/today", "/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname) ? selected?.operationsReason || null : null;
   // Content cannot report its loading state when an access/setup/error gate
   // prevents it from mounting. Never let that stale state cover the gate.
   const showLoading = data.loading || (!!selected && !data.error && !denied && !blockedReason && contentLoading);
@@ -227,7 +241,7 @@ export function PartnerShell({
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="rounded-xl border border-slate-200 bg-white p-2 text-[#061224]"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#061224] shadow-2xs hover:bg-slate-50 active:scale-95 transition-all"
               aria-label="Open partner menu"
             >
               <Menu className="h-5 w-5" />
@@ -264,7 +278,7 @@ export function PartnerShell({
                 ) : (
                   <div className="grid h-11 w-11 place-items-center rounded-full bg-[#061224] text-xs font-bold text-white shadow-xs ring-2 ring-[#c89b3c]/30">{initials}</div>
                 )}
-                <div className="hidden text-left sm:block"><p className="text-sm font-bold leading-tight text-[#061224]">{displayName}</p><p className="text-[11px] font-semibold text-slate-500">{selected?.role || "Owner"}</p></div>
+                <div className="hidden text-left sm:block"><p className="text-sm font-bold leading-tight text-[#061224]">{displayName}</p><p className="text-[11px] font-semibold capitalize text-slate-500">{selected?.role || "Owner"}</p></div>
                 <ChevronDown className={`hidden h-4 w-4 text-slate-400 transition-transform sm:block ${accountMenuOpen ? "rotate-180" : ""}`} />
               </button>
 
@@ -292,7 +306,7 @@ export function PartnerShell({
           </div>
         )}
 
-        {data.loading ? null : data.error ? <button type="button" className="underline" onClick={() => void data.reload()}>Retry loading hotels</button> : (denied || blockedReason) && selected ? <WorkspaceAccessNotice property={selected} reason={blockedReason} /> : <div key={`${data.user?.uid}:${selected?.id}:${selected?.role}:${selected?.accessRevision}`}><HotelCapabilitiesProvider value={selected?.permissions ?? null}>{children(data)}</HotelCapabilitiesProvider></div>}
+        {data.loading ? null : data.error ? <button type="button" className="underline" onClick={() => void data.reload()}>Retry loading hotels</button> : (denied || blockedReason) && selected ? <WorkspaceAccessNotice property={selected} reason={blockedReason} /> : <div key={`${data.user?.uid}:${selected?.id}:${selected?.role}:${selected?.accessRevision}`}><HotelCapabilitiesProvider value={selected?.permissions ?? null}>{children(data)}{selected?.permissions?.includes("reservation.read") && <ShellReservationWorkspace propertyId={selected.id} />}</HotelCapabilitiesProvider></div>}
       </section>
     </main>
     </>

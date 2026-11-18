@@ -14,6 +14,7 @@ export function features() {
     process.env[key] === "true" ||
     (process.env.NODE_ENV !== "production" && process.env[key] !== "false");
   return {
+    stayChanges: true,
     allocation: enabled("PARTNER_RESERVATIONS_ALLOCATION"),
     payments: enabled("PARTNER_RESERVATIONS_PAYMENTS"),
     amendments: enabled("PARTNER_RESERVATIONS_AMENDMENTS"),

@@ -328,7 +328,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
   const status = statusDetails(booking);
   const timing = getStayTiming(booking);
   const supplemental = supplementalFinancials(booking.customizations,booking.stayPaymentReceipts);
-  const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - booking.paidPaise);
+  const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - (booking.customizationCreditPaise ?? 0) + (booking.billingNetPaise ?? 0) - booking.paidPaise);
   const isPaidInFull = (booking.netPaidPaise ?? booking.paidPaise) >= (booking.effectiveTotalPaise ?? booking.totalPaise);
   const bookedAmenities = booking.amenitySnapshot
     ? [
@@ -1097,6 +1097,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                 )}
 
                 {!!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
+                {!!booking.billingNetPaise && <AmountRow label="Hotel charges / adjustments" value={formatMoney(booking.billingNetPaise, booking.currency)} />}
                 {!!booking.customizationCreditPaise && <AmountRow label="Declined extras credit" value={formatMoney(booking.customizationCreditPaise, booking.currency)} />}
                 {supplemental.paidPaise>0 && <><AmountRow label="Original booking total" value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise,booking.currency)}/><AmountRow label="Separately agreed extras" value={formatMoney(supplemental.totalPaise,booking.currency)}/>{supplemental.refundDuePaise>0 && <AmountRow label="Quoted extras refund pending" value={formatMoney(supplemental.refundDuePaise,booking.currency)}/>} {supplemental.refundedPaise>0 && <AmountRow label="Quoted extras refunded" value={formatMoney(supplemental.refundedPaise,booking.currency)}/>}</>}
                 <div className="border-t border-stone-100 pt-2.5">

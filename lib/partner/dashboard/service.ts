@@ -1,3 +1,4 @@
+import { stayFinancials } from "@/lib/stay/domain";
 import { liveAttention } from "./ux";
 import { rangeDays } from "@/lib/partner/date-range";
 import "server-only";
@@ -288,7 +289,7 @@ export async function loadOverview(
     endAt: b.endAt as string | undefined,
     paymentStatus: String(b.paymentStatus || "pending"),
     bookingStatus: String(b.bookingStatus),
-    balanceDuePaise: amount(b.balanceDuePaise),
+    balanceDuePaise: stayFinancials(b).balanceDuePaise,
     preCheckinSubmitted: b.preCheckin?.status === "submitted",
     specialRequest:
       typeof b.specialRequest === "string" ? b.specialRequest : null,
@@ -435,7 +436,7 @@ export async function loadOverview(
       pendingRequests: requests.length,
       noShowRisk: overdue.length,
       outstandingPaise: balances.reduce(
-        (s, b) => s + amount(b.balanceDuePaise),
+        (s, b) => s + stayFinancials(b).balanceDuePaise,
         0,
       ),
       cancellationCount: bookings.filter(

@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
 import { StaySelectionError } from "./domain";
@@ -89,9 +90,10 @@ export async function decideRequest(
   ];
   if (staffActions.includes(input.action) !== staff)
     throw new Error("FORBIDDEN");
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || (!staff && (!customerOwnsBooking(b, uid)))) throw new Error("NOT_FOUND");
     if (staff) {
       await operationalAccess(uid, b.propertyId, "requests.manage", tx);
@@ -304,9 +306,10 @@ export async function addUnlistedRequest(
     })
     .strict()
     .parse(raw);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId),
       b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))

@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
 import "server-only";
@@ -16,9 +17,10 @@ export async function manageOffer(uid: string, bookingId: string, raw: unknown, 
   const input = command.parse(raw);
   if (staff) await requireRole(uid, "partner");
   if ((input.action === "accept") === staff) throw new Error("FORBIDDEN");
-  await adminDb.runTransaction(async tx => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || (!staff && (!customerOwnsBooking(b, uid)))) throw new Error("NOT_FOUND");
     if (staff) {
       await operationalAccess(uid, b.propertyId, "requests.manage", tx);

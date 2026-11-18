@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { localParts } from "@/lib/booking/domain";
@@ -69,18 +70,21 @@ export function PartnerRequestQueue({
         </label>
         <label className="text-xs font-medium text-slate-500">
           Request status
-          <select
-            aria-label="Request status"
-            className="mt-1 block h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20 sm:min-w-56"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as RequestGroup)}
-          >
-            {requestGroups.map((g) => (
-              <option key={g} value={g}>
-                {requestGroupLabels[g]}
-              </option>
-            ))}
-          </select>
+          <div className="relative mt-1 sm:min-w-56">
+            <select
+              aria-label="Request status"
+              className="block h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3.5 pr-10 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as RequestGroup)}
+            >
+              {requestGroups.map((g) => (
+                <option key={g} value={g}>
+                  {requestGroupLabels[g]}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          </div>
         </label>
         <button
           type="button"

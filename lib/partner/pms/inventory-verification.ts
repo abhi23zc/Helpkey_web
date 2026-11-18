@@ -1,4 +1,5 @@
 import "server-only";
+import { holdAllocationGroups, assignmentHistory } from "@/lib/booking/assignment-segments";
 import { FieldPath } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { allocateIntervals, validDate } from "@/lib/booking/domain";
@@ -38,7 +39,7 @@ export async function verifyPmsInventory(
   );
   const p = property.data() || {};
   if (p.inventoryEngine !== "interval_v1") return false;
-  const [rooms, units, holds, calendars, blocks, activeBookings] =
+  const [rooms, units, holds, calendars, blocks, activeBookings, physicalCalendars] =
     await Promise.all([
       read("roomTypes"),
       read("physicalUnits"),
@@ -46,6 +47,7 @@ export async function verifyPmsInventory(
       read("inventoryCalendars"),
       read("inventoryBlocks"),
       read("bookings", true),
+      read("physicalUnitCalendars"),
     ]);
   // Committed historical holds still contribute saved calendar counters. Read only
   // their corresponding bookings, rather than the complete booking history.
@@ -64,6 +66,7 @@ export async function verifyPmsInventory(
       ...docs.filter((d) => d.exists).map((d) => ({ ...d.data(), id: d.id })),
     );
   }
+  const physicalById = new Map(physicalCalendars.map(c => [c.id, c]));
   const bookingsById = new Map(bookings.map((b) => [b.id, b]));
   const holdsById = new Map(holds.map((h) => [h.id, h]));
   const roomsById = new Map(rooms.map((r) => [r.id, r]));
@@ -99,7 +102,7 @@ export async function verifyPmsInventory(
   };
   holds
     .filter((h) => ["held", "committed"].includes(h.status))
-    .forEach((h) => add(h, "reserved"));
+    .forEach((h) => holdAllocationGroups(h).forEach(g => add({ ...h, ...g }, "reserved")));
   blocks.filter((b) => b.status === "active").forEach((b) => add(b, "blocked"));
   for (const calendar of calendars)
     for (const field of ["reserved", "blocked"])
@@ -132,6 +135,14 @@ export async function verifyPmsInventory(
     ["held", "committed"].includes(h.status),
   )) {
     const b = bookingsById.get(hold.id);
+    if (hold.assignmentSegments || b?.assignmentSegments) {
+      try {
+        const segments = assignmentHistory(b ?? {}, hold);
+        for (const segment of segments) for (const a of segment.allocations) for (const slot of a.intervals) {
+          if (physicalById.get(`${segment.unitId}_${a.date}`)?.slots?.[slot] !== hold.id) integrity = false;
+        }
+      } catch { integrity = false; }
+    }
     if (
       !b ||
       b.propertyId !== propertyId ||
@@ -156,7 +167,9 @@ export async function verifyPmsInventory(
       hold.roomTypeId !== b.roomType?.id
     )
       integrity = false;
-    if (hold) {
+    if (hold && b.assignmentSegments) {
+      try { assignmentHistory(b, hold); } catch { integrity = false; }
+    } else if (hold) {
       try {
         const canonical = (
           allocations: { date: string; intervals: string[] }[],

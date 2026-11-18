@@ -11,6 +11,7 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -58,19 +59,27 @@ type Result = ReservationChoices & {
   features: { allocation: boolean; payments: boolean; amendments: boolean };
 };
 
-const tabs = [
+const coreTabs = [
   ["all", "All"],
   ["arrivals", "Arrivals"],
-  ["departures", "Departures"],
   ["in_house", "In house"],
-  ["requests", "Guest requests"],
+  ["departures", "Departures"],
+] as const;
+
+const smartActionTabs = [
   ["overdue", "Overdue arrivals"],
-  ["upcoming", "Upcoming"],
+  ["requests", "Guest requests"],
   ["balances", "Balance due"],
+] as const;
+
+const secondaryTabs = [
+  ["upcoming", "Upcoming"],
   ["pending_payment", "Awaiting payment"],
   ["cancelled", "Cancelled"],
   ["no_show", "No-shows"],
-];
+] as const;
+
+const tabs = [...coreTabs, ...smartActionTabs, ...secondaryTabs];
 
 const statusOptions = [
   "all",
@@ -188,7 +197,9 @@ function Reservations({
   const [manualOpen, setManualOpen] = useState(false),
     [roomsOpen, setRoomsOpen] = useState(false),
     [exporting, setExporting] = useState(false),
-    [exportError, setExportError] = useState("");
+    [exportError, setExportError] = useState(""),
+    [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState(q);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
     inputRef = useRef<HTMLInputElement>(null);
@@ -211,7 +222,7 @@ function Reservations({
     queryKey: ["partner", propertyId, "reservations", requestKey],
     queryFn: ({ signal }) =>
       apiFetch<Result>(`/api/partner/bookings?${requestKey}`, { signal }),
-    refetchInterval: 60000,
+    refetchInterval: 30000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
@@ -233,7 +244,7 @@ function Reservations({
         if (value) next.set(key, value);
         else next.delete(key);
       }
-      window.history.pushState(null, "", `${window.location.pathname}?${next}`);
+      window.history[patch.bookingId === null ? "replaceState" : "pushState"](null, "", `${window.location.pathname}?${next}`);
     },
     [propertyId, setPreviousCursors],
   );
@@ -273,6 +284,24 @@ function Reservations({
       window.removeEventListener("stay-request-updated", refresh);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreOpen]);
 
   const data = query.data;
 
@@ -783,43 +812,144 @@ function Reservations({
             Search by guest name, mobile number, email, or booking ID.
           </p>
 
-          <nav
-            aria-label="Reservation views"
-            className="flex gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar"
-          >
-            {tabs.map(([id, text]) => {
-              const isSelected = view === id;
-              const count = data?.tabCounts[id];
-              return (
-                <button
-                  key={id}
-                  aria-pressed={isSelected}
-                  onClick={() =>
-                    update({
-                      view: id,
-                      ...(id === "upcoming" ? { scope: "all" } : {}),
-                    })
-                  }
-                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
-                    isSelected
-                      ? "bg-[#061224] text-white shadow-2xs"
-                      : "border border-slate-200/80 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <span>{text}</span>
-                  <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
-                      isSelected
-                        ? "bg-white/20 text-white"
-                        : "bg-slate-100 text-slate-500"
+          {(() => {
+            const isSecondaryActive = secondaryTabs.some(([id]) => view === id);
+            const secondaryTotal = secondaryTabs.reduce(
+              (sum, [id]) => sum + (data?.tabCounts[id] ?? 0),
+              0,
+            );
+
+            // Smart conditional visibility: Core tabs always shown; action tabs shown if count > 0 or active; secondary shown if active
+            const visibleTabs = [
+              ...coreTabs,
+              ...smartActionTabs.filter(
+                ([id]) => (data?.tabCounts[id] ?? 0) > 0 || view === id,
+              ),
+              ...secondaryTabs.filter(([id]) => view === id),
+            ];
+
+            return (
+              <nav
+                aria-label="Reservation views"
+                className="flex flex-wrap items-center gap-1.5 pt-1"
+              >
+                {visibleTabs.map(([id, text]) => {
+                  const isSelected = view === id;
+                  const count = data?.tabCounts[id];
+                  const isActionAlert =
+                    !isSelected &&
+                    ["overdue", "requests", "balances"].includes(id) &&
+                    (count ?? 0) > 0;
+
+                  return (
+                    <button
+                      key={id}
+                      aria-pressed={isSelected}
+                      onClick={() =>
+                        update({
+                          view: id,
+                          ...(id === "upcoming" ? { scope: "all" } : {}),
+                        })
+                      }
+                      className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                        isSelected
+                          ? "bg-[#061224] text-white shadow-2xs"
+                          : isActionAlert
+                            ? "border border-amber-300 bg-amber-50/70 text-amber-900 hover:bg-amber-100/70"
+                            : "border border-slate-200/80 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
+                    >
+                      <span>{text}</span>
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                          isSelected
+                            ? "bg-white/20 text-white"
+                            : isActionAlert
+                              ? "bg-amber-200/80 text-amber-950"
+                              : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {count ?? "—"}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* Secondary Views Dropdown */}
+                <div ref={moreRef} className="relative shrink-0">
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={moreOpen}
+                    onClick={() => setMoreOpen((open) => !open)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                      isSecondaryActive || moreOpen
+                        ? "border-[#061224] bg-slate-100 text-[#061224]"
+                        : "border border-slate-200/80 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
-                    {count ?? "—"}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
+                    <span>More</span>
+                    {secondaryTotal > 0 && !isSecondaryActive && (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-600">
+                        {secondaryTotal}
+                      </span>
+                    )}
+                    <ChevronDown
+                      size={12}
+                      className={`text-slate-400 transition-transform duration-200 ${
+                        moreOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {moreOpen && (
+                    <div
+                      role="menu"
+                      className="absolute left-0 sm:right-0 sm:left-auto top-full z-40 mt-1.5 w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-950/10 animate-in fade-in-50 zoom-in-95 duration-150"
+                    >
+                      <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Other Views
+                      </div>
+                      {secondaryTabs.map(([id, text]) => {
+                        const isSelected = view === id;
+                        const count = data?.tabCounts[id];
+                        return (
+                          <button
+                            key={id}
+                            role="menuitem"
+                            type="button"
+                            onClick={() => {
+                              setMoreOpen(false);
+                              update({
+                                view: id,
+                                ...(id === "upcoming" ? { scope: "all" } : {}),
+                              });
+                            }}
+                            className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-xs font-semibold transition-colors ${
+                              isSelected
+                                ? "bg-[#061224] text-white font-bold"
+                                : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                            }`}
+                          >
+                            <span>{text}</span>
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                                isSelected
+                                  ? "bg-white/20 text-white"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {count ?? "—"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </nav>
+            );
+          })()}
         </div>
 
         {/* Error Notification */}
@@ -1070,7 +1200,7 @@ function Reservations({
               })}
               {query.isFetching
                 ? " · Refreshing…"
-                : " · Auto-refreshes every minute"}
+                : " · Auto-refreshes every 30 seconds"}
             </span>
 
             <div className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+import { stayFinancials } from "@/lib/stay/domain";
 import { z } from "zod";
 import { validDate, resolveLocal } from "@/lib/booking/domain";
 import {
@@ -146,7 +147,7 @@ export function matchesView(
         Math.max(
           0,
           (b.totalPaise ?? 0) -
-            (b.customizationCreditPaise ?? 0) -
+            (b.customizationCreditPaise ?? 0) + (b.billingNetPaise ?? 0) -
             ((b.paidPaise ?? 0) -
               (b.refundedPaise ?? 0) -
               (b.refundDuePaise ?? 0)),
@@ -163,12 +164,8 @@ export const csvCell = (value: unknown) => {
   return `"${(/^[\s]*[=+\-@\t\r]/.test(text) ? "'" : "") + text.replaceAll('"', '""')}"`;
 };
 export function netBalance(b: RecordData) {
-  return Math.max(
-    0,
-    (b.totalPaise ?? 0) -
-      (b.customizationCreditPaise ?? 0) -
-      ((b.paidPaise ?? 0) - (b.refundedPaise ?? 0)),
-  );
+  // Collection ceiling uses actual net receipts; pending refunds separately block collection.
+  return stayFinancials({ ...b, refundDuePaise: 0 }).balanceDuePaise;
 }
 export function receiptRemaining(
   amount: number,

@@ -312,7 +312,7 @@ export function financialSeries(
     const bookedPaise = sales.reduce(
       (sum, b) =>
         sum +
-        Math.max(0, amount(b.totalPaise) - amount(b.customizationCreditPaise)),
+        Math.max(0, amount(b.totalPaise) - amount(b.customizationCreditPaise) + amount(b.billingNetPaise)),
       0,
     );
     const ledger = propertyLedger.filter((p) =>

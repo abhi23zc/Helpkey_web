@@ -42,6 +42,12 @@ export function reservationHandler<C>(
           );
         }
         const guidance: Record<string, string> = {
+          INVALID_INITIAL_COLLECTION: "The collected amount must be valid paise, zero or more, and no greater than the total due.",
+          PAYMENT_REFERENCE_REQUIRED: "Enter the UPI or hotel card-terminal reference for the money collected.",
+          PAYMENTS_DISABLED: "Hotel collection is disabled in this deployment. Save with no payment collected or contact support.",
+          ALLOCATION_DISABLED: "Room assignment is disabled in this deployment. Leave the room unassigned or contact support.",
+          ROOM_ALREADY_ASSIGNED: "That room was assigned to another reservation for this stay or turnover. Your input is kept; select another room or leave unassigned.",
+          ROOM_NOT_AVAILABLE: "The selected room is inactive, belongs to another room type, or is no longer available. Choose another room or leave unassigned.",
           QUOTE_CHANGED: "The hotel price or agreed times changed. Review the refreshed dates, departure and price before saving again.",
           AMBIGUOUS_LOCAL_TIME: "This hotel-local time occurs twice during a clock change. Choose an unambiguous time or contact support.",
           NONEXISTENT_LOCAL_TIME: "This hotel-local time does not exist during a clock change. Correct the arrival time.",

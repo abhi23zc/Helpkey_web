@@ -26,6 +26,7 @@ import {
   Building2,
   Moon,
   Clock,
+  ChevronDown,
 } from "lucide-react";
 import { Drawer } from "@/components/partner/dashboard/drawer";
 import { CategoryIcon } from "./category-icon";
@@ -44,6 +45,7 @@ import {
 } from "@/lib/stay/contracts";
 import { TravelerChips } from "./personalization-picker";
 import { PartnerShell } from "@/components/partner/dashboard/partner-shell";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 const initial: OfferingInput = {
   name: "",
   description: "",
@@ -403,32 +405,38 @@ function Customizations({
               </div>
               <label className="text-xs font-medium text-slate-500">
                 <span className="sr-only">Category</span>
-                <select
-                  aria-label="Offering category"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                >
-                  <option value="all">All categories</option>
-                  {offeringCategories.map((c) => (
-                    <option key={c} value={c}>
-                      {offeringCategoryLabels[c]}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    aria-label="Offering category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3.5 pr-10 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  >
+                    <option value="all">All categories</option>
+                    {offeringCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {offeringCategoryLabels[c]}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                </div>
               </label>
               <label className="text-xs font-medium text-slate-500">
                 <span className="sr-only">Sort by</span>
-                <select
-                  aria-label="Sort offerings"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                >
-                  <option value="name">Sort: Name (A–Z)</option>
-                  <option value="price_low">Price: Low to High</option>
-                  <option value="price_high">Price: High to Low</option>
-                </select>
+                <div className="relative">
+                  <select
+                    aria-label="Sort offerings"
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                    className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3.5 pr-10 text-xs sm:text-sm text-[#061224] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  >
+                    <option value="name">Sort: Name (A–Z)</option>
+                    <option value="price_low">Price: Low to High</option>
+                    <option value="price_high">Price: High to Low</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                </div>
               </label>
               {(search || status !== "all" || category !== "all" || sort !== "name") && (
                 <button
@@ -546,7 +554,7 @@ function Customizations({
 
           {/* Cards View vs Table View */}
           {viewMode === "grid" ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((o) => {
                 const cat = offeringCategory(o);
                 const isFree =
@@ -555,20 +563,37 @@ function Customizations({
                 return (
                   <article
                     key={o.id}
-                    className={`flex min-w-0 flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs transition-all hover:shadow-md ${
+                    className={`group flex min-w-0 flex-col justify-between overflow-hidden rounded-2xl border bg-white shadow-2xs transition-all duration-200 hover:shadow-md hover:border-slate-300 ${
                       o.status === "active"
                         ? "border-slate-200"
                         : "border-dashed border-slate-300 opacity-80"
                     }`}
                   >
                     <div>
-                      {/* Top Bar: Icon + Category + Active Status Toggle */}
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <span className="h-7 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs font-medium text-slate-700">
-                          <CategoryIcon category={cat} className="h-3.5 w-3.5 text-slate-500" />
-                          <span>{offeringCategoryLabels[cat]}</span>
-                        </span>
-                        {canManage && (
+                      {/* Cover Photo with Floating Badges */}
+                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
+                        <img
+                          src={getOfferingImageUrl({ ...o, propertyId })}
+                          alt={o.name}
+                          loading="lazy"
+                          onError={(event) => {
+                            event.currentTarget.src =
+                              "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80";
+                          }}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
+
+                        {/* Top-Left Category Badge */}
+                        <div className="absolute top-2.5 left-2.5">
+                          <span className="h-6 inline-flex items-center gap-1.5 rounded-full bg-slate-900/80 backdrop-blur-md px-2.5 text-[11px] font-medium text-white shadow-xs border border-white/10">
+                            <CategoryIcon category={cat} className="h-3 w-3 text-amber-300" />
+                            <span className="truncate max-w-[130px]">{offeringCategoryLabels[cat]}</span>
+                          </span>
+                        </div>
+
+                        {/* Top-Right Status Pill / Toggle Button */}
+                        {canManage ? (
                           <button
                             type="button"
                             disabled={busy}
@@ -583,100 +608,103 @@ function Customizations({
                               )
                             }
                             title="Click to toggle active status"
-                            className={`h-7 inline-flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-all border ${
+                            className={`absolute top-2.5 right-2.5 h-6 inline-flex items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold backdrop-blur-md shadow-xs transition-all border ${
                               o.status === "active"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 hover:bg-emerald-100"
-                                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                                ? "bg-emerald-600/90 text-white border-emerald-400/40 hover:bg-emerald-700"
+                                : "bg-slate-900/80 text-slate-300 border-white/10 hover:bg-slate-900"
                             }`}
                           >
                             <span
                               className={`h-1.5 w-1.5 rounded-full ${
-                                o.status === "active" ? "bg-emerald-500" : "bg-slate-400"
+                                o.status === "active" ? "bg-white" : "bg-slate-400"
                               }`}
                             />
                             <span>{o.status === "active" ? "Active" : "Paused"}</span>
                           </button>
+                        ) : (
+                          <span
+                            className={`absolute top-2.5 right-2.5 h-6 inline-flex items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold backdrop-blur-md shadow-xs border ${
+                              o.status === "active"
+                                ? "bg-emerald-600/90 text-white border-emerald-400/40"
+                                : "bg-slate-900/80 text-slate-300 border-white/10"
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                o.status === "active" ? "bg-white" : "bg-slate-400"
+                              }`}
+                            />
+                            <span>{o.status === "active" ? "Active" : "Paused"}</span>
+                          </span>
                         )}
                       </div>
 
-                      {/* Title & Image & Description */}
-                      <div className="mt-3.5 flex items-start gap-3">
-                        {o.imageId && (
-                          <img
-                            src={`/api/stay-images/${encodeURIComponent(propertyId)}/${o.imageId}`}
-                            alt="Offering thumbnail"
-                            onError={(event) => {
-                              event.currentTarget.hidden = true;
-                            }}
-                            className="h-14 w-14 shrink-0 rounded-xl object-cover border border-slate-200"
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <h2 className="break-words font-bold text-[#061224] text-base leading-snug">
+                      {/* Card Content */}
+                      <div className="p-4 space-y-2.5">
+                        {/* Title and Price */}
+                        <div className="flex items-start justify-between gap-2">
+                          <h2
+                            className="font-bold text-[#061224] text-sm leading-snug truncate"
+                            title={o.name}
+                          >
                             {o.name}
                           </h2>
-                          <p className="mt-1 line-clamp-2 break-words text-xs leading-relaxed text-slate-500">
-                            {o.description}
-                          </p>
+                          <div className="shrink-0 text-right">
+                            {isFree ? (
+                              <span className="h-5 inline-flex items-center rounded-md bg-emerald-50 px-2 text-[10px] font-bold text-emerald-700 border border-emerald-200/60">
+                                FREE
+                              </span>
+                            ) : (
+                              <div className="text-xs font-bold text-slate-900">
+                                {offeringPriceLabel(o, currency)}
+                                {o.unitPricePaise > 0 ||
+                                o.variants.some((v) => (v.unitPricePaise ?? 0) > 0) ? (
+                                  <span className="text-[10px] font-normal text-slate-400">
+                                    {" "}
+                                    / {o.pricingUnit ?? "item"}
+                                  </span>
+                                ) : (
+                                  ""
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Price Row */}
-                      <div className="mt-3.5 flex items-center justify-between border-t border-slate-100/80 pt-3">
-                        <div className="flex items-center gap-1.5">
-                          {isFree ? (
-                            <span className="h-6 inline-flex items-center rounded-md bg-emerald-50 px-2.5 text-xs font-bold text-emerald-700 border border-emerald-200/60">
-                              FREE
-                            </span>
-                          ) : (
-                            <span className="font-bold text-slate-900 text-sm">
-                              {offeringPriceLabel(o, currency)}
-                              {o.unitPricePaise > 0 ||
-                              o.variants.some((v) => (v.unitPricePaise ?? 0) > 0)
-                                ? ` / ${o.pricingUnit ?? "item"}`
-                                : ""}
-                            </span>
-                          )}
+                        {/* Description */}
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-500 min-h-[2rem]">
+                          {o.description}
+                        </p>
+
+                        {/* Badges Row */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                            <Clock3 className="h-2.5 w-2.5 text-slate-400" />
+                            {noticeLabel(o.advanceNoticeMinutes)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium border ${
+                              o.confirmation === "approval"
+                                ? "bg-amber-50 text-amber-800 border-amber-200/60"
+                                : "bg-blue-50 text-blue-700 border-blue-200/60"
+                            }`}
+                          >
+                            {o.confirmation === "approval" ? "🛎 Approval" : "⚡ Instant"}
+                          </span>
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                            Max {o.maxQuantity}
+                          </span>
                         </div>
-                        <span className="text-xs text-slate-500 font-medium">
-                          Max {o.maxQuantity} per booking
-                        </span>
-                      </div>
-
-                      {/* Attribute Chips */}
-                      <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-                        <span className="h-6 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 font-medium text-slate-600">
-                          <Clock3 className="h-3 w-3 text-slate-400" />
-                          {noticeLabel(o.advanceNoticeMinutes)}
-                        </span>
-                        <span
-                          className={`h-6 inline-flex items-center gap-1 rounded-md px-2 font-medium border ${
-                            o.confirmation === "approval"
-                              ? "bg-amber-50 text-amber-800 border-amber-200/60"
-                              : "bg-blue-50 text-blue-700 border-blue-200/60"
-                          }`}
-                        >
-                          {o.confirmation === "approval" ? "🛎 Hotel Approval" : "⚡ Instant"}
-                        </span>
-                        <span className="h-6 inline-flex items-center rounded-md bg-slate-100 px-2 font-medium text-slate-500">
-                          {o.roomTypeIds.length
-                            ? `${o.roomTypeIds.length} rooms`
-                            : "All rooms"}
-                          {" · "}
-                          {o.bookingModes
-                            .map((m) => (m === "overnight" ? "Overnight" : "Hourly"))
-                            .join(" & ")}
-                        </span>
                       </div>
                     </div>
 
-                    {/* Action Row */}
+                    {/* Action Footer */}
                     {canManage && (
-                      <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                      <div className="border-t border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-1.5">
                         <button
                           type="button"
                           disabled={busy}
-                          className="h-8 inline-flex items-center gap-1.5 rounded-lg bg-[#061224] px-3.5 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-all disabled:opacity-50"
+                          className="h-7 flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-[#061224] px-2.5 text-xs font-semibold text-white shadow-2xs hover:bg-slate-800 transition-all disabled:opacity-50"
                           onClick={() => {
                             setError("");
                             setConflict(false);
@@ -684,60 +712,53 @@ function Customizations({
                             setEditing(o);
                           }}
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="h-3 w-3" />
                           <span>Edit</span>
                         </button>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs disabled:opacity-50"
-                            onClick={() => {
-                              setError("");
-                              setConflict(false);
-                              setDuplicate({
+                        <button
+                          type="button"
+                          disabled={busy}
+                          title="Duplicate extra"
+                          className="h-7 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs disabled:opacity-50"
+                          onClick={() => {
+                            setError("");
+                            setConflict(false);
+                            setDuplicate({
+                              ...oInput(o),
+                              name: `${o.name.slice(0, 111)} (copy)`,
+                              status: "paused",
+                            });
+                            setEditing("new");
+                          }}
+                        >
+                          <Copy className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          title={o.status === "active" ? "Pause extra" : "Activate extra"}
+                          className={`h-7 w-8 inline-flex items-center justify-center rounded-lg border transition-colors shadow-2xs disabled:opacity-50 ${
+                            o.status === "active"
+                              ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                          }`}
+                          onClick={() =>
+                            void save(
+                              {
                                 ...oInput(o),
-                                name: `${o.name.slice(0, 111)} (copy)`,
-                                status: "paused",
-                              });
-                              setEditing("new");
-                            }}
-                          >
-                            <Copy className="h-3.5 w-3.5 text-slate-400" />
-                            <span>Duplicate</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            className={`h-8 inline-flex items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors shadow-2xs disabled:opacity-50 ${
-                              o.status === "active"
-                                ? "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-100"
-                                : "border-emerald-200 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-100"
-                            }`}
-                            onClick={() =>
-                              void save(
-                                {
-                                  ...oInput(o),
-                                  status: o.status === "active" ? "paused" : "active",
-                                },
-                                o,
-                                false,
-                              )
-                            }
-                          >
-                            {o.status === "active" ? (
-                              <>
-                                <Pause className="h-3.5 w-3.5 text-amber-600" />
-                                <span>Pause</span>
-                              </>
-                            ) : (
-                              <>
-                                <Play className="h-3.5 w-3.5 text-emerald-600" />
-                                <span>Activate</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
+                                status: o.status === "active" ? "paused" : "active",
+                              },
+                              o,
+                              false,
+                            )
+                          }
+                        >
+                          {o.status === "active" ? (
+                            <Pause className="h-3.5 w-3.5 text-amber-600" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5 text-emerald-600" />
+                          )}
+                        </button>
                       </div>
                     )}
                   </article>
@@ -768,10 +789,19 @@ function Customizations({
                       return (
                         <tr key={o.id} className="hover:bg-slate-50/60 transition-colors">
                           <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                                <CategoryIcon category={cat} className="h-4 w-4" />
-                              </span>
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                                <img
+                                  src={getOfferingImageUrl({ ...o, propertyId })}
+                                  alt={o.name}
+                                  loading="lazy"
+                                  onError={(event) => {
+                                    event.currentTarget.src =
+                                      "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80";
+                                  }}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
                               <div className="min-w-0">
                                 <span className="block font-bold text-slate-900 truncate max-w-xs">
                                   {o.name}
@@ -993,7 +1023,7 @@ function OfferingEditor({
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty, uploading]);
   const field =
-    "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all";
+    "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base sm:text-sm text-[#061224] placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all";
   const issueFor = (path: string) =>
     issues.find((i) => i.path === path || i.path.startsWith(`${path}.`))?.message;
   function patch(v: Partial<OfferingInput>) {
@@ -1016,22 +1046,22 @@ function OfferingEditor({
       description="Configure how this extra appears to guests and set its availability rules."
       onClose={requestClose}
       footer={
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            form={formId}
-            disabled={busy || uploading || !started}
-            className="h-11 inline-flex items-center justify-center rounded-xl bg-[#061224] px-5 text-sm font-semibold text-white disabled:opacity-50 shadow-xs hover:bg-slate-800 transition-all"
-          >
-            {busy ? "Saving…" : offering ? "Save Changes" : "Publish Extra"}
-          </button>
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 sm:gap-3 w-full">
           <button
             type="button"
             disabled={busy}
             onClick={requestClose}
-            className="h-11 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-all"
+            className="h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all shadow-2xs"
           >
             Cancel
+          </button>
+          <button
+            type="submit"
+            form={formId}
+            disabled={busy || uploading || !started}
+            className="h-11 w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-[#061224] px-6 text-sm font-semibold text-white disabled:opacity-50 shadow-xs hover:bg-slate-800 transition-all"
+          >
+            {busy ? "Saving…" : offering ? "Save Changes" : "Publish Extra"}
           </button>
         </div>
       }
@@ -1100,7 +1130,7 @@ function OfferingEditor({
         {started && (
           <fieldset disabled={busy} className="space-y-5">
             {/* 1. Basic Details Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">1</span>
@@ -1154,29 +1184,32 @@ function OfferingEditor({
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Category
                   </label>
-                  <select
-                    aria-label="Category"
-                    value={offeringCategory(value)}
-                    onChange={(e) => {
-                      const cat = e.target.value as OfferingInput["category"];
-                      patch({
-                        category: cat,
-                        kind:
-                          cat === "room_preferences"
-                            ? "preference"
-                            : value.kind === "preference"
-                              ? "item"
-                              : value.kind,
-                      });
-                    }}
-                    className={field}
-                  >
-                    {offeringCategories.map((category) => (
-                      <option key={category} value={category}>
-                        {offeringCategoryLabels[category]}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      aria-label="Category"
+                      value={offeringCategory(value)}
+                      onChange={(e) => {
+                        const cat = e.target.value as OfferingInput["category"];
+                        patch({
+                          category: cat,
+                          kind:
+                            cat === "room_preferences"
+                              ? "preference"
+                              : value.kind === "preference"
+                                ? "item"
+                                : value.kind,
+                        });
+                      }}
+                      className={`${field} appearance-none pr-10`}
+                    >
+                      {offeringCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {offeringCategoryLabels[category]}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -1212,7 +1245,7 @@ function OfferingEditor({
             </div>
 
             {/* 2. Pricing & Guest Selection Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-4">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">2</span>
                 <div>
@@ -1243,7 +1276,7 @@ function OfferingEditor({
             </div>
 
             {/* 3. Delivery & Fulfillment Rules Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-5">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">3</span>
                 <div>
@@ -1326,20 +1359,23 @@ function OfferingEditor({
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                       Confirmation Workflow
                     </label>
-                    <select
-                      aria-label="Confirmation"
-                      value={value.confirmation}
-                      onChange={(e) =>
-                        patch({
-                          confirmation: e.target
-                            .value as OfferingInput["confirmation"],
-                        })
-                      }
-                      className={field}
-                    >
-                      <option value="immediate">⚡ Immediate confirmation</option>
-                      <option value="approval">🛎 Hotel approval required</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        aria-label="Confirmation"
+                        value={value.confirmation}
+                        onChange={(e) =>
+                          patch({
+                            confirmation: e.target
+                              .value as OfferingInput["confirmation"],
+                          })
+                        }
+                        className={`${field} appearance-none pr-10`}
+                      >
+                        <option value="immediate">⚡ Immediate confirmation</option>
+                        <option value="approval">🛎 Hotel approval required</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    </div>
                     <p className="mt-1.5 text-xs text-slate-500">
                       {value.confirmation === "approval"
                         ? "Requires staff approval before confirmation."
@@ -1351,17 +1387,20 @@ function OfferingEditor({
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                       Publishing Status
                     </label>
-                    <select
-                      aria-label="Status"
-                      value={value.status}
-                      onChange={(e) =>
-                        patch({ status: e.target.value as OfferingInput["status"] })
-                      }
-                      className={field}
-                    >
-                      <option value="active">Active (Visible to guests)</option>
-                      <option value="paused">Paused (Hidden from guests)</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        aria-label="Status"
+                        value={value.status}
+                        onChange={(e) =>
+                          patch({ status: e.target.value as OfferingInput["status"] })
+                        }
+                        className={`${field} appearance-none pr-10`}
+                      >
+                        <option value="active">Active (Visible to guests)</option>
+                        <option value="paused">Paused (Hidden from guests)</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    </div>
                     <p className="mt-1.5 text-xs text-slate-500">
                       {value.status === "active"
                         ? "Guests can view and request this extra in the app."
@@ -1373,7 +1412,7 @@ function OfferingEditor({
             </div>
 
             {/* 4. Availability & Eligibility Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-5">
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#061224] text-white text-xs font-bold">4</span>
                 <div>
@@ -1384,7 +1423,7 @@ function OfferingEditor({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 {/* Eligible Room Types */}
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 sm:p-4.5 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -1417,7 +1456,7 @@ function OfferingEditor({
                   </label>
 
                   {rooms.length > 0 && (
-                    <div className="max-h-44 overflow-y-auto space-y-1 rounded-xl border border-slate-200/70 bg-white p-2">
+                    <div className="max-h-44 overflow-y-auto overscroll-contain space-y-1 rounded-xl border border-slate-200/70 bg-white p-2">
                       {rooms.map((r) => {
                         const isChecked = value.roomTypeIds.includes(r.id);
                         return (
@@ -1448,7 +1487,7 @@ function OfferingEditor({
                 </div>
 
                 {/* Eligible Stay Types */}
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4.5 space-y-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 sm:p-4.5 space-y-3">
                   <div>
                     <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                       Eligible Stay Types
@@ -1524,7 +1563,7 @@ function OfferingEditor({
             </div>
 
             {/* 5. Live Guest App Preview & Review */}
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-5 shadow-xs space-y-4">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-4 sm:p-5 shadow-xs space-y-4">
               <div className="flex items-center gap-2.5 pb-3 border-b border-amber-200/60">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-white text-xs font-bold">5</span>
                 <div>

@@ -1,1259 +1,1748 @@
 "use client";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  BedDouble,
+  Calendar,
+  CalendarPlus,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  CreditCard,
+  Info,
+  Moon,
+  RefreshCw,
+  User,
+  Users,
+  X,
+} from "lucide-react";
+import { apiFetch } from "@/lib/api/client";
 import { localParts } from "@/lib/booking/domain";
-import { useHotelCapabilities } from "./hotel-capabilities";
-
-import { PartnerDatePicker } from "./partner-date-picker";
 import {
   eligiblePricing,
   type DurationPrice,
 } from "@/lib/booking/duration-pricing";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import {
-  BedDouble,
-  Building2,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  FileText,
-  Loader2,
-  Moon,
-  ArrowRight,
-  User2,
-  X,
-} from "lucide-react";
+import { parseCollectionPaise } from "@/lib/partner/reservations/collection-amount";
+import type { CreationRoom } from "@/lib/partner/reservations/creation-rooms";
+import { useHotelCapabilities } from "./hotel-capabilities";
+import { PartnerDatePicker } from "./partner-date-picker";
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
-
-type ManualBookingForm = {
-  reservationPurpose: "reservation" | "walk_in";
-  recordedArrivalTime: string;
-  accompanyingNames: string;
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string;
-  bookingMode: "overnight" | "hourly";
-  arrivalTime: string;
-  durationMinutes: number;
-  guestName: string;
-  guestEmail: string;
-  guestPhone: string;
+type Props = {
+  open: boolean;
+  propertyId?: string;
+  propertyName: string;
+  onClose: () => void;
+  onCreated: (id?: string) => void;
+  initialRoomTypeId?: string;
+  initialUnitId?: string;
+  initialPurpose?: "reservation" | "walk_in";
+  initialDate?: string;
+};
+type Rate = {
+  id: string;
   roomTypeId: string;
-  ratePlanId: string;
-  negotiatedPriceReason: string;
-  checkIn: string;
-  checkOut: string;
-  adults: number;
-  children: number;
-  nightlyRateRupees: number;
-  paymentMethod: string;
-  collectionMethod: string;
-  collectionReference: string;
-  specialRequest: string;
+  name: string;
+  status: string;
+  bookingMode?: string;
+  pricingModel?: string;
+  durationPrices?: DurationPrice[];
+  basePricePaise?: number;
+  taxBasisPoints?: number;
+  customerFeePaise?: number;
+};
+type Choices = {
+  property?: {
+    timezone?: string;
+    checkInTime?: string;
+    bookingModes?: string[];
+  };
+  roomTypes: { id: string; name: string; status?: string }[];
+  ratePlans: Rate[];
+};
+type Quote = {
+  subtotalPaise: number;
+  totalPaise: number;
+  taxBasisPoints: number;
+  customerFeePaise: number;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  requestedDurationPriced: boolean;
+  durationPrices: DurationPrice[];
+  roomOptions?: { rooms: CreationRoom[]; nextCursor: string | null };
+  creationFeatures?: { assignment: boolean; collection: boolean };
+};
+type Saved = {
+  bookingId: string;
+  confirmationCode: string;
+  totalPaise?: number;
+  collectedPaise?: number;
+  balanceDuePaise?: number;
+  physicalUnitLabel?: string | null;
 };
 
-const EMPTY: ManualBookingForm = {
-  reservationPurpose: "reservation",
+const field =
+  "w-full rounded-xl border border-[#ede7dc] bg-white px-3.5 py-2.5 text-xs font-semibold text-[#061224] shadow-xs placeholder-[#8b96aa] focus:border-[#c89b3c] focus:outline-none focus:ring-1 focus:ring-[#c89b3c] disabled:bg-[#f8f6f0] disabled:text-[#8b96aa] transition-colors";
+const selectField =
+  "w-full appearance-none rounded-xl border border-[#ede7dc] bg-white px-3.5 py-2.5 pr-8 text-xs font-semibold text-[#061224] shadow-xs focus:border-[#c89b3c] focus:outline-none focus:ring-1 focus:ring-[#c89b3c] disabled:bg-[#f8f6f0] disabled:text-[#8b96aa] transition-colors";
+const button =
+  "min-h-10 rounded-xl border border-[#ede7dc] bg-white px-3.5 py-2 text-xs font-bold text-[#061224] shadow-xs hover:bg-[#fbfaf8] hover:border-[#c89b3c] transition-colors disabled:opacity-50";
+
+const money = (n: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
+    n / 100,
+  );
+const nextDay = (date: string) =>
+  new Date(Date.parse(`${date}T00:00Z`) + 86400000).toISOString().slice(0, 10);
+
+const initial = {
+  reservationPurpose: "reservation" as "reservation" | "walk_in",
+  bookingMode: "overnight" as "overnight" | "hourly",
+  checkIn: "",
+  checkOut: "",
+  arrivalTime: "10:00",
   recordedArrivalTime: "",
-  accompanyingNames: "",
+  durationMinutes: 0,
+  roomTypeId: "",
+  ratePlanId: "",
+  physicalUnitId: "",
+  guestName: "",
+  guestPhone: "",
+  guestEmail: "",
+  adultNames: "",
+  childNames: "",
+  infantNames: "",
   contactName: "",
   contactEmail: "",
   contactPhone: "",
-  bookingMode: "overnight",
-  arrivalTime: "10:00",
-  durationMinutes: 180,
-  guestName: "",
-  guestEmail: "",
-  guestPhone: "",
-  roomTypeId: "",
-  ratePlanId: "",
-  negotiatedPriceReason: "",
-  checkIn: "",
-  checkOut: "",
   adults: 1,
   children: 0,
-  nightlyRateRupees: 0,
-  paymentMethod: "pay_at_property",
+  infants: 0,
+  priceOverride: "",
+  negotiatedPriceReason: "",
+  payment: "pay_at_property",
+  amount: "",
   collectionMethod: "cash",
   collectionReference: "",
   specialRequest: "",
 };
 
-const fmt = new Intl.NumberFormat("en-IN", {
-  style: "currency",
-  currency: "INR",
-  maximumFractionDigits: 2,
-});
-
-function calcNights(a: string, b: string) {
-  if (!a || !b) return 0;
-  return Math.max(
-    0,
-    Math.round(
-      (new Date(`${b}T00:00:00Z`).getTime() -
-        new Date(`${a}T00:00:00Z`).getTime()) /
-        86_400_000,
-    ),
-  );
-}
-
-/* ─── Shared UI Helpers ─────────────────────────────────────────────────── */
-
-const FIELD_LABEL_CLS = "block text-xs font-semibold text-[#4d5870] mb-1.5";
-const INPUT_CLS =
-  "w-full rounded-xl border border-[#e4ded2] bg-[#fdfdfc] px-3.5 py-2.5 text-sm font-semibold text-[#061224] transition placeholder:font-normal placeholder:text-[#adb5c8] focus:border-[#c89b3c] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#c89b3c]/15 disabled:bg-[#f6f5f2] disabled:text-[#8b96aa]";
-
-function SectionCard({
+function Section({
+  number,
   icon: Icon,
   title,
   subtitle,
   children,
 }: {
-  icon: typeof User2;
+  number: string;
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-[#ede7dc] bg-white p-5 shadow-xs transition-shadow">
-      <div className="mb-4 flex items-center gap-2.5 border-b border-[#f3efe8] pb-3">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#fbf5e8] text-[#c89b3c]">
+    <section className="space-y-3.5 rounded-2xl border border-[#ede7dc] bg-white p-4 sm:p-5 shadow-xs">
+      <div className="flex items-center gap-2.5 border-b border-[#f3efe8] pb-3">
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#fbf5e8] text-[#c89b3c] shrink-0">
           <Icon className="h-4 w-4" />
         </span>
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-[0.06em] text-[#061224]">
-            {title}
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#061224]">
+            {number}. {title}
           </h3>
           {subtitle && (
-            <p className="text-[11px] font-medium text-[#8b96aa]">{subtitle}</p>
+            <p className="text-[11px] text-[#8b96aa]">{subtitle}</p>
           )}
         </div>
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-/* ─── Main Component ─────────────────────────────────────────────────────── */
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block text-xs font-semibold uppercase tracking-wider text-[#68758c] space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span>{label}</span>
+        {required && (
+          <span className="text-[10px] font-bold text-amber-700 lowercase">
+            Required
+          </span>
+        )}
+      </div>
+      {children}
+    </label>
+  );
+}
 
-export function ManualBookingDialog({
-  open,
+export function ManualBookingDialog(props: Props) {
+  return props.open ? (
+    <CreationDialog
+      key={`${props.propertyId}:${props.initialUnitId || "none"}`}
+      {...props}
+    />
+  ) : null;
+}
+
+function CreationDialog({
   propertyId,
   propertyName,
   onClose,
   onCreated,
-}: {
-  open: boolean;
-  propertyId?: string;
-  propertyName: string;
-  onClose: () => void;
-  onCreated: (bookingId?: string) => void;
-}) {
-  const permits = useHotelCapabilities();
-  const [timezone, setTimezone] = useState("");
-  const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    const id = setInterval(() => setClock(Date.now()), 30000);
-    return () => clearInterval(id);
-  }, [open]);
-  const [createdId, setCreatedId] = useState<string>();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const requestKey = useRef("");
-  const lastRequest = useRef("");
-  const [form, setForm] = useState<ManualBookingForm>(EMPTY);
-  const [error, setError] = useState("");
-  const [choices, setChoices] = useState<{
-    rooms: { id: string; name: string }[];
-    rates: {
-      id: string;
-      name: string;
-      roomTypeId: string;
-      bookingMode?: string;
-      basePricePaise?: number;
-      datePricingEnabled?: boolean;
-      pricingModel?: string;
-      taxBasisPoints?: number;
-      customerFeePaise?: number;
-      durationPrices?: DurationPrice[];
-      status?: string;
-    }[];
-  }>({ rooms: [], rates: [] });
+  initialRoomTypeId,
+  initialUnitId,
+  initialPurpose,
+  initialDate,
+}: Props) {
+  const permits = useHotelCapabilities(),
+    client = useQueryClient();
+  const [form, setForm] = useState(initial),
+    [dirty, setDirty] = useState(false),
+    [error, setError] = useState(""),
+    [submitting, setSubmitting] = useState(false),
+    [uncertain, setUncertain] = useState(false),
+    [saved, setSaved] = useState<Saved>();
+  const [clock, setClock] = useState(() => Date.now()),
+    [more, setMore] = useState<{
+      scope: string;
+      rooms: CreationRoom[];
+      next: string | null;
+    }>(),
+    [loadingMore, setLoadingMore] = useState(false);
+  const pending = useRef<{
+      body: string;
+      key: string;
+      uncertain?: boolean;
+    } | null>(null),
+    inFlight = useRef(false),
+    initialized = useRef(false),
+    panel = useRef<HTMLDivElement>(null);
 
+  const controls = useRef({
+    dirty,
+    submitting,
+    uncertain,
+    saved: !!saved,
+    onClose,
+  });
   useEffect(() => {
-    if (!open || !propertyId) return;
-    const controller = new AbortController();
-    fetch(
-      `/api/partner/properties/${encodeURIComponent(propertyId)}?view=rooms`,
-      {
-        signal: controller.signal,
-      },
+    controls.current = {
+      dirty,
+      submitting,
+      uncertain,
+      saved: !!saved,
+      onClose,
+    };
+  }, [dirty, submitting, uncertain, saved, onClose]);
+
+  const close = () => {
+    const c = controls.current;
+    if (c.submitting) return;
+    if (
+      !c.saved &&
+      (c.dirty || c.uncertain) &&
+      !confirm(
+        c.uncertain
+          ? "This reservation may already be saved. Retry the same request or check reservations before creating another. Close anyway?"
+          : "Discard the unfinished reservation?",
+      )
     )
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to load rooms");
-        return response.json();
-      })
-      .then((body) => {
-        setTimezone(body.property?.timezone || "Asia/Kolkata");
-        setClock(Date.now());
-        setChoices({
-          rooms: body.roomTypes ?? [],
-          rates: body.ratePlans ?? [],
-        });
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError")
-          setError("Unable to load room types and rates.");
-      });
-    return () => controller.abort();
-  }, [open, propertyId]);
-
-  const effectiveRate = choices.rates.find((r) => r.id === form.ratePlanId);
-  const priceRequest = {
-    propertyId,
-    guestName: form.guestName || "Preview guest",
-    reservationPurpose: form.reservationPurpose,
-    recordedArrivalTime: form.recordedArrivalTime || undefined,
-    roomTypeId: form.roomTypeId,
-    ratePlanId: form.ratePlanId,
-    bookingMode: form.bookingMode,
-    checkIn: form.checkIn,
-    ...(form.bookingMode === "hourly"
-      ? { arrivalTime: form.arrivalTime, durationMinutes: form.durationMinutes }
-      : { checkOut: form.checkOut }),
-    adults: form.adults,
-    children: form.children,
-    infants: 0,
+      return;
+    c.onClose();
   };
 
-  const dateQuote = useQuery<{
-    subtotalPaise: number;
-    totalPaise: number;
-    requestedDurationPriced: boolean;
-    durationPrices: DurationPrice[];
-    startAt: string;
-    endAt: string;
-    timezone: string;
-  }>({
-    queryKey: ["partner", propertyId, "manual-date-price", priceRequest],
-    enabled:
-      open &&
-      !!propertyId &&
-      !!effectiveRate &&
-      !!form.checkIn &&
-      (form.bookingMode === "hourly" || !!form.checkOut),
-    queryFn: async ({ signal }) => {
-      const r = await fetch("/api/partner/bookings/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal,
-        body: JSON.stringify(priceRequest),
-      });
-      const b = await r.json();
-      if (!r.ok)
-        throw new Error(
-          b.error?.message || b.message || "Unable to quote date prices.",
-        );
-      return b;
-    },
-  });
-
-  const [submitting, setSubmitting] = useState(false);
-  const [createdCode, setCreatedCode] = useState("");
-  const today = timezone ? localParts(clock, timezone).date : "";
-
-  // Reset when closed
   useEffect(() => {
-    if (open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(EMPTY);
-    setError("");
-    setCreatedCode("");
-    setSubmitting(false);
-    setCreatedId(undefined);
-    requestKey.current = "";
-    lastRequest.current = "";
-  }, [open]);
-
-  const closeState = useRef({ onClose, submitting });
-  useEffect(() => {
-    closeState.current = { onClose, submitting };
-  }, [onClose, submitting]);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const overflow = document.body.style.overflow;
+    const previous = document.activeElement as HTMLElement | null,
+      overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const focusable = () =>
-      [
-        ...(dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
-        ) ?? []),
-      ].filter((el) => el.getClientRects().length > 0);
-    const frame = requestAnimationFrame(() => focusable()[1]?.focus());
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !closeState.current.submitting) {
-        event.preventDefault();
-        closeState.current.onClose();
+    const timer = setInterval(() => setClock(Date.now()), 30000);
+    const frame = requestAnimationFrame(() =>
+      panel.current
+        ?.querySelector<HTMLElement>("select, input, button")
+        ?.focus(),
+    );
+    const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
       }
-      if (event.key === "Tab") {
-        const nodes = focusable(),
-          first = nodes[0],
-          last = nodes.at(-1);
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
+      if (e.key === "Tab") {
+        const items = Array.from(
+          panel.current?.querySelectorAll<HTMLElement>(
+            "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]",
+          ) || [],
+        ).filter((n) => n.getClientRects().length);
+        const first = items[0],
+          last = items.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
           last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
           first?.focus();
         }
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      previousFocus?.focus();
+    const unload = (e: BeforeUnloadEvent) => {
+      if (
+        !controls.current.saved &&
+        (controls.current.dirty ||
+          controls.current.submitting ||
+          controls.current.uncertain)
+      )
+        e.preventDefault();
     };
-  }, [open]);
+    let url = location.href;
+    const pop = () => {
+      const c = controls.current;
+      if (
+        !c.saved &&
+        (c.dirty || c.submitting || c.uncertain) &&
+        !confirm(
+          "Leave this unfinished reservation? If submission was interrupted, check reservations before starting again.",
+        )
+      )
+        history.pushState(null, "", url);
+      else {
+        url = location.href;
+        c.onClose();
+      }
+    };
+    document.addEventListener("keydown", key);
+    window.addEventListener("beforeunload", unload);
+    window.addEventListener("popstate", pop);
+    return () => {
+      clearInterval(timer);
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("beforeunload", unload);
+      window.removeEventListener("popstate", pop);
+      previous?.focus();
+    };
+  }, []);
 
-  if (!open) return null;
+  const choices = useQuery({
+    queryKey: ["partner", propertyId, "creation-choices"],
+    enabled: !!propertyId,
+    queryFn: ({ signal }) =>
+      apiFetch<Choices>(`/api/partner/properties/${propertyId}?view=rooms`, {
+        signal,
+      }),
+    refetchOnWindowFocus: false,
+  });
+  const timezone = choices.data?.property?.timezone || "Asia/Kolkata",
+    today = localParts(clock, timezone).date;
+  const modes = choices.data?.property?.bookingModes || ["overnight", "hourly"];
+  const rooms =
+    choices.data?.roomTypes.filter(
+      (r) => r.status === undefined || r.status === "active",
+    ) || [];
+  const rates = (roomId: string, mode: string) =>
+    choices.data?.ratePlans.filter(
+      (r) =>
+        r.roomTypeId === roomId &&
+        (r.bookingMode || "overnight") === mode &&
+        r.status === "active" &&
+        eligiblePricing(r),
+    ) || [];
 
-  const set = <K extends keyof ManualBookingForm>(
-    k: K,
-    v: ManualBookingForm[K],
-  ) => setForm((p) => ({ ...p, [k]: v }));
+  useEffect(() => {
+    if (!choices.data || initialized.current) return;
+    const handle = setTimeout(() => {
+      if (initialized.current) return;
+      initialized.current = true;
+      const hotel = choices.data!.property,
+        zone = hotel?.timezone || "Asia/Kolkata",
+        local = localParts(Date.now(), zone),
+        date =
+          initialDate ||
+          (local.time >= (hotel?.checkInTime || "14:00")
+            ? nextDay(local.date)
+            : local.date);
+      const mode =
+        hotel?.bookingModes?.length === 1
+          ? (hotel.bookingModes[0] as "overnight" | "hourly")
+          : "overnight";
+      const availableRooms = choices.data!.roomTypes.filter(
+          (r) => r.status === undefined || r.status === "active",
+        ),
+        roomId =
+          initialRoomTypeId ||
+          (availableRooms.length === 1 ? availableRooms[0].id : "");
+      const eligible = choices.data!.ratePlans.filter(
+        (r) =>
+          r.roomTypeId === roomId &&
+          (r.bookingMode || "overnight") === mode &&
+          r.status === "active" &&
+          eligiblePricing(r),
+      );
+      const slot = localParts(
+        Math.ceil((Date.now() + 30 * 60000) / 900000) * 900000,
+        zone,
+      );
+      setForm((f) =>
+        f.checkIn || f.guestName
+          ? f
+          : {
+              ...f,
+              reservationPurpose: initialPurpose || f.reservationPurpose,
+              bookingMode: mode,
+              checkIn: mode === "hourly" ? slot.date : date,
+              checkOut: nextDay(mode === "hourly" ? slot.date : date),
+              arrivalTime: mode === "hourly" ? slot.time : f.arrivalTime,
+              roomTypeId: roomId,
+              physicalUnitId: initialUnitId || "",
+              ratePlanId: eligible.length === 1 ? eligible[0].id : "",
+              durationMinutes:
+                eligible.length === 1 && mode === "hourly"
+                  ? (eligible[0].durationPrices?.[0]?.hours || 1) * 60
+                  : 60,
+            },
+      );
+    }, 0);
+    return () => clearTimeout(handle);
+  }, [choices.data]);
 
-  const nights = calcNights(form.checkIn, form.checkOut);
-  const selectedRate = choices.rates.find(
-    (rate) => rate.id === form.ratePlanId,
-  );
-  const publishedPrice =
-    form.bookingMode === "hourly"
-      ? selectedRate?.durationPrices?.find(
-          (row) => row.hours * 60 === form.durationMinutes,
-        )?.pricePaise
-      : selectedRate?.basePricePaise;
-  const negotiated = effectiveRate?.datePricingEnabled
-    ? Boolean(form.negotiatedPriceReason.trim())
-    : publishedPrice !== Math.round(form.nightlyRateRupees * 100);
-  const offeredDurations =
-    effectiveRate?.datePricingEnabled && dateQuote.data?.durationPrices
-      ? dateQuote.data.durationPrices
-      : selectedRate?.durationPrices;
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setDirty(true);
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function chooseRoom(id: string) {
+    const offered = rates(id, form.bookingMode);
+    setDirty(true);
+    setForm((f) => ({
+      ...f,
+      roomTypeId: id,
+      ratePlanId: offered.length === 1 ? offered[0].id : "",
+      durationMinutes:
+        offered.length === 1 && f.bookingMode === "hourly"
+          ? (offered[0].durationPrices?.[0]?.hours || 1) * 60
+          : f.durationMinutes,
+      priceOverride: "",
+      negotiatedPriceReason: "",
+    }));
+  }
+
+  const priceRequest = {
+    propertyId,
+    guestName: "Preview guest",
+    reservationPurpose: form.reservationPurpose,
+    recordedArrivalTime:
+      form.reservationPurpose === "walk_in"
+        ? form.recordedArrivalTime
+        : undefined,
+    bookingMode: form.bookingMode,
+    roomTypeId: form.roomTypeId,
+    ratePlanId: form.ratePlanId,
+    checkIn: form.checkIn,
+    checkOut: form.bookingMode === "overnight" ? form.checkOut : undefined,
+    arrivalTime: form.arrivalTime,
+    durationMinutes: form.durationMinutes || undefined,
+    adults: form.adults,
+    children: form.children,
+    infants: form.infants,
+  };
+  const scope = JSON.stringify(priceRequest);
+
+  const quote = useQuery({
+    queryKey: ["partner", propertyId, "manual-date-price", priceRequest],
+    enabled:
+      !!propertyId &&
+      !!form.ratePlanId &&
+      !!form.checkIn &&
+      (form.bookingMode === "hourly"
+        ? !!form.durationMinutes
+        : !!form.checkOut) &&
+      !saved &&
+      !uncertain,
+    queryFn: ({ signal }) =>
+      apiFetch<Quote>("/api/partner/bookings/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(priceRequest),
+        signal,
+      }),
+    refetchOnWindowFocus: false,
+    refetchInterval: false,
+  });
+
+  const rate = choices.data?.ratePlans.find((r) => r.id === form.ratePlanId);
+  const subtotal = form.priceOverride
+    ? parseCollectionPaise(form.priceOverride)
+    : quote.data?.subtotalPaise;
+  const tax = Number.isSafeInteger(subtotal)
+    ? Number(
+        (BigInt(subtotal!) *
+          BigInt(quote.data?.taxBasisPoints ?? rate?.taxBasisPoints ?? 0) +
+          BigInt(5000)) /
+          BigInt(10000),
+      )
+    : 0;
   const total =
-    (form.bookingMode === "hourly" ? 1 : nights) * form.nightlyRateRupees;
+    subtotal == null
+      ? 0
+      : subtotal +
+        tax +
+        (quote.data?.customerFeePaise ?? rate?.customerFeePaise ?? 0);
+  const collected =
+    form.payment === "paid"
+      ? total
+      : form.payment === "partial"
+        ? parseCollectionPaise(form.amount)
+        : 0;
+  const canCollect =
+    permits("payment.collect") &&
+    quote.data?.creationFeatures?.collection !== false;
+  const canAssign =
+    permits("reservation.assign") &&
+    quote.data?.creationFeatures?.assignment !== false;
 
-  const subtotalPaise =
-    !negotiated && dateQuote.data
-      ? dateQuote.data.subtotalPaise
-      : Math.round(total * 100);
-  const taxPaise = Number(
-    (BigInt(
-      Number.isSafeInteger(subtotalPaise) && subtotalPaise >= 0
-        ? subtotalPaise
-        : 0,
-    ) *
-      BigInt(selectedRate?.taxBasisPoints ?? 0) +
-      BigInt(5000)) /
-      BigInt(10000),
+  const loaded = [
+    ...(quote.data?.roomOptions?.rooms || []),
+    ...(more?.scope === scope ? more.rooms : []),
+  ];
+  const options = [...new Map(loaded.map((r) => [r.id, r])).values()].sort(
+    (a, b) =>
+      Number(b.readyNow) - Number(a.readyNow) ||
+      a.label.localeCompare(b.label, undefined, { numeric: true }),
   );
-  const finalTotalPaise =
-    subtotalPaise + taxPaise + (selectedRate?.customerFeePaise ?? 0);
+  const selected = options.find((r) => r.id === form.physicalUnitId),
+    cursor =
+      more?.scope === scope ? more.next : quote.data?.roomOptions?.nextCursor;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (
-      !dateQuote.data ||
-      dateQuote.isFetching ||
-      dateQuote.isError ||
-      dateQuote.data.requestedDurationPriced === false
-    ) {
-      setError("Wait for the date-specific price or correct the stay details.");
-      return;
-    }
-    if (!propertyId) {
-      setError("No property selected.");
-      return;
-    }
-    if (form.bookingMode === "overnight" && nights <= 0) {
-      setError("Check-out must be after check-in.");
-      return;
-    }
-    if (!form.nightlyRateRupees || form.nightlyRateRupees <= 0) {
-      setError("Please enter a room price.");
-      return;
-    }
-    const requestBody = JSON.stringify({
-      ...form,
-      accompanyingGuests: form.accompanyingNames
-        .split("\n")
-        .map((n) => n.trim())
-        .filter(Boolean)
-        .map((name) => ({ name, ageGroup: "adult" })),
-      bookingContact: form.contactName.trim()
-        ? {
-            name: form.contactName,
-            email: form.contactEmail,
-            phone: form.contactPhone,
-          }
-        : undefined,
-      recordedArrivalTime:
-        form.reservationPurpose === "walk_in"
-          ? form.recordedArrivalTime
-          : undefined,
-      propertyId,
-      expectedTotalPaise: finalTotalPaise,
-      expectedStartAt: dateQuote.data?.startAt,
-      expectedEndAt: dateQuote.data?.endAt,
-      expectedTimezone: dateQuote.data?.timezone,
-      negotiatedSubtotalPaise: negotiated ? subtotalPaise : undefined,
-      negotiatedPriceReason: negotiated
-        ? form.negotiatedPriceReason
-        : undefined,
-      checkOut: form.bookingMode === "hourly" ? undefined : form.checkOut,
-    });
-    if (lastRequest.current !== requestBody) {
-      lastRequest.current = requestBody;
-      requestKey.current = crypto.randomUUID();
-    }
-    setSubmitting(true);
-    setError("");
+  async function loadMore() {
+    if (!cursor) return;
+    setLoadingMore(true);
     try {
-      const res = await fetch("/api/partner/bookings", {
+      const q = await apiFetch<Quote>("/api/partner/bookings/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...priceRequest, roomCursor: cursor }),
+      });
+      setMore((previous) => ({
+        scope,
+        rooms: [
+          ...(previous?.scope === scope ? previous.rooms : []),
+          ...(q.roomOptions?.rooms || []),
+        ],
+        next: q.roomOptions?.nextCursor || null,
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load rooms.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (inFlight.current) return;
+    const recovering = pending.current?.uncertain === true;
+    setError("");
+    if (!recovering && !e.currentTarget.reportValidity()) return;
+    if (
+      !recovering &&
+      (form.contactName || form.contactEmail || form.contactPhone) &&
+      form.contactName.trim().length < 2
+    ) {
+      setError(
+        "Enter the separate booking contact's name, or clear their contact details.",
+      );
+      return;
+    }
+    if (!recovering) {
+      if (
+        !quote.data ||
+        quote.isError ||
+        quote.isFetching ||
+        quote.data.requestedDurationPriced === false
+      ) {
+        setError(
+          "Wait for an available price and correct any stay errors before saving.",
+        );
+        return;
+      }
+      if (!form.guestName.trim() || form.guestName.trim().length < 2) {
+        setError("Enter the actual lead staying guest's name.");
+        return;
+      }
+      if (subtotal === null || subtotal === undefined) {
+        setError("Enter a valid price with at most two decimal places.");
+        return;
+      }
+      if (
+        form.priceOverride &&
+        (!permits("rates.manage") ||
+          form.negotiatedPriceReason.trim().length < 3)
+      ) {
+        setError("An agreed price requires pricing permission and a reason.");
+        return;
+      }
+      if (
+        collected === null ||
+        collected < 0 ||
+        collected > total ||
+        (form.payment === "partial" && (collected <= 0 || collected >= total))
+      ) {
+        setError(
+          "Enter a partial advance greater than zero and below the total, or choose no/full collection.",
+        );
+        return;
+      }
+      if (collected > 0 && !canCollect) {
+        setError(
+          "Your role or the hotel's payment settings do not permit collecting money. Choose no payment collected.",
+        );
+        return;
+      }
+      if (
+        collected > 0 &&
+        form.collectionMethod !== "cash" &&
+        !form.collectionReference.trim()
+      ) {
+        setError("Enter the UPI or card-terminal reference.");
+        return;
+      }
+      if (form.physicalUnitId && (!canAssign || !selected?.available)) {
+        setError(
+          "The selected room is no longer available for this stay. Choose another room or explicitly leave it unassigned.",
+        );
+        return;
+      }
+      const accompanyingGuests = (
+        [
+          [form.adultNames, "adult"],
+          [form.childNames, "child"],
+          [form.infantNames, "infant"],
+        ] as const
+      ).flatMap(([names, ageGroup]) =>
+        names
+          .split("\n")
+          .map((n) => n.trim())
+          .filter(Boolean)
+          .map((name) => ({ name, ageGroup })),
+      );
+      const body = JSON.stringify({
+        ...priceRequest,
+        guestName: form.guestName,
+        guestEmail: form.guestEmail,
+        guestPhone: form.guestPhone,
+        accompanyingGuests,
+        bookingContact: form.contactName.trim()
+          ? {
+              name: form.contactName,
+              email: form.contactEmail,
+              phone: form.contactPhone,
+            }
+          : undefined,
+        initialCollectionPaise: collected,
+        paymentMethod: form.payment === "paid" ? "paid" : "pay_at_property",
+        collectionMethod: form.collectionMethod,
+        collectionReference: form.collectionReference,
+        physicalUnitId: form.physicalUnitId || null,
+        negotiatedSubtotalPaise: form.priceOverride ? subtotal : undefined,
+        negotiatedPriceReason: form.priceOverride
+          ? form.negotiatedPriceReason
+          : undefined,
+        expectedTotalPaise: total,
+        expectedStartAt: quote.data.startAt,
+        expectedEndAt: quote.data.endAt,
+        expectedTimezone: quote.data.timezone,
+        specialRequest: form.specialRequest,
+      });
+      if (pending.current?.body !== body)
+        pending.current = { body, key: crypto.randomUUID() };
+    }
+    if (!pending.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    let definitive = false;
+    try {
+      const response = await fetch("/api/partner/bookings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key":
-            requestKey.current || (requestKey.current = crypto.randomUUID()),
+          "Idempotency-Key": pending.current.key,
         },
-        body: requestBody,
+        body: pending.current.body,
       });
-      const body = (await res.json()) as {
-        error?: string | { message?: string; code?: string };
-        confirmationCode?: string;
-        bookingId?: string;
-      };
-      if (!res.ok) {
-        if (
-          typeof body.error === "object" &&
-          (body.error?.code === "QUOTE_CHANGED" ||
-            body.error?.message?.toLowerCase().includes("quote"))
-        )
-          void dateQuote.refetch();
+      const b = await response.json();
+      if (!response.ok) {
+        definitive =
+          !recovering && response.status < 500 && response.status !== 408;
+        if (!definitive) setUncertain(true);
+        else {
+          setUncertain(false);
+          setMore(undefined);
+          void quote.refetch();
+        }
         throw new Error(
-          typeof body.error === "string"
-            ? body.error
-            : (body.error?.message ?? "Unable to create booking."),
+          typeof b.error === "string"
+            ? b.error
+            : b.error?.message || "Unable to save reservation.",
         );
       }
-      setCreatedId(body.bookingId);
-      setCreatedCode(body.confirmationCode ?? "");
-    } catch (err) {
+      if (
+        typeof b.bookingId !== "string" ||
+        typeof b.confirmationCode !== "string"
+      )
+        throw new Error(
+          "Submission response was incomplete. Retry the same reservation.",
+        );
+      definitive = true;
+      setSaved(b);
+      setDirty(false);
+      setUncertain(false);
+      await client.invalidateQueries({ queryKey: ["partner", propertyId] });
+    } catch (e) {
+      if (!definitive) {
+        pending.current.uncertain = true;
+        setUncertain(true);
+        void client.invalidateQueries({ queryKey: ["partner", propertyId] });
+      }
       setError(
-        err instanceof Error ? err.message : "Unable to create booking.",
+        e instanceof Error
+          ? e.message
+          : "Unable to confirm submission. Retry the same request.",
       );
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
-  };
+  }
+
+  const locked = submitting || uncertain;
+  const moment = (value?: string) =>
+    value
+      ? new Date(value).toLocaleString("en-IN", {
+          timeZone: timezone,
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : "Choose a valid stay";
 
   return (
     <div
-      ref={dialogRef}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Add Manual Booking"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4"
     >
-      {/* Backdrop */}
       <button
         type="button"
         aria-label="Close"
-        onClick={() => {
-          if (!submitting) onClose();
-        }}
-        className="absolute inset-0 bg-[#061224]/60 backdrop-blur-xs transition-opacity"
+        className="absolute inset-0 bg-[#061224]/60 backdrop-blur-xs"
+        onClick={close}
       />
-
-      {/* Modal Shell */}
-      <div className="relative flex max-h-[92vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-[#e4ded2] bg-[#fbfbf9] shadow-2xl shadow-[#061224]/20 animate-in fade-in zoom-in-95 duration-150">
-        {/* ── Top Header ── */}
-        <div className="flex shrink-0 items-center justify-between border-b border-[#ede7dc] bg-white px-6 py-4">
+      <div
+        ref={panel}
+        className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[#ede7dc] bg-[#fbfaf8] shadow-2xl"
+      >
+        {/* Header */}
+        <header className="flex items-center justify-between gap-3 border-b border-[#ede7dc] bg-white p-4 sm:px-6 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#061224] text-[#c89b3c] shadow-xs">
-              <Building2 className="h-5 w-5" />
-            </div>
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#fbf5e8] text-[#c89b3c]">
+              <CalendarPlus className="h-5 w-5" />
+            </span>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-[#061224]">
-                  Add Manual Booking
-                </h2>
-                <span className="rounded-md bg-[#fbf5e8] px-2 py-0.5 text-[10px] font-bold text-[#8a7044]">
-                  Walk-in / Offline
-                </span>
-              </div>
-              <p className="mt-0.5 text-xs font-medium text-[#68758c]">
-                {propertyName || "Cosmozin Hotel"} · Instant room reservation
+              <h2 className="text-base sm:text-lg font-bold text-[#061224]">
+                Add Manual Booking
+              </h2>
+              <p className="text-xs text-[#8b96aa]">
+                {propertyName} · {timezone}
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => {
-              if (!submitting) onClose();
-            }}
             aria-label="Close dialog"
-            className="grid h-8 w-8 place-items-center rounded-xl text-[#8b96aa] hover:bg-[#f0ece6] hover:text-[#061224] transition-colors"
+            disabled={submitting}
+            onClick={close}
+            className="grid h-9 w-9 place-items-center rounded-xl border border-[#ede7dc] bg-white text-[#68758c] hover:bg-[#fbf5e8] hover:text-[#061224] hover:border-[#c89b3c] transition-colors disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
-        </div>
+        </header>
 
-        {/* ── Scrollable Body ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {createdCode ? (
-            /* ── Success State ── */
-            <div className="flex flex-col items-center justify-center gap-5 py-10 text-center">
-              <div className="grid h-20 w-20 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/60 shadow-sm">
-                <CheckCircle2 className="h-10 w-10" strokeWidth={1.75} />
-              </div>
+        {/* Scrollable Form Body */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {saved ? (
+            <div className="space-y-5 py-8 text-center max-w-md mx-auto">
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 mx-auto">
+                <CheckCircle2 className="h-6 w-6" />
+              </span>
               <div>
                 <h3 className="text-xl font-bold text-[#061224]">
                   Booking Confirmed!
                 </h3>
-                <p className="mt-1 text-sm font-medium text-[#68758c]">
+                <p className="text-xs text-[#68758c] mt-1">
                   The reservation is confirmed, but the guest is not checked in.
-                  Open it below and explicitly select Check in.
                 </p>
               </div>
-
-              <div className="w-full max-w-sm rounded-2xl border border-[#e4ded2] bg-white p-5 text-center shadow-xs">
-                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#8b96aa]">
+              <div className="rounded-xl border border-[#ede7dc] bg-white p-4 shadow-xs">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b96aa]">
                   Confirmation Code
+                </span>
+                <p className="font-mono text-2xl font-bold text-[#061224] tracking-wider mt-1">
+                  {saved.confirmationCode}
                 </p>
-                <p className="mt-2 font-mono text-2xl font-black tracking-[0.14em] text-[#061224]">
-                  {createdCode}
-                </p>
-                <div className="mt-4 flex items-center justify-between border-t border-[#f3efe8] pt-3 text-xs text-[#68758c]">
-                  <span>
-                    Guest:{" "}
-                    <strong className="text-[#061224]">{form.guestName}</strong>
-                  </span>
-                  <span>
-                    Total:{" "}
-                    <strong className="text-[#061224]">
-                      {fmt.format(finalTotalPaise / 100)}
-                    </strong>
-                  </span>
-                </div>
               </div>
-
+              <div className="rounded-xl border border-[#f0ece4] bg-[#fdfdfc] p-3.5 text-xs space-y-1.5">
+                <p className="font-semibold text-[#061224]">
+                  Collected at hotel:{" "}
+                  {money(saved.collectedPaise ?? collected ?? 0)} · Remaining:{" "}
+                  {money(saved.balanceDuePaise ?? total - (collected || 0))}
+                </p>
+                <p className="text-[#68758c]">
+                  {saved.physicalUnitLabel
+                    ? `Assigned room: ${saved.physicalUnitLabel}. Check readiness before explicit check-in.`
+                    : "Room unassigned."}
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => onCreated(createdId)}
-                className="mt-2 inline-flex items-center gap-2 rounded-xl bg-[#061224] px-7 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[#0b1f3a] px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#132c50] transition-colors"
+                onClick={() => onCreated(saved.bookingId)}
               >
-                <span>View Reservation in Dashboard</span>
-                <ArrowRight className="h-3.5 w-3.5 text-[#c89b3c]" />
+                View Reservation in Dashboard
               </button>
             </div>
           ) : (
-            /* ── Booking Form ── */
-            <form
-              id="mbf"
-              onSubmit={handleSubmit}
-              noValidate
-              className="space-y-4"
-            >
-              <section className="rounded-2xl border border-[#ede7dc] bg-white p-4 space-y-3">
-                <label className={FIELD_LABEL_CLS}>
-                  Reservation purpose
-                  <select
-                    className={INPUT_CLS}
-                    value={form.reservationPurpose}
-                    disabled={!timezone}
-                    onChange={(e) => {
-                      const purpose = e.target.value as
-                        "reservation" | "walk_in";
-                      const local = localParts(Date.now(), timezone);
-                      setForm((f) => ({
-                        ...f,
-                        reservationPurpose: purpose,
-                        ...(purpose === "walk_in"
-                          ? {
-                              checkIn: local.date,
-                              recordedArrivalTime: local.time,
-                              arrivalTime: local.time,
-                              checkOut: new Date(
-                                Date.parse(`${local.date}T00:00Z`) + 86400000,
-                              )
-                                .toISOString()
-                                .slice(0, 10),
-                            }
-                          : {}),
-                      }));
-                    }}
-                  >
-                    <option value="reservation">
-                      Future reservation / telephone
-                    </option>
-                    <option value="walk_in">
-                      Guest arriving now — walk-in
-                    </option>
-                  </select>
-                </label>
-                <p className="text-xs text-slate-500">
-                  Hotel timezone: {timezone || "Loading…"}. Saving confirms the
-                  booking; check-in is a separate action. Walk-ins use today’s
-                  hotel date, never the previous night.
-                </p>
-                {form.reservationPurpose === "walk_in" && (
-                  <label className={FIELD_LABEL_CLS}>
-                    Recorded arrival time ({today})
-                    <input
-                      type="time"
-                      className={INPUT_CLS}
-                      value={form.recordedArrivalTime}
-                      onChange={(e) =>
+            <form id="mbf" onSubmit={submit} className="space-y-4" noValidate>
+              <fieldset
+                disabled={locked}
+                className="space-y-4 disabled:opacity-80"
+              >
+                {/* 1. Stay and arrival */}
+                <Section
+                  number="1"
+                  icon={Calendar}
+                  title="Stay and arrival"
+                  subtitle="Reservation purpose, stay mode, and arrival dates"
+                >
+                  <Field label="Reservation purpose">
+                    <div className="relative">
+                      <select
+                        aria-label="Reservation purpose"
+                        disabled={choices.isPending}
+                        className={selectField}
+                        value={form.reservationPurpose}
+                        onChange={(e) => {
+                          const purpose = e.target
+                              .value as typeof form.reservationPurpose,
+                            now = localParts(Date.now(), timezone);
+                          setDirty(true);
+                          setForm((f) => ({
+                            ...f,
+                            reservationPurpose: purpose,
+                            ...(purpose === "walk_in"
+                              ? {
+                                  checkIn: now.date,
+                                  checkOut: nextDay(now.date),
+                                  recordedArrivalTime: now.time,
+                                  arrivalTime: now.time,
+                                }
+                              : {}),
+                          }));
+                        }}
+                      >
+                        <option value="reservation">
+                          Future reservation / telephone
+                        </option>
+                        <option value="walk_in">
+                          Guest arriving now — walk-in
+                        </option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
+                    </div>
+                  </Field>
+
+                  <div className="flex items-start gap-2 rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-2.5 text-xs text-[#68758c]">
+                    <Info className="h-4 w-4 text-[#c89b3c] shrink-0 mt-0.5" />
+                    <p>
+                      Saving confirms the reservation. Check-in is a separate
+                      action. Walk-ins record today's hotel date directly.
+                    </p>
+                  </div>
+
+                  {/* Stay Mode Segmented Control */}
+                  <div className="inline-flex p-1 rounded-xl bg-[#f8f6f0] border border-[#ede7dc]">
+                    <button
+                      type="button"
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
+                        form.bookingMode === "overnight"
+                          ? "bg-[#0b1f3a] text-white shadow-xs"
+                          : "text-[#68758c] hover:text-[#061224] hover:bg-white/80"
+                      } disabled:opacity-50`}
+                      aria-pressed={form.bookingMode === "overnight"}
+                      disabled={!modes.includes("overnight")}
+                      onClick={() => {
+                        setDirty(true);
                         setForm((f) => ({
                           ...f,
-                          recordedArrivalTime: e.target.value,
-                          arrivalTime: e.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                )}
-                <label className={FIELD_LABEL_CLS}>
-                  Accompanying adult names — one per line
-                  <textarea
-                    className={INPUT_CLS}
-                    value={form.accompanyingNames}
-                    onChange={(e) => set("accompanyingNames", e.target.value)}
-                  />
-                </label>
-                <p className="text-xs text-slate-500">
-                  Enter actual staying names. Missing adults or children remain
-                  visibly unregistered and can be completed in reservation
-                  details.
-                </p>
-                <details>
-                  <summary className="text-sm font-semibold">
-                    Someone else made this booking
-                  </summary>
-                  <label className={FIELD_LABEL_CLS}>
-                    Booking contact name
-                    <input
-                      className={INPUT_CLS}
-                      value={form.contactName}
-                      onChange={(e) => set("contactName", e.target.value)}
-                    />
-                  </label>
-                  <label className={FIELD_LABEL_CLS}>
-                    Booking contact email
-                    <input
-                      type="email"
-                      className={INPUT_CLS}
-                      value={form.contactEmail}
-                      onChange={(e) => set("contactEmail", e.target.value)}
-                    />
-                  </label>
-                  <label className={FIELD_LABEL_CLS}>
-                    Booking contact phone
-                    <input
-                      className={INPUT_CLS}
-                      value={form.contactPhone}
-                      onChange={(e) => set("contactPhone", e.target.value)}
-                    />
-                  </label>
-                </details>
-                {dateQuote.isFetching && (
-                  <p role="status">Checking hotel availability and price…</p>
-                )}
-                {dateQuote.error && (
-                  <p role="alert" className="text-sm text-red-700">
-                    {dateQuote.error.message}
-                  </p>
-                )}
-                {dateQuote.data &&
-                  !dateQuote.isError &&
-                  dateQuote.data.requestedDurationPriced !== false && (
-                    <p className="text-sm font-semibold">
-                      Review occupancy:{" "}
-                      {new Date(dateQuote.data.startAt).toLocaleString(
-                        "en-IN",
-                        { timeZone: timezone || "Asia/Kolkata" },
-                      )}{" "}
-                      →{" "}
-                      {new Date(dateQuote.data.endAt).toLocaleString("en-IN", {
-                        timeZone: timezone || "Asia/Kolkata",
-                      })}{" "}
-                      ({timezone}). Total {fmt.format(finalTotalPaise / 100)}.
-                      Full calendar-night pricing applies to overnight stays.
+                          bookingMode: "overnight",
+                          ratePlanId: "",
+                          priceOverride: "",
+                        }));
+                      }}
+                    >
+                      <Moon className="h-3.5 w-3.5" />
+                      <span>Overnight Stay</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
+                        form.bookingMode === "hourly"
+                          ? "bg-[#0b1f3a] text-white shadow-xs"
+                          : "text-[#68758c] hover:text-[#061224] hover:bg-white/80"
+                      } disabled:opacity-50`}
+                      aria-pressed={form.bookingMode === "hourly"}
+                      disabled={!modes.includes("hourly")}
+                      onClick={() => {
+                        const now = new Date(Date.now() + 30 * 60000),
+                          local = localParts(now.getTime(), timezone);
+                        const minutes =
+                          Math.ceil(Number(local.time.slice(3)) / 15) * 15;
+                        const next = localParts(
+                          now.getTime() +
+                            (minutes - Number(local.time.slice(3))) * 60000,
+                          timezone,
+                        );
+                        setDirty(true);
+                        setForm((f) => ({
+                          ...f,
+                          bookingMode: "hourly",
+                          ratePlanId: "",
+                          durationMinutes: 60,
+                          arrivalTime:
+                            f.reservationPurpose === "walk_in"
+                              ? f.recordedArrivalTime
+                              : next.time,
+                          checkIn:
+                            f.reservationPurpose === "walk_in"
+                              ? f.checkIn
+                              : next.date,
+                          priceOverride: "",
+                        }));
+                      }}
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Hourly / Day Use</span>
+                    </button>
+                  </div>
+
+                  {!modes.includes("hourly") && (
+                    <p className="text-xs text-[#8b96aa]">
+                      Hourly stays are not offered by this hotel.
                     </p>
                   )}
-              </section>
-              {/* Segmented Booking Mode Toggle */}
-              <div className="rounded-2xl border border-[#ede7dc] bg-white p-2 shadow-xs">
-                <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#f4f2ee] p-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      set("bookingMode", "overnight");
-                      set("ratePlanId", "");
-                    }}
-                    className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all ${
-                      form.bookingMode === "overnight"
-                        ? "bg-[#061224] text-white shadow-xs"
-                        : "text-[#68758c] hover:text-[#061224]"
-                    }`}
-                  >
-                    <Moon className="h-3.5 w-3.5" />
-                    <span>Overnight Stay</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      set("bookingMode", "hourly");
-                      set("ratePlanId", "");
-                    }}
-                    className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all ${
-                      form.bookingMode === "hourly"
-                        ? "bg-[#061224] text-white shadow-xs"
-                        : "text-[#68758c] hover:text-[#061224]"
-                    }`}
-                  >
-                    <Clock className="h-3.5 w-3.5" />
-                    <span>Hourly / Day Use</span>
-                  </button>
-                </div>
-              </div>
 
-              {/* 1. Guest Information */}
-              <SectionCard
-                icon={User2}
-                title="Guest Information"
-                subtitle="Primary contact details for this booking"
-              >
-                <div className="grid gap-3.5 sm:grid-cols-2">
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      Full Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      required
-                      autoFocus
-                      placeholder="e.g. Priya Sharma"
-                      aria-label="Guest name"
-                      value={form.guestName}
-                      onChange={(e) => set("guestName", e.target.value)}
-                      className={INPUT_CLS}
-                    />
-                  </div>
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>Phone Number</label>
-                    <input
-                      type="tel"
-                      placeholder="+91 98765 43210"
-                      aria-label="Phone number"
-                      value={form.guestPhone}
-                      onChange={(e) => set("guestPhone", e.target.value)}
-                      className={INPUT_CLS}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={FIELD_LABEL_CLS}>Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="guest@email.com"
-                      aria-label="Email address"
-                      value={form.guestEmail}
-                      onChange={(e) => set("guestEmail", e.target.value)}
-                      className={INPUT_CLS}
-                    />
-                  </div>
-                </div>
-              </SectionCard>
-
-              {/* 2. Stay & Timing Details */}
-              <SectionCard
-                icon={CalendarDays}
-                title="Stay & Timing"
-                subtitle={
-                  form.bookingMode === "hourly"
-                    ? "Specify arrival time and duration"
-                    : "Select check-in and check-out dates"
-                }
-              >
-                <div className="grid gap-3.5 sm:grid-cols-2">
-                  {/* Check-in Date */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      {form.bookingMode === "hourly"
-                        ? "Date of Stay"
-                        : "Check-in Date"}{" "}
-                      <span className="text-rose-500">*</span>
-                    </label>
-                    <PartnerDatePicker
-                      timezone={timezone || undefined}
-                      required
-                      min={today}
-                      aria-label="Check-in date"
-                      value={form.checkIn}
-                      onChange={(e) => set("checkIn", e.target.value)}
-                      className="!min-h-[42px] !border-[#e4ded2] !bg-[#fdfdfc] hover:!border-[#c89b3c] focus-visible:!ring-2 focus-visible:!ring-[#c89b3c]/15 focus-visible:!border-[#c89b3c]"
-                    />
-                  </div>
-
-                  {/* Check-out Date (Overnight) */}
-                  {form.bookingMode === "overnight" ? (
-                    <div className="sm:col-span-1">
-                      <label className={FIELD_LABEL_CLS}>
-                        Check-out Date <span className="text-rose-500">*</span>
-                      </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Check-in Date">
                       <PartnerDatePicker
-                        timezone={timezone || undefined}
-                        required
-                        min={form.checkIn || today}
-                        aria-label="Check-out date"
-                        value={form.checkOut}
-                        onChange={(e) => set("checkOut", e.target.value)}
-                        className="!min-h-[42px] !border-[#e4ded2] !bg-[#fdfdfc] hover:!border-[#c89b3c] focus-visible:!ring-2 focus-visible:!ring-[#c89b3c]/15 focus-visible:!border-[#c89b3c]"
+                        aria-label="Check-in date"
+                        value={form.checkIn}
+                        min={today}
+                        timezone={timezone}
+                        onChange={(e) => {
+                          const newCheckIn = e.target.value;
+                          setDirty(true);
+                          setForm((f) => {
+                            const shouldAdvanceCheckOut =
+                              f.bookingMode === "overnight" &&
+                              f.checkOut &&
+                              f.checkOut <= newCheckIn;
+                            return {
+                              ...f,
+                              checkIn: newCheckIn,
+                              ...(shouldAdvanceCheckOut
+                                ? { checkOut: nextDay(newCheckIn) }
+                                : {}),
+                            };
+                          });
+                        }}
                       />
-                    </div>
-                  ) : (
-                    /* Hourly Timing Controls */
-                    <>
-                      <div className="sm:col-span-1">
-                        <label className={FIELD_LABEL_CLS}>
-                          Arrival Time <span className="text-rose-500">*</span>
-                        </label>
+                    </Field>
+                    {form.bookingMode === "overnight" ? (
+                      <Field label="Check-out Date">
+                        <PartnerDatePicker
+                          aria-label="Check-out date"
+                          value={form.checkOut}
+                          min={form.checkIn || today}
+                          timezone={timezone}
+                          onChange={(e) => set("checkOut", e.target.value)}
+                        />
+                      </Field>
+                    ) : (
+                      <Field label="Arrival time">
                         <input
                           type="time"
+                          className={field}
                           step={900}
-                          required
                           value={form.arrivalTime}
                           disabled={form.reservationPurpose === "walk_in"}
                           onChange={(e) => set("arrivalTime", e.target.value)}
-                          className={INPUT_CLS}
                         />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className={FIELD_LABEL_CLS}>
-                          Stay Duration <span className="text-rose-500">*</span>
-                        </label>
+                      </Field>
+                    )}
+                  </div>
+
+                  {form.reservationPurpose === "walk_in" && (
+                    <Field label={`Recorded arrival time (${today})`}>
+                      <input
+                        type="time"
+                        className={field}
+                        value={form.recordedArrivalTime}
+                        onChange={(e) => {
+                          setDirty(true);
+                          setForm((f) => ({
+                            ...f,
+                            recordedArrivalTime: e.target.value,
+                            arrivalTime: e.target.value,
+                          }));
+                        }}
+                      />
+                    </Field>
+                  )}
+                </Section>
+
+                {/* 2. Room, rate and optional room number */}
+                <Section
+                  number="2"
+                  icon={BedDouble}
+                  title="Room, rate and optional room number"
+                  subtitle="Category selection, pricing, and live room allocation"
+                >
+                  {choices.isPending && (
+                    <p role="status" className="text-xs text-[#8b96aa]">
+                      Loading hotel rooms and rates…
+                    </p>
+                  )}
+                  {choices.isError && (
+                    <div
+                      role="alert"
+                      className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"
+                    >
+                      <span>Unable to load hotel choices.</span>
+                      <button
+                        type="button"
+                        className="font-bold underline"
+                        onClick={() => void choices.refetch()}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Room category">
+                      <div className="relative">
                         <select
-                          required
-                          value={
-                            offeredDurations?.some(
-                              (row) => row.hours * 60 === form.durationMinutes,
-                            )
-                              ? form.durationMinutes
-                              : ""
-                          }
-                          onChange={(e) => {
-                            const minutes = Number(e.target.value);
-                            set("durationMinutes", minutes);
-                            set(
-                              "nightlyRateRupees",
-                              (offeredDurations?.find(
-                                (row) => row.hours * 60 === minutes,
-                              )?.pricePaise ?? 0) / 100,
-                            );
-                          }}
-                          className={INPUT_CLS}
+                          aria-label="Room category"
+                          className={selectField}
+                          value={form.roomTypeId}
+                          onChange={(e) => chooseRoom(e.target.value)}
                         >
-                          <option value="">Choose a priced duration</option>
-                          {offeredDurations?.map((row) => (
-                            <option key={row.hours} value={row.hours * 60}>
-                              {row.hours} hours ·{" "}
-                              {fmt.format(row.pricePaise / 100)}
+                          <option value="">Choose room type</option>
+                          {rooms.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
                             </option>
                           ))}
                         </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
                       </div>
-                    </>
-                  )}
-
-                  {/* Nights summary badge */}
-                  {form.bookingMode === "overnight" && nights > 0 && (
-                    <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-[#e4ded2] bg-[#fbfbf9] px-3.5 py-2.5 text-xs">
-                      <span className="font-medium text-[#68758c]">
-                        Stay Length
-                      </span>
-                      <span className="rounded-md bg-[#061224] px-2.5 py-1 font-bold text-white shadow-xs">
-                        {nights} night{nights !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </SectionCard>
-
-              {/* 3. Room & Rate Plan */}
-              <SectionCard
-                icon={BedDouble}
-                title="Room & Rate Plan"
-                subtitle="Select room category, rate plan, and occupancy"
-              >
-                <div className="grid gap-3.5 sm:grid-cols-2">
-                  {/* Room Category */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      Room Category <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      aria-label="Room category"
-                      required
-                      value={form.roomTypeId}
-                      onChange={(e) => {
-                        set("roomTypeId", e.target.value);
-                        set("ratePlanId", "");
-                      }}
-                      className={INPUT_CLS}
-                    >
-                      <option value="">Choose room type</option>
-                      {choices.rooms.map((room) => (
-                        <option key={room.id} value={room.id}>
-                          {room.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Published Rate */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      Published Rate <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      aria-label="Published rate"
-                      required
-                      value={form.ratePlanId}
-                      disabled={!form.roomTypeId}
-                      onChange={(e) => {
-                        set("ratePlanId", e.target.value);
-                        const rate = choices.rates.find(
-                          (r) => r.id === e.target.value,
-                        );
-                        if (form.bookingMode === "hourly") {
-                          set("durationMinutes", 0);
-                          set("nightlyRateRupees", 0);
-                        } else if (rate?.basePricePaise) {
-                          set("nightlyRateRupees", rate.basePricePaise / 100);
-                        }
-                      }}
-                      className={INPUT_CLS}
-                    >
-                      <option value="">
-                        {form.roomTypeId
-                          ? "Choose a published rate"
-                          : "Select room first"}
-                      </option>
-                      {choices.rates
-                        .filter(
-                          (rate) =>
-                            rate.roomTypeId === form.roomTypeId &&
-                            (rate.bookingMode ?? "overnight") ===
-                              form.bookingMode &&
-                            rate.status === "active" &&
-                            eligiblePricing(rate),
-                        )
-                        .map((rate) => (
-                          <option key={rate.id} value={rate.id}>
-                            {rate.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-
-                  {/* Occupancy: Adults & Children */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>Adults (Age 13+)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={12}
-                      aria-label="Adults"
-                      value={form.adults}
-                      onChange={(e) => set("adults", Number(e.target.value))}
-                      className={INPUT_CLS}
-                    />
-                  </div>
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      Children (Age 0-12)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={10}
-                      aria-label="Children"
-                      value={form.children}
-                      onChange={(e) => set("children", Number(e.target.value))}
-                      className={INPUT_CLS}
-                    />
-                  </div>
-                </div>
-              </SectionCard>
-
-              {/* 4. Pricing & Payment Collection */}
-              <SectionCard
-                icon={CreditCard}
-                title="Pricing & Payment"
-                subtitle="Review rates, negotiated prices, and collection status"
-              >
-                <div className="grid gap-3.5 sm:grid-cols-2">
-                  {/* Published Date Price Notice */}
-                  {effectiveRate?.datePricingEnabled && (
-                    <div className="sm:col-span-2 rounded-xl border border-amber-200/80 bg-[#fefcf8] p-3 text-xs">
-                      {dateQuote.isFetching ? (
-                        <div className="flex items-center gap-2 text-[#8a7044]">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          <span>Fetching published date prices…</span>
-                        </div>
-                      ) : dateQuote.error ? (
-                        <span className="font-semibold text-rose-600">
-                          {dateQuote.error.message}
-                        </span>
-                      ) : dateQuote.data ? (
-                        <div className="text-[#68758c]">
-                          Published room subtotal:{" "}
-                          <strong className="text-[#061224]">
-                            {fmt.format(dateQuote.data.subtotalPaise / 100)}
-                          </strong>
-                          . The field below overrides this price for negotiated
-                          walk-ins.
-                        </div>
-                      ) : (
-                        <span className="text-[#8b96aa]">
-                          Select stay dates to load live published prices.
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Base Nightly / Stay Rate */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>
-                      {form.bookingMode === "hourly"
-                        ? "Base Stay Price before Tax (₹)"
-                        : "Base Nightly Price before Tax (₹)"}{" "}
-                      <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-[#8b96aa]">
-                        ₹
-                      </span>
-                      <input
-                        type="number"
-                        required
-                        min={1}
-                        step={1}
-                        placeholder="5000"
-                        disabled={!permits("rates.manage")}
-                        value={form.nightlyRateRupees || ""}
-                        onChange={(e) =>
-                          set("nightlyRateRupees", Number(e.target.value))
-                        }
-                        className={`${INPUT_CLS} pl-8`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Payment Status */}
-                  <div className="sm:col-span-1">
-                    <label className={FIELD_LABEL_CLS}>Payment Status</label>
-                    <select
-                      aria-label="Payment status"
-                      disabled={!permits("payment.collect")}
-                      title={
-                        !permits("payment.collect")
-                          ? "Ask a cashier to record payment after creating the reservation."
-                          : undefined
-                      }
-                      value={form.paymentMethod}
-                      onChange={(e) => set("paymentMethod", e.target.value)}
-                      className={INPUT_CLS}
-                    >
-                      <option value="pay_at_property">
-                        Pay at Property (Unpaid)
-                      </option>
-                      <option value="paid">
-                        Already Paid (Cash / UPI / Card)
-                      </option>
-                    </select>
-                  </div>
-
-                  {/* Negotiated Price Reason */}
-                  {permits("rates.manage") &&
-                    (negotiated || effectiveRate?.datePricingEnabled) && (
-                      <div className="sm:col-span-2">
-                        <label className={FIELD_LABEL_CLS}>
-                          Negotiated Price Reason{" "}
-                          {negotiated && (
-                            <span className="text-rose-500">*</span>
-                          )}
-                          <span className="text-[11px] font-normal text-[#8b96aa]">
-                            (leave empty to use published date prices)
-                          </span>
-                        </label>
-                        <input
-                          required={negotiated}
-                          minLength={3}
-                          placeholder="e.g. Corporate discount, repeat guest agreement"
-                          value={form.negotiatedPriceReason}
-                          onChange={(e) =>
-                            set("negotiatedPriceReason", e.target.value)
-                          }
-                          className={INPUT_CLS}
-                        />
+                    </Field>
+                    <Field label="Published rate">
+                      <div className="relative">
+                        <select
+                          aria-label="Published rate"
+                          className={selectField}
+                          value={form.ratePlanId}
+                          onChange={(e) => {
+                            const r = choices.data?.ratePlans.find(
+                              (r) => r.id === e.target.value,
+                            );
+                            setDirty(true);
+                            setForm((f) => ({
+                              ...f,
+                              ratePlanId: e.target.value,
+                              durationMinutes:
+                                f.bookingMode === "hourly"
+                                  ? (r?.durationPrices?.[0]?.hours || 1) * 60
+                                  : f.durationMinutes,
+                              priceOverride: "",
+                              negotiatedPriceReason: "",
+                            }));
+                          }}
+                        >
+                          <option value="">Choose rate</option>
+                          {rates(form.roomTypeId, form.bookingMode).map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
                       </div>
+                    </Field>
+                  </div>
+
+                  {form.roomTypeId &&
+                    !rates(form.roomTypeId, form.bookingMode).length && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                        No eligible published rate for this room type and stay
+                        mode.
+                      </p>
                     )}
 
-                  {/* Already Paid Details */}
-                  {form.paymentMethod === "paid" && (
-                    <>
-                      <div className="sm:col-span-1">
-                        <label className={FIELD_LABEL_CLS}>
-                          Payment Method
-                        </label>
+                  {form.bookingMode === "hourly" && (
+                    <Field label="Duration">
+                      <div className="relative">
                         <select
-                          className={INPUT_CLS}
-                          value={form.collectionMethod}
+                          className={selectField}
+                          value={form.durationMinutes}
                           onChange={(e) =>
-                            set("collectionMethod", e.target.value)
+                            set("durationMinutes", Number(e.target.value))
                           }
                         >
-                          <option value="cash">Cash</option>
-                          <option value="upi">UPI</option>
-                          <option value="card_terminal">
-                            Card Terminal (POS)
-                          </option>
+                          <option value={0}>Choose duration</option>
+                          {(
+                            quote.data?.durationPrices ||
+                            rate?.durationPrices ||
+                            []
+                          ).map((r) => (
+                            <option key={r.hours} value={r.hours * 60}>
+                              {r.hours} hours · {money(r.pricePaise)}
+                            </option>
+                          ))}
                         </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
                       </div>
-                      <div className="sm:col-span-1">
-                        <label className={FIELD_LABEL_CLS}>
-                          Payment Reference{" "}
-                          {form.collectionMethod !== "cash" && (
-                            <span className="text-rose-500">*</span>
-                          )}
-                        </label>
+                    </Field>
+                  )}
+
+                  {quote.isFetching && (
+                    <div
+                      role="status"
+                      className="flex items-center gap-2 text-xs font-semibold text-[#8b96aa]"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#c89b3c]" />
+                      <span>Checking hotel availability and price…</span>
+                    </div>
+                  )}
+
+                  {quote.isError && !uncertain && (
+                    <div
+                      role="alert"
+                      className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"
+                    >
+                      <span>{quote.error.message}</span>
+                      <button
+                        type="button"
+                        className="font-bold underline"
+                        onClick={() => void quote.refetch()}
+                      >
+                        Retry availability
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Physical room with compact inline refresh */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#68758c]">
+                        Physical room
+                      </span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#ede7dc] bg-[#fbfaf8] px-2.5 py-1 text-[11px] font-semibold text-[#68758c] hover:bg-[#fbf5e8] hover:text-[#061224] hover:border-[#c89b3c] transition-colors disabled:opacity-50"
+                        disabled={quote.isFetching}
+                        onClick={() => {
+                          setMore(undefined);
+                          void quote.refetch();
+                        }}
+                      >
+                        <RefreshCw
+                          className={`h-3 w-3 text-[#c89b3c] ${
+                            quote.isFetching ? "animate-spin" : ""
+                          }`}
+                        />
+                        <span>Refresh room availability</span>
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        aria-label="Physical room"
+                        className={selectField}
+                        value={form.physicalUnitId}
+                        disabled={!canAssign || !quote.data || quote.isError}
+                        onChange={(e) => set("physicalUnitId", e.target.value)}
+                      >
+                        <option value="">Leave unassigned</option>
+                        {form.physicalUnitId && !selected && (
+                          <option value={form.physicalUnitId}>
+                            Previous selection — recheck or leave unassigned
+                          </option>
+                        )}
+                        {options.map((r) => (
+                          <option
+                            key={r.id}
+                            value={r.id}
+                            disabled={!r.available}
+                          >
+                            {r.label} · {r.housekeeping} ·{" "}
+                            {r.readyNow
+                              ? "Ready now"
+                              : r.occupiedNow
+                                ? "Occupied now"
+                                : "Vacant now"}
+                            {!r.available ? " · Unavailable for stay" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
+                    </div>
+
+                    {!canAssign && (
+                      <p className="text-xs text-[#8b96aa]">
+                        Room assignment requires permission and the hotel’s
+                        allocation feature. You can leave the reservation
+                        unassigned.
+                      </p>
+                    )}
+                    {form.reservationPurpose === "reservation" && (
+                      <p className="text-xs text-[#8b96aa]">
+                        Availability covers the complete requested stay and
+                        turnover. Current cleanliness or occupancy does not
+                        guarantee readiness on the arrival date.
+                      </p>
+                    )}
+                  </div>
+
+                  {selected?.reason && (
+                    <p
+                      role="status"
+                      className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+                    >
+                      Room {selected.label}: {selected.reason}
+                    </p>
+                  )}
+
+                  {options.some((r) => !r.available) && (
+                    <details className="group rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3 text-xs transition-colors">
+                      <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#061224]">
+                        <span>Why some rooms are unavailable</span>
+                        <ChevronDown
+                          size={14}
+                          className="text-[#8b96aa] transition-transform duration-200 group-open:rotate-180"
+                        />
+                      </summary>
+                      <div className="pt-2.5 space-y-1 text-[#68758c]">
+                        {options
+                          .filter((r) => !r.available)
+                          .map((r) => (
+                            <p key={r.id}>
+                              <strong className="text-[#061224]">{r.label}</strong>: {r.reason}
+                            </p>
+                          ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {cursor && (
+                    <button
+                      type="button"
+                      className={button}
+                      disabled={loadingMore}
+                      onClick={() => void loadMore()}
+                    >
+                      Load more room numbers
+                    </button>
+                  )}
+                </Section>
+
+                {/* 3. Staying guests and booking contact */}
+                <Section
+                  number="3"
+                  icon={Users}
+                  title="Staying guests and booking contact"
+                  subtitle="Guest headcount, lead guest, and optional booking contact"
+                >
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(
+                      [
+                        ["adults", "Adults", 1, 12],
+                        ["children", "Children", 0, 10],
+                        ["infants", "Infants", 0, 10],
+                      ] as const
+                    ).map(([key, label, min, max]) => (
+                      <Field key={key} label={label}>
                         <input
-                          className={INPUT_CLS}
-                          placeholder={
-                            form.collectionMethod === "cash"
-                              ? "Optional receipt note"
-                              : "e.g. UPI Ref / Card Txn ID"
-                          }
-                          required={form.collectionMethod !== "cash"}
+                          className={field}
+                          aria-label={label}
+                          type="number"
+                          min={min}
+                          max={max}
+                          value={form[key]}
+                          onChange={(e) => set(key, Number(e.target.value))}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+
+                  <Field label="Lead staying guest" required>
+                    <input
+                      aria-label="Guest name"
+                      className={field}
+                      value={form.guestName}
+                      maxLength={120}
+                      required
+                      placeholder="Full legal name of lead staying guest"
+                      onChange={(e) => set("guestName", e.target.value)}
+                    />
+                  </Field>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Guest phone">
+                      <input
+                        className={field}
+                        value={form.guestPhone}
+                        maxLength={25}
+                        placeholder="+91..."
+                        onChange={(e) => set("guestPhone", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Guest email">
+                      <input
+                        type="email"
+                        className={field}
+                        value={form.guestEmail}
+                        placeholder="guest@example.com"
+                        onChange={(e) => set("guestEmail", e.target.value)}
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Accompanying adult names — one per line">
+                    <textarea
+                      aria-label="Accompanying adult names — one per line"
+                      className={`${field} min-h-[64px]`}
+                      value={form.adultNames}
+                      placeholder="One name per line (optional for single occupants)"
+                      onChange={(e) => set("adultNames", e.target.value)}
+                    />
+                  </Field>
+
+                  {(form.children > 0 ||
+                    form.infants > 0 ||
+                    !!form.childNames ||
+                    !!form.infantNames) && (
+                    <details className="group rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3 text-xs transition-colors">
+                      <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#061224]">
+                        <span>Child and infant names (optional now)</span>
+                        <ChevronDown
+                          size={14}
+                          className="text-[#8b96aa] transition-transform duration-200 group-open:rotate-180"
+                        />
+                      </summary>
+                      <div className="pt-3 space-y-3">
+                        <Field label="Child names — one per line">
+                          <textarea
+                            className={`${field} min-h-[56px]`}
+                            value={form.childNames}
+                            placeholder="One child name per line"
+                            onChange={(e) => set("childNames", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Infant names — one per line">
+                          <textarea
+                            className={`${field} min-h-[56px]`}
+                            value={form.infantNames}
+                            placeholder="One infant name per line"
+                            onChange={(e) => set("infantNames", e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                    </details>
+                  )}
+
+                  <details className="group rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3 text-xs transition-colors">
+                    <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#061224]">
+                      <span>Someone else made this booking</span>
+                      <ChevronDown
+                        size={14}
+                        className="text-[#8b96aa] transition-transform duration-200 group-open:rotate-180"
+                      />
+                    </summary>
+                    <div className="pt-3 space-y-3">
+                      <Field label="Booking contact name">
+                        <input
+                          className={field}
+                          value={form.contactName}
+                          placeholder="Name of booker or company"
+                          onChange={(e) => set("contactName", e.target.value)}
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Booking contact email">
+                          <input
+                            type="email"
+                            className={field}
+                            value={form.contactEmail}
+                            placeholder="booker@company.com"
+                            onChange={(e) =>
+                              set("contactEmail", e.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field label="Booking contact phone">
+                          <input
+                            className={field}
+                            value={form.contactPhone}
+                            placeholder="+91..."
+                            onChange={(e) =>
+                              set("contactPhone", e.target.value)
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  </details>
+                </Section>
+
+                {/* 4. Hotel collection and review */}
+                <Section
+                  number="4"
+                  icon={CreditCard}
+                  title="Hotel collection and review"
+                  subtitle="Advance collection, negotiated pricing, and estimated total"
+                >
+                  <Field label="Payment status">
+                    <div className="relative">
+                      <select
+                        aria-label="Payment status"
+                        className={selectField}
+                        value={form.payment}
+                        onChange={(e) => set("payment", e.target.value)}
+                      >
+                        <option value="pay_at_property">
+                          No payment collected
+                        </option>
+                        <option value="partial" disabled={!canCollect}>
+                          Partial advance collected at hotel
+                        </option>
+                        <option value="paid" disabled={!canCollect}>
+                          Full amount collected at hotel
+                        </option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
+                    </div>
+                  </Field>
+
+                  {!canCollect && (
+                    <p className="text-xs text-[#8b96aa]">
+                      Your role or the hotel’s settings do not permit
+                      collections. Save unpaid; an authorized manager or cashier
+                      can record collection.
+                    </p>
+                  )}
+
+                  {form.payment === "partial" && (
+                    <Field label="Advance amount (₹)">
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8b96aa]">
+                          ₹
+                        </span>
+                        <input
+                          className={`${field} pl-8`}
+                          inputMode="decimal"
+                          value={form.amount}
+                          onChange={(e) => set("amount", e.target.value)}
+                          placeholder="e.g. 500.00"
+                        />
+                      </div>
+                    </Field>
+                  )}
+
+                  {form.payment !== "pay_at_property" && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Payment method">
+                        <div className="relative">
+                          <select
+                            aria-label="Payment method"
+                            className={selectField}
+                            value={form.collectionMethod}
+                            onChange={(e) =>
+                              set("collectionMethod", e.target.value)
+                            }
+                          >
+                            <option value="cash">Cash</option>
+                            <option value="upi">UPI collected at hotel</option>
+                            <option value="card_terminal">
+                              Hotel card terminal
+                            </option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8b96aa]" />
+                        </div>
+                      </Field>
+                      <Field label="Collection reference">
+                        <input
+                          className={field}
+                          maxLength={180}
                           value={form.collectionReference}
                           onChange={(e) =>
                             set("collectionReference", e.target.value)
                           }
-                          maxLength={180}
+                          placeholder={
+                            form.collectionMethod === "cash"
+                              ? "Optional receipt note"
+                              : "Required UPI / terminal reference"
+                          }
                         />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Live Price Summary Box */}
-                  {form.nightlyRateRupees > 0 && (
-                    <div className="sm:col-span-2 rounded-2xl border border-[#e6dbc8] bg-gradient-to-br from-[#fbf8f0] to-[#f6efe0] p-4 text-[#061224] shadow-xs">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-[#8a7044]">
-                            {effectiveRate?.datePricingEnabled && !negotiated
-                              ? `Published room subtotal ${fmt.format(subtotalPaise / 100)}`
-                              : form.bookingMode === "hourly"
-                                ? `${form.durationMinutes / 60} hours · ${fmt.format(total)}`
-                                : `${nights} nights × ${fmt.format(form.nightlyRateRupees)}`}
-                          </p>
-                          <p className="mt-1 text-xs font-medium text-[#705e40]">
-                            {form.paymentMethod === "paid"
-                              ? "Collected in full"
-                              : "Collect at property"}{" "}
-                            · <span>Tax {fmt.format(taxPaise / 100)}</span> ·
-                            Fees{" "}
-                            {fmt.format(
-                              (selectedRate?.customerFeePaise ?? 0) / 100,
-                            )}
-                          </p>
-                        </div>
-                        <div className="text-left sm:text-right">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#8a7044]">
-                            Total Amount
-                          </span>
-                          <p className="text-2xl font-black text-[#061224]">
-                            {fmt.format(finalTotalPaise / 100)}
-                          </p>
-                        </div>
-                      </div>
+                      </Field>
                     </div>
                   )}
-                </div>
-              </SectionCard>
 
-              {/* 5. Special Requests & Notes */}
-              <SectionCard
-                icon={FileText}
-                title="Special Requests & Notes"
-                subtitle="Optional guest remarks or internal instructions"
-              >
-                <div>
-                  <textarea
-                    rows={2}
-                    placeholder="Late arrival, extra towels, high floor, quiet room, etc."
-                    value={form.specialRequest}
-                    onChange={(e) => set("specialRequest", e.target.value)}
-                    className={`${INPUT_CLS} resize-none`}
-                  />
-                </div>
-              </SectionCard>
+                  {permits("rates.manage") && (
+                    <details className="group rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3 text-xs transition-colors">
+                      <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#061224]">
+                        <span>Agree a different room price</span>
+                        <ChevronDown
+                          size={14}
+                          className="text-[#8b96aa] transition-transform duration-200 group-open:rotate-180"
+                        />
+                      </summary>
+                      <div className="pt-3 space-y-3">
+                        <Field label="Agreed room subtotal (₹)">
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8b96aa]">
+                              ₹
+                            </span>
+                            <input
+                              className={`${field} pl-8`}
+                              inputMode="decimal"
+                              value={form.priceOverride}
+                              onChange={(e) =>
+                                set("priceOverride", e.target.value)
+                              }
+                              placeholder="Leave blank for published price"
+                            />
+                          </div>
+                        </Field>
+                        <Field label="Price adjustment reason">
+                          <input
+                            className={field}
+                            value={form.negotiatedPriceReason}
+                            placeholder="Reason for agreed price"
+                            onChange={(e) =>
+                              set("negotiatedPriceReason", e.target.value)
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </details>
+                  )}
 
-              {/* Error Banner */}
-              {error && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700 animate-in fade-in">
-                  {error}
-                </div>
-              )}
+                  <details className="group rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3 text-xs transition-colors">
+                    <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-[#061224]">
+                      <span>Special requests and notes</span>
+                      <ChevronDown
+                        size={14}
+                        className="text-[#8b96aa] transition-transform duration-200 group-open:rotate-180"
+                      />
+                    </summary>
+                    <div className="pt-3">
+                      <textarea
+                        aria-label="Special requests"
+                        className={`${field} min-h-[64px]`}
+                        maxLength={1000}
+                        value={form.specialRequest}
+                        placeholder="Internal staff note or guest special request"
+                        onChange={(e) => set("specialRequest", e.target.value)}
+                      />
+                    </div>
+                  </details>
+
+                  {/* Clean Live Price Breakdown Card */}
+                  <div className="rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-[#68758c]">
+                      <span>Room Subtotal</span>
+                      <span className="font-semibold text-[#061224]">
+                        {money(subtotal ?? 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[#68758c]">
+                      <span>Taxes</span>
+                      <span className="font-semibold text-[#061224]">
+                        {money(tax)}
+                      </span>
+                    </div>
+                    {(quote.data?.customerFeePaise ??
+                      rate?.customerFeePaise ??
+                      0) > 0 && (
+                      <div className="flex items-center justify-between text-[#68758c]">
+                        <span>Fees</span>
+                        <span className="font-semibold text-[#061224]">
+                          {money(
+                            quote.data?.customerFeePaise ??
+                              rate?.customerFeePaise ??
+                              0,
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    <div className="border-t border-[#ede7dc] pt-2 flex items-center justify-between font-bold text-[#061224]">
+                      <span>Total Estimated Stay</span>
+                      <span className="text-sm">{money(total)}</span>
+                    </div>
+                    <p className="text-[10px] text-[#8b96aa] pt-0.5">
+                      Tax {money(tax)} · Fees{" "}
+                      {money(
+                        quote.data?.customerFeePaise ??
+                          rate?.customerFeePaise ??
+                          0,
+                      )}
+                    </p>
+                  </div>
+                </Section>
+              </fieldset>
             </form>
           )}
         </div>
 
-        {/* ── Footer ── */}
-        {!createdCode && (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[#ede7dc] bg-white px-6 py-4">
-            <p className="hidden text-xs font-medium text-[#8b96aa] sm:block">
-              Booking is confirmed immediately upon submission.
-            </p>
-            <div className="flex w-full items-center justify-end gap-2.5 sm:w-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!submitting) onClose();
-                }}
-                className="rounded-xl border border-[#e4ded2] bg-white px-5 py-2.5 text-xs font-bold text-[#4d5870] hover:border-[#c89b3c] hover:bg-[#fbf5e8] hover:text-[#061224] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="mbf"
-                disabled={submitting || !propertyId}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#061224] px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] disabled:opacity-50 transition-colors"
-              >
-                {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <span>{submitting ? "Creating…" : "Create Booking"}</span>
-              </button>
+        {/* Pinned Error / Status Alerts */}
+        {error && (
+          <div
+            role="alert"
+            className="mx-4 sm:mx-6 mb-2 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 shrink-0"
+          >
+            <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold">Please check your inputs</p>
+              <p>{error}</p>
             </div>
           </div>
+        )}
+
+        {uncertain && (
+          <div
+            role="status"
+            className="mx-4 sm:mx-6 mb-2 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 shrink-0"
+          >
+            <Info className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Submission Pending Confirmation</p>
+              <p>
+                Submission was not confirmed and may already be saved. Your
+                exact request is locked for a safe retry; do not start another
+                booking for this guest.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Pinned Bottom Sticky Footer */}
+        {!saved && (
+          <footer className="shrink-0 space-y-2.5 border-t border-[#ede7dc] bg-white p-4 sm:px-6">
+            <div
+              className="flex items-center gap-2 text-xs text-[#68758c]"
+              aria-live="polite"
+            >
+              <Info className="h-3.5 w-3.5 text-[#c89b3c] shrink-0" />
+              <span className="truncate">
+                Review occupancy:{" "}
+                {quote.data?.startAt && quote.data?.endAt ? (
+                  <>
+                    <strong className="text-[#061224]">
+                      {moment(quote.data.startAt)}
+                    </strong>{" "}
+                    →{" "}
+                    <strong className="text-[#061224]">
+                      {moment(quote.data.endAt)}
+                    </strong>{" "}
+                    ({timezone}).{" "}
+                  </>
+                ) : (
+                  <>
+                    Select dates and room to review stay interval ({timezone}).{" "}
+                  </>
+                )}
+                {form.bookingMode === "overnight"
+                  ? "Full calendar-night pricing applies."
+                  : "Hourly duration pricing applies."}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <div className="text-xs">
+                <div className="text-sm font-bold text-[#061224]">
+                  Total: {money(total)}
+                </div>
+                <div className="text-[#68758c] mt-0.5">
+                  Collected at hotel:{" "}
+                  <strong className="text-[#061224]">
+                    {money(collected ?? 0)}
+                  </strong>{" "}
+                  · Remaining:{" "}
+                  <strong
+                    className={
+                      total - (collected || 0) > 0
+                        ? "text-amber-800"
+                        : "text-emerald-700"
+                    }
+                  >
+                    {money(Math.max(0, total - (collected || 0)))}
+                  </strong>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#ede7dc] bg-white px-4 py-2 text-xs font-semibold text-[#061224] shadow-xs hover:bg-[#fbfaf8] transition-colors"
+                  disabled={submitting}
+                  onClick={close}
+                >
+                  Cancel
+                </button>
+                <button
+                  aria-label="Create Booking"
+                  form="mbf"
+                  type="submit"
+                  disabled={submitting || !propertyId}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#0b1f3a] px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#132c50] transition-colors disabled:opacity-50"
+                >
+                  <CalendarPlus className="h-4 w-4 text-[#c89b3c]" />
+                  <span>
+                    {submitting
+                      ? "Saving…"
+                      : uncertain
+                        ? "Retry same reservation"
+                        : "Create Booking"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </footer>
         )}
       </div>
     </div>

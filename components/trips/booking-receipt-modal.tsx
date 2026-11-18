@@ -63,6 +63,7 @@ export type BookingReceiptData = {
   netPaidPaise?: number;
   extrasTotalPaise?: number;
   customizationCreditPaise?: number;
+  billingNetPaise?: number;
   effectiveTotalPaise?: number;
   subtotalPaise?: number;
   taxPaise?: number;
@@ -228,7 +229,7 @@ function Receipt({
   );
   const total =
     booking.effectiveTotalPaise ??
-    Math.max(0, booking.totalPaise - (booking.customizationCreditPaise ?? 0));
+    Math.max(0, booking.totalPaise - (booking.customizationCreditPaise ?? 0) + (booking.billingNetPaise ?? 0));
   const refunded = booking.refundedPaise ?? 0;
   const netPaid =
     booking.netPaidPaise ?? Math.max(0, booking.paidPaise - refunded);
@@ -593,6 +594,7 @@ function Receipt({
                     value={money(booking.extrasTotalPaise, booking.currency)}
                   />
                 )}
+                {!!booking.billingNetPaise && <Amount label="Hotel charges / adjustments" value={money(booking.billingNetPaise, booking.currency)} />}
                 {(booking.customizationCreditPaise ?? 0) > 0 && (
                   <>
                     <Amount

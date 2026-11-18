@@ -1,3 +1,5 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
+import { operationalPolicies } from "@/lib/partner/reservations/operational-policies";
 import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
@@ -163,7 +165,7 @@ export async function setupStatusForAccess(
       complete: register,
       detail:
         "Register exactly the configured number of active rooms for each active room type. Room numbers do not increase capacity.",
-      href: "/partner/settings?section=rooms",
+      href: "/partner/settings/rooms",
     },
     {
       id: "rates",
@@ -178,7 +180,7 @@ export async function setupStatusForAccess(
       label: "Team access reviewed",
       complete: p.pms?.teamReviewed === true,
       detail: "Review the team, or confirm that you operate the hotel alone.",
-      href: "/partner/settings?section=team",
+      href: "/partner/settings/team",
     },
     {
       id: "opening",
@@ -224,6 +226,8 @@ export async function setupStatusForAccess(
     openingData: p.pms?.openingData || "unknown",
     teamReviewed: p.pms?.teamReviewed === true,
     allowEarlyWalkIns: p.pms?.allowEarlyWalkIns === true,
+    operationalPolicies: operationalPolicies(p.pms?.operationalPolicies),
+    policyRevision: p.pms?.operationalPolicies?.revision ?? 0,
     activated: Boolean(p.pms?.activatedAt),
     adminDisabled: p.pms?.adminDisabled === true,
     inventoryVerification: {
@@ -271,6 +275,7 @@ export function audit(
   );
 }
 const command = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("operationalPolicies"), revision: z.number().int().nonnegative(), policies: z.object({ requireAssignedRoom: z.boolean(), requireCleanRoom: z.boolean(), requireGuestRegistration: z.boolean(), requireSettledBalance: z.boolean() }).strict() }).strict(),
   z
     .object({ action: z.enum(["activate", "disable", "resume", "verify"]) })
     .strict(),
@@ -286,7 +291,8 @@ const command = z.discriminatedUnion("action", [
 ]);
 export async function updatePms(uid: string, propertyId: string, raw: unknown) {
   const input = command.parse(raw);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(propertyId);
     const access = await propertyAccess(
       uid,
       propertyId,
@@ -296,7 +302,13 @@ export async function updatePms(uid: string, propertyId: string, raw: unknown) {
     const p = access.property,
       ref = adminDb.collection("properties").doc(propertyId);
     const now = FieldValue.serverTimestamp();
-    if (input.action === "marketplace") {
+    if (input.action === "operationalPolicies") {
+      const before = operationalPolicies(p.pms?.operationalPolicies);
+      const revision = p.pms?.operationalPolicies?.revision ?? 0;
+      if (input.revision !== revision) throw new ApiException("POLICY_REVISION_CONFLICT", 409, "Hotel policies changed. Your draft is retained; reload saved policies and review before retrying.");
+      tx.update(ref, { "pms.operationalPolicies": { ...input.policies, revision: revision + 1, updatedBy: uid, updatedAt: now } });
+      audit(tx, propertyId, uid, "pms_operational_policies", propertyId, { ...before, revision }, { ...input.policies, revision: revision + 1 });
+    } else if (input.action === "marketplace") {
       if (!input.paused && access.block)
         throw new ApiException("PMS_RESTRICTED", 403, access.block);
       tx.update(ref, {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -18,9 +18,11 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { formatPaise } from "@/lib/currency";
 import { DashboardCard } from "./shared";
+import { Drawer } from "./drawer";
 import {
   AmenitiesEditor,
   BasicDetailsEditor,
@@ -72,7 +74,7 @@ const SECTIONS: SectionConfig[] = [
     key: "rooms",
     title: "Rooms & Rates",
     shortTitle: "Rooms",
-    description: "Room types, inventory, overnight and hourly prices.",
+    description: "Review room types, inventory, and rates configured in your Rooms workspace.",
     checklistId: "policies",
     icon: BedDouble,
   },
@@ -126,15 +128,6 @@ const STATUS_LABELS: Record<string, string> = {
 /** Approval states where the partner may (re)submit the listing for review. */
 const RESUBMITTABLE = new Set(["not_submitted", "changes_requested", "rejected"]);
 
-const CHECKLIST_SECTION: Record<ChecklistItem["id"], SectionKey> = {
-  basicInfo: "basicInfo",
-  location: "location",
-  photos: "photos",
-  amenities: "amenities",
-  policies: "rooms",
-  safetyDocs: "safety",
-};
-
 function formatRelativeTime(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
@@ -165,7 +158,7 @@ export function PartnerPropertyListingView({
   const [activeSection, setActiveSection] = useState<SectionKey>(searchParams.get("section") === "policies" ? "policies" : "basicInfo");
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<{ text: string; ok: boolean } | null>(null);
-  const [previewHighlighted, setPreviewHighlighted] = useState(false);
+  const [guestPreviewOpen, setGuestPreviewOpen] = useState(false);
   const [sectionMessage, setSectionMessage] = useState("");
   // One-shot request to advance to the next section once the locally-merged
   // snapshot marks the saved section complete.
@@ -203,13 +196,16 @@ export function PartnerPropertyListingView({
     const savedItem = savedSection ? checklistById[savedSection.checklistId] : undefined;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAdvanceFrom(null);
-    if (!savedItem?.complete) return;
 
     const savedIndex = SECTIONS.findIndex((section) => section.key === advanceFrom);
     const nextSection = SECTIONS[savedIndex + 1];
     if (!nextSection) return;
     setActiveSection(nextSection.key);
-    setSectionMessage(`${savedSection?.shortTitle ?? "Section"} complete. Moving to ${nextSection.shortTitle}.`);
+    if (savedItem?.complete) {
+      setSectionMessage(`${savedSection?.shortTitle ?? "Section"} complete. Moving to ${nextSection.shortTitle}.`);
+    } else {
+      setSectionMessage(`Saved. Moving to ${nextSection.shortTitle}.`);
+    }
     window.setTimeout(() => setSectionMessage(""), 3200);
   }, [advanceFrom, checklistById]);
 
@@ -255,11 +251,24 @@ export function PartnerPropertyListingView({
     if (next) selectSection(next.key);
   };
 
-  const focusGuestPreview = () => {
-    document.getElementById("partner-listing-guest-preview")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    setPreviewHighlighted(true);
-    window.setTimeout(() => setPreviewHighlighted(false), 1400);
+  const hasForm = ["basic", "location", "amenities", "policies"].includes(activeSection);
+
+  const handleNextClick = () => {
+    if (hasForm) {
+      const form = document.getElementById("listing-editor-form") as HTMLFormElement | null;
+      if (form) {
+        if (typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+        return;
+      }
+    }
+    goToNext();
   };
+
+  const openGuestPreview = () => setGuestPreviewOpen(true);
 
   if (listing.loading && !property) {
     return (
@@ -284,7 +293,7 @@ export function PartnerPropertyListingView({
           <div className="hk-loading-bar h-full w-1/4 rounded-full bg-[#c89b3c]" />
         </div>
       )}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a6b18]">Listing editor</p>
@@ -308,13 +317,13 @@ export function PartnerPropertyListingView({
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <button
             type="button"
-            onClick={focusGuestPreview}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#c8cdd6] bg-white px-4 text-sm font-bold text-[#06142B] shadow-[0_6px_18px_rgba(6,20,43,0.05)] transition-colors hover:bg-slate-50"
+            onClick={openGuestPreview}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-[#06142B] shadow-2xs transition-colors hover:bg-slate-50 hover:border-slate-300"
           >
-            <Eye className="h-4 w-4" />
+            <Eye className="h-4 w-4 text-slate-500" />
             Preview Guest View
           </button>
           <button
@@ -362,18 +371,18 @@ export function PartnerPropertyListingView({
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{listing.error}</div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <DashboardCard className="p-4">
-            <div className="flex items-center justify-between gap-3">
+      <div className="grid gap-6 lg:grid-cols-[310px_minmax(0,1fr)]">
+        <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+          <DashboardCard className="p-5">
+            <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Listing Progress</h2>
-                <p className="mt-1 text-[11px] font-medium text-slate-500">{completeCount} of {checklist.length || 5} checks complete</p>
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-[#06142B]">{completeCount} of {checklist.length || 6} checks complete</p>
               </div>
               <ReadinessRing pct={readinessPct} />
             </div>
 
-            <nav className="mt-4 space-y-1.5" aria-label="Listing sections">
+            <nav className="mt-3.5 space-y-2" aria-label="Listing sections">
               {SECTIONS.map((section, index) => {
                 const Icon = section.icon;
                 const checklistItem = checklistById[section.checklistId];
@@ -385,26 +394,26 @@ export function PartnerPropertyListingView({
                     key={section.key}
                     type="button"
                     onClick={() => selectSection(section.key)}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                    className={`flex w-full items-center gap-3.5 rounded-2xl border px-3.5 py-3 text-left transition-all ${
                       active
-                        ? "border-[#D8B46A] bg-[#FBF3DF] text-[#06142B]"
-                        : "border-transparent text-slate-700 hover:border-[#E6E2DA] hover:bg-white"
+                        ? "border-[#D8B46A] bg-[#FBF3DF] text-[#06142B] font-bold shadow-2xs"
+                        : "border-transparent text-slate-700 hover:border-[#E6E2DA] hover:bg-slate-50/70"
                     }`}
                   >
                     <span
-                      className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${
+                      className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition-colors ${
                         complete
-                          ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : active
                             ? "border-[#ead59f] bg-white text-[#9a6b18]"
-                            : "border-[#E6E2DA] bg-white text-slate-500"
+                            : "border-slate-200 bg-slate-50 text-slate-400"
                       }`}
                     >
-                      {complete ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                      {complete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold">{index + 1}. {section.shortTitle}</span>
-                      <span className={`mt-0.5 block truncate text-[11px] font-semibold ${complete ? "text-emerald-700" : "text-[#9a6b18]"}`}>
+                      <span className="block text-sm font-bold text-[#06142B]">{index + 1}. {section.shortTitle}</span>
+                      <span className={`mt-0.5 block truncate text-xs font-semibold ${complete ? "text-emerald-700" : "text-[#9a6b18]"}`}>
                         {complete ? "Complete" : checklistItem?.hint ?? "Needs attention"}
                       </span>
                     </span>
@@ -412,15 +421,6 @@ export function PartnerPropertyListingView({
                 );
               })}
             </nav>
-          </DashboardCard>
-
-          <DashboardCard className="hidden p-4 md:block">
-            <h3 className="text-sm font-bold">Submission status</h3>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-              {readyToSubmit
-                ? "All required details are complete. You can submit the listing for Helpkey review."
-                : "Complete the required sections before sending this listing for review."}
-            </p>
           </DashboardCard>
         </aside>
 
@@ -433,13 +433,24 @@ export function PartnerPropertyListingView({
                   <h2 className="mt-1 text-2xl font-bold tracking-tight">{activeConfig.title}</h2>
                   <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">{activeConfig.description}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {editorBusy && (
-                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#ead59f] bg-[#FBF3DF] px-3 text-xs font-bold text-[#9a6b18]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
-                    </span>
+                <div className="flex flex-col items-start lg:items-end gap-2.5 shrink-0">
+                  <div className="flex items-center gap-2">
+                    {editorBusy && (
+                      <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#ead59f] bg-[#FBF3DF] px-3 text-xs font-bold text-[#9a6b18]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                      </span>
+                    )}
+                    <SectionStatus item={checklistById[activeConfig.checklistId]} />
+                  </div>
+                  {activeSection === "rooms" && (
+                    <Link
+                      href="/partner/rooms?section=types"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#06142B] shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition"
+                    >
+                      <span>Open Rooms Workspace</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 text-slate-400" />
+                    </Link>
                   )}
-                  <SectionStatus item={checklistById[activeConfig.checklistId]} />
                 </div>
               </div>
             </div>
@@ -457,162 +468,147 @@ export function PartnerPropertyListingView({
               )}
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-[#E6E2DA] bg-[#FCFBF8] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex items-center justify-between border-t border-[#E6E2DA] bg-[#FCFBF8] px-5 py-4 sm:px-6">
               <button
                 type="button"
                 onClick={goToPrevious}
                 disabled={activeIndex <= 0 || busy}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#c8cdd6] bg-white px-4 text-sm font-bold text-[#06142B] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-[#06142B] shadow-2xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
-                Previous
+                Previous section
               </button>
-              <button
-                type="button"
-                onClick={goToNext}
-                disabled={activeIndex >= SECTIONS.length - 1 || busy}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#06142B] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Next section
-                <ChevronRight className="h-4 w-4" />
-              </button>
+
+              {activeIndex < SECTIONS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={handleNextClick}
+                  disabled={busy}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#06142B] px-5 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-[#0c1f3b] disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  <span>{busy ? "Saving…" : hasForm ? "Save & Next" : "Next section"}</span>
+                  {!busy && <ChevronRight className="h-4 w-4" />}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSubmitForReview}
+                  disabled={submitting || !propertyId || !readyToSubmit || !canResubmit}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#06142B] px-5 text-xs sm:text-sm font-bold text-white shadow-[0_12px_28px_rgba(6,20,43,0.16)] transition hover:bg-[#0A1F3C] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  <span>
+                    {property?.approvalStatus === "pending"
+                      ? "Awaiting Review"
+                      : isResubmission
+                        ? "Resubmit for Review"
+                        : "Submit for Review"}
+                  </span>
+                </button>
+              )}
             </div>
           </DashboardCard>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SummaryCard title="Rooms" actionLabel="Edit rooms" onAction={() => selectSection("rooms")}>
-              {roomsWithPricing.length ? (
-                <div className="space-y-2">
-                  {roomsWithPricing.slice(0, 3).map((room) => (
-                    <div key={room.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#E6E2DA] bg-white px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">{room.name}</p>
-                        <p className="text-xs font-medium text-slate-500">{room.inventory} room{room.inventory === 1 ? "" : "s"}</p>
-                      </div>
-                      <p className="shrink-0 text-right text-sm font-bold text-[#9a6b18]">
-                        {room.fromPaise !== null ? formatPaise(room.fromPaise) : "No rate"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyLine icon={BedDouble} text="No rooms added yet." />
-              )}
-            </SummaryCard>
-
-            <SummaryCard title="Photos" actionLabel="Manage photos" onAction={() => selectSection("photos")}>
-              {photos.length ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {photos.slice(0, 4).map((photo) => (
-                    <div key={photo.id} className="aspect-square overflow-hidden rounded-xl border border-[#E6E2DA] bg-slate-100">
-                      {photo.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={photo.imageUrl} alt={photo.altText || "Property photo"} className="h-full w-full object-cover" />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyLine icon={ImageIcon} text="No photos uploaded yet." />
-              )}
-            </SummaryCard>
-          </div>
         </main>
+      </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-          <DashboardCard className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">What to finish next</h2>
-              <ReadinessRing pct={readinessPct} small />
-            </div>
-
-            {readyToSubmit ? (
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="flex items-center gap-2 text-sm font-bold text-emerald-800">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Ready for review
-                </p>
-                <p className="mt-1 text-xs font-medium leading-5 text-emerald-700">Submit this listing and Helpkey will verify it before it appears to guests.</p>
+      <Drawer
+        open={guestPreviewOpen}
+        onClose={() => setGuestPreviewOpen(false)}
+        title="Guest View Preview"
+        description="Live preview of how travelers see your listing and rates on Helpkey."
+        badge={<span className="rounded-full bg-[#fbf5e8] px-2.5 py-0.5 text-xs font-bold text-[#9a6b18]">{propertyTypeLabel}</span>}
+        spacious
+        footer={
+          propertyId ? (
+            <a
+              href={`/hotels/${propertyId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#06142B] px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition"
+            >
+              Open Live Public Page <ArrowUpRight className="h-4 w-4" />
+            </a>
+          ) : null
+        }
+      >
+        <div className="space-y-5">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="relative aspect-video w-full bg-slate-100">
+              {coverPhoto?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coverPhoto.imageUrl} alt={coverPhoto.altText || propertyName} className="h-full w-full object-cover" />
+              ) : (
+                <div className="grid h-full place-items-center text-xs font-medium text-slate-400">No cover image set</div>
+              )}
+              <div className="absolute top-3 right-3 rounded-full bg-black/60 backdrop-blur-xs px-2.5 py-1 text-[11px] font-bold text-white">
+                {photos.length} photo{photos.length === 1 ? "" : "s"}
               </div>
-            ) : (
-              <div className="mt-4 space-y-2.5">
-                {incompleteItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => selectSection(CHECKLIST_SECTION[item.id])}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-[#E6E2DA] bg-white p-3 text-left transition-colors hover:border-[#D8B46A] hover:bg-[#FBF3DF]"
-                  >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#C6973E]" />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-bold text-[#06142B]">Finish {item.label}</span>
-                      <span className="mt-0.5 block text-xs font-medium leading-5 text-slate-500">{item.hint}</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold text-[#06142B] truncate">{property?.name ?? propertyName}</h3>
+                  <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-slate-500">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    {locationLabel}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-[#ead59f] bg-[#FBF3DF] px-2.5 py-1 text-xs font-bold text-[#9a6b18]">
+                  {propertyTypeLabel}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+                <span className="font-semibold text-slate-600">
+                  {property && property.ratingCount > 0 ? `★ ${property.ratingAverage.toFixed(1)} (${property.ratingCount.toLocaleString("en-IN")} reviews)` : "No reviews yet"}
+                </span>
+                <span className="font-semibold text-slate-600">
+                  From <strong className="text-sm font-bold text-[#9a6b18]">{startingPriceLabel}</strong> / night
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {property?.description && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-1.5 shadow-2xs">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">About Property</h4>
+              <p className="text-xs leading-relaxed text-slate-700 whitespace-pre-line">{property.description}</p>
+            </div>
+          )}
+
+          {roomsWithPricing.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2.5 shadow-2xs">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Available Room Types</h4>
+              <div className="space-y-2">
+                {roomsWithPricing.map((room) => (
+                  <div key={room.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-bold text-[#06142B] truncate">{room.name}</p>
+                      <p className="text-[11px] text-slate-500">{room.inventory} inventory room{room.inventory === 1 ? "" : "s"}</p>
+                    </div>
+                    <span className="font-bold text-[#9a6b18] shrink-0">
+                      {room.fromPaise !== null ? formatPaise(room.fromPaise) : "No rate set"}
                     </span>
-                  </button>
+                  </div>
                 ))}
               </div>
-            )}
-          </DashboardCard>
-
-          <DashboardCard
-            className={`overflow-hidden transition-all ${
-              previewHighlighted ? "border-[#D8B46A] shadow-[0_0_0_4px_rgba(216,180,106,0.18),0_18px_45px_rgba(6,20,43,0.12)]" : ""
-            }`}
-          >
-            <div className="flex items-center justify-between border-b border-[#E6E2DA] px-5 py-4">
-              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Guest Preview</h2>
-              <button type="button" onClick={focusGuestPreview} className="inline-flex items-center gap-1 text-xs font-bold text-[#9a6b18]">
-                View preview <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
             </div>
-            <div className="p-5">
-              <div id="partner-listing-guest-preview" className="overflow-hidden rounded-2xl border border-[#E6E2DA] bg-white">
-                <div className="h-40 bg-slate-100">
-                  {coverPhoto?.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={coverPhoto.imageUrl} alt={coverPhoto.altText || propertyName} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="grid h-full place-items-center text-xs font-medium text-slate-400">No cover image</div>
-                  )}
-                </div>
-                <div className="space-y-2 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-base font-bold">{property?.name ?? propertyName}</h3>
-                      <p className="mt-1 flex items-center gap-1 text-xs font-medium text-slate-500">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {locationLabel}
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full border border-[#ead59f] bg-[#FBF3DF] px-2.5 py-1 text-[11px] font-bold text-[#9a6b18]">
-                      {propertyTypeLabel}
-                    </span>
-                  </div>
-                  <div className="flex items-end justify-between border-t border-[#E6E2DA] pt-3">
-                    <p className="text-xs font-medium text-slate-500">
-                      {property && property.ratingCount > 0 ? `★ ${property.ratingAverage.toFixed(1)} (${property.ratingCount.toLocaleString("en-IN")} reviews)` : "No reviews yet"}
-                    </p>
-                    <p className="text-right text-xs font-semibold text-slate-500">
-                      From <span className="text-base font-bold text-[#9a6b18]">{startingPriceLabel}</span>
-                      <span className="block">/ night</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </DashboardCard>
+          )}
 
-          <div className="rounded-2xl border border-[#ead59f] bg-[#FBF3DF] p-4">
-            <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#9a6b18]" />
+          <div className="rounded-2xl border border-[#ead59f] bg-[#FBF3DF] p-3.5 text-xs">
+            <div className="flex gap-2.5">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-[#9a6b18] mt-0.5" />
               <div>
-                <p className="text-sm font-bold text-[#06142B]">Review before live</p>
-                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Major listing changes are checked by Helpkey before guests can book.</p>
+                <p className="font-bold text-[#06142B]">Helpkey Verification Policy</p>
+                <p className="mt-0.5 text-slate-600 leading-normal">
+                  New listings and major updates are manually checked by our partner support team before appearing live to guests.
+                </p>
               </div>
             </div>
           </div>
-        </aside>
-      </div>
+        </div>
+      </Drawer>
 
     </div>
   );
@@ -666,7 +662,7 @@ function SectionStatus({ item }: { item?: ChecklistItem }) {
 }
 
 function ReadinessRing({ pct, small = false }: { pct: number; small?: boolean }) {
-  const size = small ? "h-11 w-11" : "h-14 w-14";
+  const size = small ? "h-11 w-11" : "h-16 w-16";
 
   return (
     <div className={`relative grid ${size} shrink-0 place-items-center`}>
@@ -675,43 +671,9 @@ function ReadinessRing({ pct, small = false }: { pct: number; small?: boolean })
         <path className="text-[#C6973E]" strokeDasharray={`${pct}, 100`} strokeWidth="3.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
       </svg>
       <div className="absolute text-center leading-none">
-        <span className={`font-bold text-[#06142B] ${small ? "text-[11px]" : "text-sm"}`}>{pct}</span>
-        <span className="block text-[7px] font-semibold text-slate-400">%</span>
+        <span className={`font-bold text-[#06142B] ${small ? "text-xs" : "text-base"}`}>{pct}</span>
+        <span className="block text-[8px] font-semibold text-slate-400 mt-0.5">%</span>
       </div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  title,
-  actionLabel,
-  onAction,
-  children,
-}: {
-  title: string;
-  actionLabel: string;
-  onAction: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <DashboardCard className="p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-base font-bold">{title}</h3>
-        <button type="button" onClick={onAction} className="inline-flex items-center gap-1 text-xs font-bold text-[#9a6b18]">
-          {actionLabel}
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      {children}
-    </DashboardCard>
-  );
-}
-
-function EmptyLine({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E6E2DA] bg-[#FCFBF8] px-3 py-4 text-sm font-medium text-slate-500">
-      <Icon className="h-4 w-4 text-slate-400" />
-      {text}
     </div>
   );
 }

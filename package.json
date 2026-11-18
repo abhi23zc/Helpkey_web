@@ -42,8 +42,13 @@
     "test:e2e:partner": "playwright test --config playwright.partner.config.ts",
     "test:e2e:pms": "playwright test --config playwright.pms.config.ts",
     "test:pms:emulator": "vitest run tests/pms-foundation.emulator.test.ts",
-    "test:pms:ci": "vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000 tests/pms-foundation.emulator.test.ts tests/pms-walk-in.emulator.test.ts tests/bulk-room-numbers.emulator.test.ts tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts tests/stay-transactions.emulator.test.ts tests/stay-workspace.emulator.test.ts",
-    "test:partner:emulator": "vitest run tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts"
+    "test:pms:ci": "vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000 tests/pms-foundation.emulator.test.ts tests/pms-walk-in.emulator.test.ts tests/pms-creation-amount.test.ts tests/pms-creation.emulator.test.ts tests/bulk-room-numbers.emulator.test.ts tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts tests/stay-transactions.emulator.test.ts tests/stay-workspace.emulator.test.ts",
+    "test:partner:emulator": "vitest run tests/partner-dashboard.emulator.test.ts tests/partner-reservations.emulator.test.ts tests/partner-rooms.emulator.test.ts",
+    "test:e2e:pms-creation": "playwright test --config playwright.pms-creation.config.ts",
+    "test:stay-changes:emulator": "vitest run --testTimeout=30000 --hookTimeout=30000 tests/stay-changes.test.ts tests/stay-changes.emulator.test.ts",
+    "test:e2e:pms-stay-changes": "PARTNER_RESERVATIONS_STAY_CHANGES=true playwright test --config playwright.pms-stay-changes.config.ts",
+    "test:closing:emulator": "vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000 tests/closing.test.ts tests/closing.emulator.test.ts tests/today-cache.test.ts",
+    "test:e2e:pms-closing": "PARTNER_CASHIER_SHIFTS=true PARTNER_DAILY_CLOSING=true playwright test --config playwright.pms-closing.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

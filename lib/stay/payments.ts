@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
@@ -48,9 +49,10 @@ export async function quotePaymentSession(
     .update(JSON.stringify([bookingId, requestId, version]))
     .digest("hex");
   const ref = adminDb.collection("stayQuoteOrders").doc(id);
-  const order = await adminDb.runTransaction(async (tx) => {
+  const order = await todayTransaction(async (tx, markTodayChanged) => {
     const bookingRef = adminDb.collection("bookings").doc(bookingId);
     const b = (await tx.get(bookingRef)).data();
+    markTodayChanged(b?.propertyId);
     const saved = (await tx.get(ref)).data();
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if (!["confirmed", "checked_in"].includes(b.bookingStatus))
@@ -181,7 +183,7 @@ export async function captureQuotePayment(
     payment.captured !== true
   )
     throw new Error("Payment has not completed. Refresh to check its status.");
-  return adminDb.runTransaction(async (tx) => {
+  return todayTransaction(async (tx, markTodayChanged) => {
     const order = (await tx.get(orderRef)).data();
     if (
       !order ||
@@ -192,6 +194,7 @@ export async function captureQuotePayment(
       throw new Error("Payment does not match the agreed quote.");
     const ref = adminDb.collection("bookings").doc(order.bookingId);
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     const receipt = adminDb.collection("paymentAttempts").doc(paymentId);
     const existing = await tx.get(receipt);
     if (!b) throw new Error("NOT_FOUND");
@@ -336,8 +339,9 @@ export async function reconcileStayQuotePayments(bookingId: string) {
       pending = true;
   }
   if (!pending)
-    await adminDb.runTransaction(async (tx) => {
+    await todayTransaction(async (tx, markTodayChanged) => {
       const b = (await tx.get(bookingRef)).data();
+      markTodayChanged(b?.propertyId);
       // A newly created session changes nextReconcileAt. Avoid clearing its worker schedule.
       if (
         b &&

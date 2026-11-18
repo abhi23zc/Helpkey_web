@@ -1,3 +1,5 @@
+import { registrationFacts } from "@/lib/partner/reservations/operational-policies";
+import { todayTransaction } from "@/lib/partner/today/cache";
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -43,12 +45,13 @@ export async function guestRegistration(
           }
         : null,
       identityVersion: b.identityVersion || 1,
-      occupants: b.occupants || [],
-      registrationIncomplete: b.registrationIncomplete ?? true,
+      registrationEditable: !registrationFacts(b).historical,
+      occupants: registrationFacts(b).occupants,
+      registrationIncomplete: !registrationFacts(b).complete,
       revision: b.reservationRevision || 0,
-      createdByStaffId: b.createdByStaffId || b.createdBy,
+      createdByStaffId: b.identityVersion === 2 ? b.createdByStaffId || b.createdBy : null,
       bookingContact: b.bookingContact || null,
-      linked: !!b.linkedCustomerId,
+      linked: b.source === "manual_partner" ? !!b.linkedCustomerId : !!b.guestId,
       leadEmail: b.leadGuest?.email || "",
       recordedArrivalAt: b.recordedArrivalAt || null,
       actualCheckInAt: b.actualCheckInAt?.toDate?.().toISOString() || null,
@@ -63,15 +66,16 @@ export async function guestRegistration(
     .object({ revision: z.number().int().nonnegative(), occupants: people })
     .strict()
     .parse(raw);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b) throw new ApiException("NOT_FOUND", 404);
     await operationalAccess(uid, b.propertyId, "reservation.note", tx);
-    if (b.identityVersion !== 2)
+    if (registrationFacts(b).historical)
       throw new ApiException(
-        "HISTORICAL_REVIEW_REQUIRED",
+        "HISTORICAL_REGISTRATION_REVIEW_REQUIRED",
         409,
-        "Historical guest identities require review; original records are preserved.",
+        "Historical manual identities cannot be corrected here. No historical correction workflow is available; the owner controls the hotel registration policy.",
       );
     if ((b.reservationRevision || 0) !== input.revision)
       throw new ApiException(
@@ -97,15 +101,16 @@ export async function guestRegistration(
         throw new ApiException("GUEST_COUNT_MISMATCH", 422);
     tx.update(ref, {
       occupants: input.occupants,
+      registrationVersion: 1,
       registrationIncomplete:
-        input.occupants.length < b.adults + b.children + b.infants,
-      leadGuest: {
+        input.occupants.length < (b.adults ?? 1) + (b.children ?? 0) + (b.infants ?? 0),
+      ...(b.identityVersion === 2 ? { leadGuest: {
         ...b.leadGuest,
         name: input.occupants[0].name,
         adultGuestNames: input.occupants
           .filter((g) => g.ageGroup === "adult")
           .map((g) => g.name),
-      },
+      } } : {}),
       searchTokens: [
         ...new Set([
           ...(b.searchTokens || []),
@@ -116,7 +121,7 @@ export async function guestRegistration(
       updatedBy: uid,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    tx.set(
+    if (b.identityVersion === 2 && b.guestProfileId) tx.set(
       adminDb
         .collection("properties")
         .doc(b.propertyId)
@@ -131,7 +136,7 @@ export async function guestRegistration(
     );
     tx.create(ref.collection("events").doc(), {
       type: "guest_registration",
-      before: b.occupants || [],
+      before: registrationFacts(b).occupants,
       after: input.occupants,
       actorId: uid,
       createdAt: FieldValue.serverTimestamp(),
@@ -156,9 +161,10 @@ export async function issueCustomerLink(uid: string, id: string, raw: unknown) {
     ])
     .parse(raw);
   const token = randomBytes(32).toString("base64url");
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(id),
       b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b) throw new ApiException("NOT_FOUND", 404);
     await operationalAccess(uid, b.propertyId, "reservation.note", tx);
     if (b.identityVersion !== 2 || b.linkedCustomerId)
@@ -206,7 +212,7 @@ export async function acceptCustomerLink(
       403,
       "Sign in with the invited verified email.",
     );
-  return adminDb.runTransaction(async (tx) => {
+  return todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(id),
       linkRef = ref.collection("customerLinks").doc("current");
     const [booking, invitation, account] = await Promise.all([
@@ -217,6 +223,7 @@ export async function acceptCustomerLink(
     const b = booking.data(),
       v = invitation.data(),
       u = account.data();
+    markTodayChanged(b?.propertyId);
     const expected = Buffer.from(String(v?.tokenHash || "")),
       supplied = Buffer.from(hash(input.token));
     if (

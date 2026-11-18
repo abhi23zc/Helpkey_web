@@ -10,8 +10,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   BedDouble,
+  Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Edit3,
   Eye,
@@ -26,6 +28,8 @@ import {
   ShieldCheck,
   ListChecks,
   Trash2,
+  Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { type CurrencyCode, formatPaise } from "@/lib/currency";
@@ -87,7 +91,6 @@ function cheapestRate(
 
 function MetricCard({
   icon,
-  iconClass,
   label,
   value,
   valueClass = "text-[#061224]",
@@ -95,7 +98,7 @@ function MetricCard({
   hintClass = "text-slate-500",
 }: {
   icon: React.ReactNode;
-  iconClass: string;
+  iconClass?: string;
   label: string;
   value: string;
   valueClass?: string;
@@ -103,22 +106,22 @@ function MetricCard({
   hintClass?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-[#ffffffba] p-4 sm:p-5 shadow-xs flex items-center gap-4">
-      <div
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconClass}`}
-      >
-        {icon}
-      </div>
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/85 bg-white p-4 sm:p-5 shadow-2xs transition-all hover:border-slate-300">
       <div className="min-w-0">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+        <span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
           {label}
         </span>
-        <span className={`text-xl font-extrabold mt-0.5 block ${valueClass}`}>
-          {value}
-        </span>
+        <div className="mt-2 flex items-baseline gap-1.5">
+          <span className={`text-[24px] sm:text-[28px] font-bold tracking-[-0.025em] leading-none tabular-nums ${valueClass}`}>
+            {value}
+          </span>
+        </div>
         {hint && (
-          <p className={`text-[11px] font-medium ${hintClass}`}>{hint}</p>
+          <p className={`mt-1.5 text-xs font-medium truncate ${hintClass}`}>{hint}</p>
         )}
+      </div>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-slate-50 text-slate-600 shadow-2xs">
+        {icon}
       </div>
     </div>
   );
@@ -591,6 +594,7 @@ function RoomEditor({
                       }`}
                     >
                       {photo.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={photo.imageUrl}
                           alt={photo.altText || "Room photo"}
@@ -1091,7 +1095,8 @@ export function PartnerRoomsRatesView({
   const activeCategories = rows.filter(
     (r) => r.room.status === "active",
   ).length;
-  const startingPaise = listing.startingPricePaise;
+  const startingPaise = listing.startingNightlyPaise ?? listing.startingPricePaise;
+  const [savingHourly, setSavingHourly] = useState(false);
 
   /* ---------- loading / empty states ---------- */
   if (!propertyId) {
@@ -1116,6 +1121,11 @@ export function PartnerRoomsRatesView({
   }
 
   const backgroundRefreshing = listing.loading && Boolean(data);
+  const filteredRows = rows.filter(
+    ({ room }) =>
+      room.name.toLowerCase().includes(search.toLowerCase()) &&
+      (statusFilter === "all" || room.status === statusFilter),
+  );
 
   return (
     <div className="space-y-6 text-[#061224] pb-16">
@@ -1132,11 +1142,11 @@ export function PartnerRoomsRatesView({
       {/* Sub-header / Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#061224]">
-            Room types
-          </h1>
-          <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
-            Manage room configurations, pricing plans, and guest-facing details
+          <h2 className="text-lg sm:text-xl font-bold tracking-[-0.015em] text-[#061224]">
+            Room configurations & rate plans
+          </h2>
+          <p className="text-xs sm:text-[13px] text-slate-500 mt-0.5 leading-relaxed font-medium">
+            Manage your physical room types, pricing models, and guest-facing details
             for {property?.name ?? propertyName}.
           </p>
         </div>
@@ -1144,29 +1154,38 @@ export function PartnerRoomsRatesView({
           {/* Integrated Hourly Stays Switch Chip */}
           <label
             title="Toggle flexible hourly stays (3h, 6h, 12h) for this property"
-            className={`inline-flex items-center gap-2.5 rounded-xl border px-3 py-2 text-xs font-semibold shadow-xs transition-all cursor-pointer select-none ${
-              property?.bookingModes?.includes("hourly")
-                ? "border-amber-200/90 bg-amber-50/70 text-[#061224] hover:bg-amber-100/60"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            className={`inline-flex h-9 items-center gap-2.5 rounded-xl border px-3 text-[13px] font-semibold shadow-2xs transition-all select-none ${
+              savingHourly
+                ? "opacity-60 cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500"
+                : property?.bookingModes?.includes("hourly")
+                  ? "border-amber-200/90 bg-amber-50/70 text-[#061224] hover:bg-amber-100/60 cursor-pointer"
+                  : "border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
             }`}
           >
-            <Clock3
-              className={`h-4 w-4 ${
-                property?.bookingModes?.includes("hourly")
-                  ? "text-[#b78929]"
-                  : "text-slate-400"
-              }`}
-            />
+            {savingHourly ? (
+              <Loader2 className="h-4 w-4 animate-spin text-[#c89b3c]" />
+            ) : (
+              <Clock3
+                className={`h-4 w-4 ${
+                  property?.bookingModes?.includes("hourly")
+                    ? "text-[#b78929]"
+                    : "text-slate-400"
+                }`}
+              />
+            )}
             <span>Hourly stays</span>
             <input
               type="checkbox"
+              disabled={savingHourly}
               checked={property?.bookingModes?.includes("hourly") ?? false}
               onChange={async (e) => {
-                const bookingModes: ("overnight" | "hourly")[] = e.target
-                  .checked
+                if (savingHourly) return;
+                const checked = e.target.checked;
+                const bookingModes: ("overnight" | "hourly")[] = checked
                   ? ["overnight", "hourly"]
                   : ["overnight"];
                 setSettingsError("");
+                setSavingHourly(true);
                 try {
                   await requestJson(
                     `/api/partner/properties/${propertyId}`,
@@ -1180,6 +1199,8 @@ export function PartnerRoomsRatesView({
                       ? error.message
                       : "Unable to save booking modes",
                   );
+                } finally {
+                  setSavingHourly(false);
                 }
               }}
               className="sr-only peer"
@@ -1192,7 +1213,7 @@ export function PartnerRoomsRatesView({
             href={`/hotels/${property?.slug || property?.id || ""}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition-all"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 text-[13px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 hover:text-[#061224] transition-all whitespace-nowrap"
           >
             <Eye className="h-4 w-4 text-slate-500" />
             Preview Guest View
@@ -1201,7 +1222,7 @@ export function PartnerRoomsRatesView({
           <button
             type="button"
             onClick={openNewRoom}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#061224] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all"
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#061224] px-4 text-[13px] font-semibold text-white shadow-xs hover:bg-[#0c1f3b] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] transition-all cursor-pointer whitespace-nowrap"
           >
             <Plus className="h-4 w-4" />
             Add Room Type
@@ -1222,27 +1243,23 @@ export function PartnerRoomsRatesView({
           </div>
         )}
 
-      {/* Metrics (real data) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Metrics (Executive Reserve Design) */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
         <MetricCard
-          icon={<BedDouble className="h-6 w-6" />}
-          iconClass="bg-amber-50 text-[#c89b3c]"
+          icon={<BedDouble className="h-[18px] w-[18px]" />}
           label="Active room types"
           value={`${activeCategories} ${activeCategories === 1 ? "Type" : "Types"}`}
           hint="Room types currently enabled"
         />
         <MetricCard
-          icon={<CheckCircle2 className="h-6 w-6" />}
-          iconClass="bg-emerald-50 text-emerald-600"
+          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
           label="Configured capacity"
           value={`${totalRooms} ${totalRooms === 1 ? "Room" : "Rooms"}`}
           valueClass="text-emerald-700"
           hint="Total capacity, not current availability"
-          hintClass="text-[#c89b3c]"
         />
         <MetricCard
-          icon={<IndianRupee className="h-6 w-6" />}
-          iconClass="bg-blue-50 text-blue-600"
+          icon={<IndianRupee className="h-[18px] w-[18px]" />}
           label="Base price from"
           value={
             startingPaise !== null
@@ -1250,14 +1267,15 @@ export function PartnerRoomsRatesView({
               : "Not set"
           }
           hint={
-            startingPaise !== null
-              ? "Before date overrides, taxes and fees"
+            listing.startingNightlyPaise !== null
+              ? listing.startingHourlyPaise !== null
+                ? `Hourly from ${formatPaise(listing.startingHourlyPaise, { currency })} / 2h`
+                : "Nightly before overrides & taxes"
               : "Add a rate plan"
           }
         />
         <MetricCard
-          icon={<KeyRound className="h-6 w-6" />}
-          iconClass="rounded-full bg-amber-50 text-amber-600"
+          icon={<KeyRound className="h-[18px] w-[18px]" />}
           label="Rate Plans"
           value={String(data?.ratePlans.length ?? 0)}
           hint="Across all room types"
@@ -1269,29 +1287,51 @@ export function PartnerRoomsRatesView({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-1 flex-wrap items-center gap-2.5">
             <div className="relative min-w-[220px] max-w-sm flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               <input
                 aria-label="Search room types"
                 placeholder="Search room types..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs sm:text-sm font-medium outline-none transition-colors focus:border-[#c89b3c]"
+                className="h-9 w-full rounded-xl border border-slate-200/90 bg-white pl-9 pr-8 text-xs sm:text-[13px] font-medium text-[#061224] placeholder-slate-400 outline-none transition-all focus:border-[#c89b3c] focus:ring-2 focus:ring-[#c89b3c]/15 shadow-2xs"
               />
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-            <select
-              aria-label="Room type status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 outline-none focus:border-[#c89b3c]"
-            >
-              <option value="all">All room types</option>
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-            </select>
+
+            {/* Status Filter */}
+            <div className="relative inline-flex items-center rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+              <select
+                aria-label="Room type status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-9 appearance-none rounded-xl bg-transparent pl-3 pr-8 text-xs sm:text-[13px] font-semibold text-slate-700 outline-none cursor-pointer focus:ring-2 focus:ring-[#c89b3c]/15"
+              >
+                <option value="all">All room types ({rows.length})</option>
+                <option value="active">
+                  Active ({rows.filter((r) => r.room.status === "active").length})
+                </option>
+                <option value="paused">
+                  Paused ({rows.filter((r) => r.room.status === "paused").length})
+                </option>
+              </select>
+              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                <ChevronDown className="h-3.5 w-3.5" />
+              </div>
+            </div>
           </div>
+
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3.5 text-xs sm:text-[13px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 hover:text-[#061224] transition-all shadow-2xs cursor-pointer whitespace-nowrap"
             onClick={() => setPhotoEditor(true)}
           >
             <ImageIcon className="h-4 w-4 text-slate-500" />
@@ -1325,8 +1365,7 @@ export function PartnerRoomsRatesView({
                 No room types yet
               </h3>
               <p className="mt-1 max-w-sm text-xs sm:text-sm font-medium text-slate-500">
-                Add rooms and rate plans from the Listing editor to manage them
-                here.
+                Add rooms and rate plans to make your property bookable.
               </p>
               <button
                 type="button"
@@ -1337,145 +1376,257 @@ export function PartnerRoomsRatesView({
               </button>
             </div>
           </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="grid min-h-[200px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center">
+            <div>
+              <Search className="mx-auto h-8 w-8 text-slate-300" />
+              <h3 className="mt-2 text-sm font-bold text-[#061224]">
+                No room types match &ldquo;{search}&rdquo;
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 font-medium">
+                Try adjusting your search query or status filter.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                }}
+                className="mt-3 inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Reset filters
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {rows
-              .filter(
-                ({ room }) =>
-                  room.name.toLowerCase().includes(search.toLowerCase()) &&
-                  (statusFilter === "all" || room.status === statusFilter),
-              )
-              .map(({ room, rate, image }) => {
-                const selectedAmenities = roomAmenitySelections(room.amenityIds, amenityOptions);
-                return (
-                  <div
-                    key={room.id}
-                    onClick={() => openEditor(room.id, "details")}
-                    className="group relative cursor-pointer rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 transition-all duration-200 hover:border-[#c89b3c]/80 hover:shadow-md flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex gap-4">
-                        <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-slate-100 border border-slate-200/80">
-                          {image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={image}
-                              alt={room.name}
-                              className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredRows.map(({ room, rate, image }) => {
+              const selectedAmenities = roomAmenitySelections(
+                room.amenityIds,
+                amenityOptions,
+              );
+              const photoCount = room.mediaIds?.length || (image ? 1 : 0);
+              const bedDesc = room.bedConfigurations?.length
+                ? `${room.bedConfigurations[0].count} ${room.bedConfigurations[0].bedType}`
+                : null;
+
+              const overnightRate = cheapestRate(
+                data?.ratePlans || [],
+                room.id,
+                "overnight",
+              );
+              const hourlyRate = cheapestRate(
+                data?.ratePlans || [],
+                room.id,
+                "hourly",
+              );
+              const hourlyDuration = hourlyRate?.durationPrices?.reduce<DurationPrice | null>(
+                (min, p) => (!min || p.pricePaise < min.pricePaise ? p : min),
+                null,
+              );
+
+              return (
+                <article
+                  key={room.id}
+                  className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white shadow-2xs hover:border-[#c89b3c]/80 hover:shadow-md transition-all duration-200 overflow-hidden"
+                >
+                  {/* Top Cover Media Header */}
+                  <div className="relative h-44 w-full overflow-hidden bg-slate-100 border-b border-slate-100 shrink-0">
+                    {image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={image}
+                        alt={room.name}
+                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="grid h-full place-items-center text-slate-300 bg-slate-50">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <BedDouble className="h-8 w-8 text-slate-300" />
+                          <span className="text-[11px] font-semibold text-slate-400">
+                            No cover photo
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Overlaid Status Badge */}
+                    <div className="absolute top-3 left-3 z-10">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-[0.01em] shadow-xs backdrop-blur-md ${
+                          room.status === "paused"
+                            ? "bg-slate-900/80 text-white border border-white/20"
+                            : rate
+                              ? "bg-emerald-950/80 text-emerald-300 border border-emerald-400/30"
+                              : "bg-amber-950/80 text-amber-300 border border-amber-400/30"
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            room.status === "paused"
+                              ? "bg-slate-400"
+                              : rate
+                                ? "bg-emerald-400"
+                                : "bg-amber-400"
+                          }`}
+                        />
+                        {room.status === "paused"
+                          ? "Paused"
+                          : rate
+                            ? "Rate configured"
+                            : "No rate plan"}
+                      </span>
+                    </div>
+
+                    {/* Overlaid Photo Management Trigger */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditor(room.id, "photos");
+                      }}
+                      title="Manage room photos"
+                      className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-900/75 hover:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white shadow-xs backdrop-blur-md transition-all cursor-pointer"
+                    >
+                      <Camera className="h-3.5 w-3.5 text-slate-300" />
+                      <span className="tabular-nums">
+                        {photoCount} {photoCount === 1 ? "photo" : "photos"}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Card Content Body */}
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3.5">
+                      {/* Room Title & Specs */}
+                      <div>
+                        <h3 className="text-base sm:text-[17px] font-bold tracking-[-0.015em] text-[#061224] group-hover:text-[#0b1f3a] transition-colors truncate">
+                          {room.name}
+                        </h3>
+
+                        {/* Spec Pills Strip */}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 tabular-nums">
+                            <Layers className="h-3 w-3 text-slate-500" />
+                            {room.inventory} {room.inventory === 1 ? "Room" : "Rooms"}
+                          </span>
+
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 tabular-nums">
+                            <Users className="h-3 w-3 text-slate-500" />
+                            {room.maxAdults} Guests max
+                          </span>
+
+                          {bedDesc && (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 capitalize">
+                              <BedDouble className="h-3 w-3 text-slate-400" />
+                              {bedDesc}
+                            </span>
+                          )}
+
+                          {room.roomSizeSqFt ? (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500 tabular-nums">
+                              {room.roomSizeSqFt} sq ft
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Pricing Summary Box */}
+                      <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 space-y-1.5">
+                        <div className="flex items-baseline justify-between text-xs">
+                          <span className="font-medium text-slate-500">Night rate</span>
+                          {overnightRate ? (
+                            <span className="tabular-nums">
+                              <strong className="text-[13px] font-bold text-[#b78929]">
+                                {formatPaise(overnightRate.basePricePaise, { currency })}
+                              </strong>{" "}
+                              <span className="text-[11px] font-medium text-slate-500">
+                                / night (from)
+                              </span>
+                            </span>
                           ) : (
-                            <div className="grid h-full place-items-center text-slate-300">
-                              <BedDouble className="h-6 w-6" />
-                            </div>
+                            <span className="text-[11px] font-semibold text-amber-600">
+                              Not configured
+                            </span>
                           )}
                         </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <h3 className="text-sm font-bold text-[#061224] truncate">
-                              {room.name}
-                            </h3>
-                            <span
-                              className={`rounded-md px-2 py-0.5 text-[10px] font-bold border shrink-0 ${
-                                room.status === "paused"
-                                  ? "bg-slate-100 text-slate-600 border-slate-200"
-                                  : rate
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
-                              }`}
-                            >
-                              {room.status === "paused"
-                                ? "Paused"
-                                : rate
-                                  ? "Rate configured"
-                                  : "No rate"}
+                        <div className="flex items-baseline justify-between text-xs pt-1 border-t border-slate-200/50">
+                          <span className="font-medium text-slate-500">Hourly rate</span>
+                          {hourlyRate && hourlyDuration ? (
+                            <span className="tabular-nums">
+                              <strong className="text-[13px] font-bold text-[#b78929]">
+                                {formatPaise(hourlyDuration.pricePaise, { currency })}
+                              </strong>{" "}
+                              <span className="text-[11px] font-medium text-slate-500">
+                                / {hourlyDuration.hours}h (from)
+                              </span>
                             </span>
-                          </div>
-
-                          <div className="mt-1 space-y-0.5">
-                            {["overnight", "hourly"].map((mode) => {
-                              const r = cheapestRate(
-                                data?.ratePlans || [],
-                                room.id,
-                                mode,
-                              );
-                              if (!r) return null;
-                              const duration =
-                                mode === "hourly"
-                                  ? (
-                                      r.durationPrices ?? []
-                                    ).reduce<DurationPrice | null>(
-                                      (min, p) =>
-                                        !min || p.pricePaise < min.pricePaise
-                                          ? p
-                                          : min,
-                                      null,
-                                    )
-                                  : null;
-                              return (
-                                <p key={mode} className="text-xs">
-                                  <strong className="text-[#b78929]">
-                                    {formatPaise(
-                                      mode === "hourly"
-                                        ? duration?.pricePaise || 0
-                                        : r.basePricePaise,
-                                      { currency },
-                                    )}
-                                  </strong>{" "}
-                                  <span className="text-slate-500 font-medium">
-                                    {mode === "hourly"
-                                      ? `/ ${duration?.hours}h (from)`
-                                      : "/ night (from)"}
-                                  </span>
-                                </p>
-                              );
-                            })}
-                            {!rate && (
-                              <span className="text-xs text-amber-600 font-medium block">
-                                No active rate
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-1 text-center mt-2.5 pt-2 border-t border-slate-100 text-[10px]">
-                            <div>
-                              <span className="font-bold text-[#061224] text-xs block">
-                                {room.inventory}
-                              </span>
-                              <span className="text-slate-400 font-medium">
-                                Configured rooms
-                              </span>
-                            </div>
-                            <div>
-                              <span className="font-bold text-[#061224] text-xs block">
-                                {room.maxAdults}
-                              </span>
-                              <span className="text-slate-400 font-medium">
-                                Max guests
-                              </span>
-                            </div>
-                          </div>
+                          ) : (
+                            <span className="text-[11px] font-medium text-slate-400">
+                              {property?.bookingModes?.includes("hourly")
+                                ? "Hourly plan not set"
+                                : "Hourly disabled"}
+                            </span>
+                          )}
                         </div>
                       </div>
+
+                      {/* Amenities Row */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+                          {selectedAmenities.length === 0 ? (
+                            <span className="text-slate-400 font-medium">
+                              No amenities added
+                            </span>
+                          ) : (
+                            <>
+                              {selectedAmenities.slice(0, 3).map((amenity) => (
+                                <span
+                                  key={amenity.id}
+                                  className="rounded-md border border-slate-200/80 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-2xs truncate max-w-[110px]"
+                                >
+                                  {amenity.label}
+                                </span>
+                              ))}
+                              {selectedAmenities.length > 3 && (
+                                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                                  +{selectedAmenities.length - 3}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          aria-label={`Amenities for ${room.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditor(room.id, "amenities");
+                          }}
+                          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                            selectedAmenities.length === 0
+                              ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 shadow-2xs"
+                              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs"
+                          }`}
+                        >
+                          {selectedAmenities.length === 0
+                            ? "+ Add amenities"
+                            : "Amenities"}
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="mt-4 flex items-start justify-between gap-3 border-t border-slate-100 pt-3">
-                      <div className="flex min-w-0 flex-wrap gap-1.5 text-[11px] text-slate-600">
-                        {selectedAmenities.length === 0 ? <span>No amenities configured</span> : selectedAmenities.slice(0, 3).map(amenity =>
-                          <span key={amenity.id} className="rounded-md bg-slate-50 px-2 py-1">{amenity.label}</span>)}
-                        {selectedAmenities.length > 3 && <span className="py-1">+{selectedAmenities.length - 3} more</span>}
-                      </div>
-                      <button type="button" aria-label={`Amenities for ${room.name}`} onClick={event => { event.stopPropagation(); openEditor(room.id, "amenities"); }}
-                        className="shrink-0 text-xs font-semibold text-[#061224] underline">Amenities</button>
-                    </div>
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
+                    {/* Card Footer Actions */}
+                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           openEditor(room.id, "details");
                         }}
-                        className="flex-1 rounded-xl bg-[#061224] py-2 text-center text-xs font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition-all flex items-center justify-center gap-1.5"
+                        className="inline-flex h-9 flex-1 min-w-[96px] items-center justify-center gap-1.5 rounded-xl bg-[#061224] px-3 text-xs font-semibold text-white shadow-2xs hover:bg-[#0c1f3b] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] transition-all cursor-pointer whitespace-nowrap"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                         Edit room
@@ -1486,7 +1637,7 @@ export function PartnerRoomsRatesView({
                           e.stopPropagation();
                           openEditor(room.id, "inventory");
                         }}
-                        className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-semibold text-[#061224] hover:bg-slate-50 transition-all"
+                        className="inline-flex h-9 flex-1 min-w-[90px] items-center justify-center rounded-xl border border-slate-200/90 bg-white px-3 text-xs font-semibold text-[#061224] shadow-2xs hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] transition-all cursor-pointer whitespace-nowrap"
                       >
                         Availability
                       </button>
@@ -1496,7 +1647,7 @@ export function PartnerRoomsRatesView({
                           e.stopPropagation();
                           openEditor(room.id, "rates");
                         }}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all"
+                        className="inline-flex h-9 flex-1 min-w-[104px] items-center justify-center rounded-xl border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 hover:text-[#061224] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] transition-all cursor-pointer whitespace-nowrap"
                       >
                         Manage prices
                       </button>
@@ -1509,7 +1660,7 @@ export function PartnerRoomsRatesView({
                         disabled={deletingId === room.id}
                         aria-label={`Archive ${room.name}`}
                         title="Archive room type"
-                        className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-600 shadow-2xs hover:bg-rose-50 hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c89b3c] transition-all cursor-pointer"
                       >
                         {deletingId === room.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1519,8 +1670,9 @@ export function PartnerRoomsRatesView({
                       </button>
                     </div>
                   </div>
-                );
-              })}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

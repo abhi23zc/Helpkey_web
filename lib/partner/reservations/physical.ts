@@ -1,4 +1,5 @@
 import "server-only";
+import { physicalAllocationGroups } from "@/lib/booking/assignment-segments";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { allocateIntervals, type Allocation } from "@/lib/booking/domain";
@@ -10,23 +11,20 @@ export async function readPhysicalRelease(
   bookingId: string,
   b: RecordData,
 ) {
-  const allocations = (b.physicalAllocations ?? []) as Allocation[];
-  const docs = b.physicalUnitId
-    ? await Promise.all(
-        allocations.map((a) => tx.get(unitCalendar(b.physicalUnitId, a.date))),
-      )
-    : [];
+  const groups = physicalAllocationGroups(b);
+  const rows = new Map<string, { unitId: string; date: string; intervals: Set<string> }>();
+  for (const group of groups) for (const a of group.allocations) {
+    const path = unitCalendar(group.unitId!, a.date).path;
+    const row = rows.get(path) ?? { unitId: group.unitId!, date: a.date, intervals: new Set<string>() };
+    a.intervals.forEach(k => row.intervals.add(k)); rows.set(path, row);
+  }
+  const entries = [...rows.values()];
+  const docs = await Promise.all(entries.map(r => tx.get(unitCalendar(r.unitId, r.date))));
   return () => {
     docs.forEach((doc, i) => {
-      const slots = { ...(doc.data()?.slots ?? {}) };
-      for (const key of allocations[i].intervals)
-        if (slots[key] === bookingId) delete slots[key];
-      tx.set(doc.ref, {
-        propertyId: b.propertyId,
-        unitId: b.physicalUnitId,
-        date: allocations[i].date,
-        slots,
-      });
+      const slots = { ...(doc.data()?.slots ?? {}) }, row = entries[i];
+      for (const key of row.intervals) if (slots[key] === bookingId) delete slots[key];
+      tx.set(doc.ref, { propertyId: b.propertyId, unitId: row.unitId, date: row.date, slots });
     });
   };
 }
@@ -36,6 +34,7 @@ export async function assignPhysical(
   b: RecordData,
   unitId: string | null,
 ) {
+  if (b.bookingStatus === "checked_in" || b.assignmentSegments) throw new Error("USE_STAY_CHANGE");
   const unit = unitId
     ? (await tx.get(adminDb.collection("physicalUnits").doc(unitId))).data()
     : null;

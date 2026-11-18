@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
 import { queueQuoteRefund } from "./requests";
@@ -17,6 +18,7 @@ import {
 } from "./contracts";
 import { readOffering, offeringsFor } from "./catalog";
 import {
+  stayFinancials,
   assertRequestTransition,
   canEditRequest,
   eligibleOffering,
@@ -49,7 +51,8 @@ export async function saveOffering(
     .doc(propertyId)
     .collection("stayCustomizations")
     .doc(id ?? crypto.randomUUID());
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(propertyId);
     const old = await tx.get(ref);
     const membership = await tx.get(
       adminDb.collection("propertyMemberships").doc(`${propertyId}_${uid}`),
@@ -218,8 +221,9 @@ export async function savePreCheckin(
 ) {
   const input = preCheckinInput.parse(raw);
   const ref = adminDb.collection("bookings").doc(bookingId);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now();
@@ -450,8 +454,9 @@ export async function updateStayRequest(
   await requireRole(uid, "partner");
   const input = transitionInput.parse(raw);
   const ref = adminDb.collection("bookings").doc(bookingId);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b) throw new Error("NOT_FOUND");
     await operationalAccess(uid, b.propertyId, input.status === "declined" ? "requests.manage" : "requests.prepare", tx);
     const member = await tx.get(
@@ -479,6 +484,7 @@ export async function updateStayRequest(
     const supplementalRefund = input.status === "declined" && target.settlement === "paid" && target.quote?.paymentStatus === "paid" && target.quote.paymentId;
     if (supplementalRefund) queueQuoteRefund(tx, bookingId, b.propertyId, target.id, target.quote!.paymentId!, target.quote!.amountPaise, target.offerId ? target.id : undefined);
     const credit = input.status === "declined" && !supplementalRefund ? target.totalPaise : 0;
+    if ((b.totalPaise ?? 0) - (b.customizationCreditPaise ?? 0) + (b.billingNetPaise ?? 0) - credit < 0) throw new Error("Billing review required: ask an owner or manager to review hotel credits before declining this booked extra.");
     const refund = credit > 0 && b.paymentMethod === "online" ? credit : 0;
     if (
       refund > 0 &&
@@ -524,6 +530,7 @@ export async function updateStayRequest(
           : r,
       ),
       ...(supplementalRefund ? { stayPaymentReceipts: (b.stayPaymentReceipts ?? []).map((r: import("./contracts").StayPaymentReceipt) => r.requestId === target.id && r.paymentId === target.quote!.paymentId ? { ...r, status: "refund_pending" } : r) } : {}),
+      balanceDuePaise: stayFinancials({ ...b, customizationCreditPaise: (b.customizationCreditPaise ?? 0) + credit, refundDuePaise: (b.refundDuePaise ?? 0) + refund }).balanceDuePaise,
       customizationCreditPaise: (b.customizationCreditPaise ?? 0) + credit,
       refundDuePaise: (b.refundDuePaise ?? 0) + refund,
       ...(refund ? { paymentStatus: "refund_pending" } : {}),
@@ -565,8 +572,9 @@ const arrivalPatch = z.object({
 export async function patchArrival(uid: string, bookingId: string, raw: unknown) {
   const input = arrivalPatch.parse(raw);
   const ref = adminDb.collection("bookings").doc(bookingId);
-  await adminDb.runTransaction(async tx => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const b = (await tx.get(ref)).data();
+    markTodayChanged(b?.propertyId);
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
     const now = Date.now(), bounds = bookingBounds(b);

@@ -216,7 +216,7 @@ test("room setup preserves bed configurations and protects unsaved edits", async
   page,
 }) => {
   await fixture(page);
-  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03");
+  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=types");
   await expect(
     page.getByRole("heading", { name: "Rooms", exact: true }),
   ).toBeVisible();
@@ -311,7 +311,7 @@ for (const width of [390, 768, 1366])
         await route.fulfill({ json: { ratePlan: { ...rate, ...saved } } });
       },
     );
-    await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03");
+    await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=types");
     await page
       .getByRole("button", { name: "Manage prices", exact: true })
       .click();
@@ -379,7 +379,7 @@ for (const width of [390, 768, 1366])
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await fixture(page, true);
-    await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03");
+    await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=types");
     await page
       .getByRole("button", { name: "Manage prices", exact: true })
       .click();
@@ -440,7 +440,7 @@ async function amenitiesFixture(page: Page) {
     Object.assign(selected, body);
     await route.fulfill({ json: { ok: true, roomType: selected } });
   });
-  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03");
+  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=types");
   await expect(page.getByRole("button", { name: "Amenities for Normal", exact: true })).toBeVisible();
   return state;
 }
@@ -516,4 +516,20 @@ test("search is not dirty; clearing requires save and unsaved close can be cance
   await expect(dialog.getByRole("status")).toContainText("Room amenities saved.");
   await dialog.getByRole("button", { name: "Close panel" }).click();
   await expect(page.getByText("No amenities configured", { exact: true })).toHaveCount(2);
+});
+
+test("live room board displays rooms with executive cards and supports compact density toggle", async ({ page }) => {
+  await fixture(page);
+  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=board");
+  await expect(page.getByRole("button", { name: "Live Room Board", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Comfortable Cards", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Compact Grid", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Compact Grid", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Compact Grid", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("live room board allows quick marking a dirty room clean with one click", async ({ page }) => {
+  await fixture(page);
+  await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=board");
+  await expect(page.getByRole("button", { name: "Mark Clean", exact: true })).toBeVisible();
 });

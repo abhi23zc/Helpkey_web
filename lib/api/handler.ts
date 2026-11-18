@@ -9,7 +9,7 @@ import { ApiException, toApiException } from "@/lib/api/errors";
 import { validateOrigin } from "@/lib/api/csrf";
 
 export type ApiSuccess<T, M = undefined> = { data: T; meta?: M; requestId: string };
-export type ApiError = { error: { code: string; message: string; fieldErrors?: Record<string, string[]> }; requestId: string };
+export type ApiError = { error: { code: string; message: string; fieldErrors?: Record<string, string[]>; eligibility?: import("@/lib/partner/reservations/eligibility").ActionEligibility }; requestId: string };
 
 type RouteHandler<C = unknown> = (request: Request, context: C) => Response | Promise<Response>;
 export type ApiHandlerOptions = {
@@ -102,7 +102,7 @@ export function withApiHandler<C = unknown>(handler: RouteHandler<C>, options: A
         return await decorateResponse(await handler(request, routeContext), context, options);
       } catch (error) {
         const known = toApiException(error);
-        const response = Response.json({ error: { code: known.code, message: known.message, ...(known.fieldErrors ? { fieldErrors: known.fieldErrors } : {}) }, requestId: context.requestId }, { status: known.status });
+        const response = Response.json({ error: { code: known.code, message: known.message, ...(known.eligibility ? { eligibility: known.eligibility } : {}), ...(known.fieldErrors ? { fieldErrors: known.fieldErrors } : {}) }, requestId: context.requestId }, { status: known.status });
         return decorateResponse(response, context, { ...options, legacyShape: false });
       }
     });

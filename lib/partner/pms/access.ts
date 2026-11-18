@@ -69,10 +69,22 @@ export async function operationalAccess(
   tx?: FirebaseFirestore.Transaction,
 ) {
   const access = await propertyAccess(uid, propertyId, permission, tx);
-  if (access.block) throw new ApiException("PMS_RESTRICTED", 403, access.block);
+  const restriction = await operationalRestriction(access, propertyId, permission, tx);
+  if (restriction) throw restriction;
+  return access;
+}
+
+/** One restriction check for both eligibility explanations and authoritative writes. */
+export async function operationalRestriction(
+  access: Awaited<ReturnType<typeof propertyAccess>>,
+  propertyId: string,
+  permission: Permission,
+  tx?: FirebaseFirestore.Transaction,
+): Promise<ApiException | null> {
+  if (access.block) return new ApiException("PMS_RESTRICTED", 403, access.block);
   if (access.property.pms?.activatedAt) {
     if (access.property.pms.ownerDisabled)
-      throw new ApiException(
+      return new ApiException(
         "PMS_DISABLED",
         409,
         "PMS is disabled. Ask the owner to enable it.",
@@ -80,14 +92,14 @@ export async function operationalAccess(
     const { setupStatusForAccess } = await import("./setup");
     const status = await setupStatusForAccess(access, propertyId, tx);
     if (status.state !== "ready")
-      throw new ApiException(
+      return new ApiException(
         "PMS_SETUP_REQUIRED",
         409,
         "Complete PMS setup before using hotel operations.",
       );
   } else {
     if (access.role !== "owner")
-      throw new ApiException(
+      return new ApiException(
         "PMS_SETUP_REQUIRED",
         409,
         "The hotel owner needs to activate and prepare PMS first.",
@@ -96,11 +108,11 @@ export async function operationalAccess(
       ["reservation.create", "reservation.amend"].includes(permission) &&
       !publicBookable(access.property)
     )
-      throw new ApiException(
+      return new ApiException(
         "PROPERTY_NOT_AVAILABLE",
         409,
         "Activate and prepare PMS before making internal reservations while public bookings are unavailable.",
       );
   }
-  return access;
+  return null;
 }

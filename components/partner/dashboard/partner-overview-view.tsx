@@ -149,7 +149,7 @@ export function PartnerOverviewView({
       ),
     refetchInterval: () =>
       typeof document !== "undefined" && document.visibilityState === "visible"
-        ? 60_000
+        ? 30_000
         : false,
     refetchOnWindowFocus: "always",
     refetchOnMount: "always",
@@ -182,7 +182,7 @@ export function PartnerOverviewView({
       if (value) url.searchParams.set(key, value);
       else url.searchParams.delete(key);
       url.searchParams.set("propertyId", propertyId);
-      window.history.pushState(null, "", url);
+      window.history[key === "bookingId" && value === null ? "replaceState" : "pushState"](null, "", url);
     },
     [propertyId],
   );

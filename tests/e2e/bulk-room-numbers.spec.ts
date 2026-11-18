@@ -208,6 +208,7 @@ test("desktop and mobile bulk preview, failure preservation, retry and single en
   await expect(
     page.getByRole("button", { name: "Add 1 room numbers", exact: true }),
   ).toBeDisabled();
+  await page.getByRole("button", { name: "Close panel", exact: true }).click();
   // Existing single-room form remains available and uses the same uniqueness checks.
   const single = page
     .locator("form")

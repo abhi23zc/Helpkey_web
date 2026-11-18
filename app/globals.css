@@ -1,4 +1,9 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+/* Scan application sources only; generated bundles and test artifacts are not class sources. */
+@source "./";
+@source "../components";
+@source "../lib";
 
 :root {
   --hk-primary: #0b1f3a;
@@ -340,3 +345,13 @@ input {
 .partner-calendar .rdp-weekday { font-size: 11px; color: #64748b; font-weight: 600; }
 .partner-calendar .rdp-selected .rdp-day_button { font-weight: 700; }
 @media (max-width: 360px) { .partner-calendar .rdp-root { --rdp-day-width: 35px; --rdp-day_button-width: 33px; } }
+
+/* Clean modern number inputs: hide native spin arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

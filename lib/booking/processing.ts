@@ -1,3 +1,5 @@
+import { stayFinancials } from "@/lib/stay/domain";
+import { todayTransaction } from "@/lib/partner/today/cache";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -56,10 +58,11 @@ export async function processRefund(refundId: string) {
       const current = (await tx.get(ref)).data();
       if (current?.leaseOwner === owner && current.leaseExpiresAt?.toMillis() > Date.now() && !["processed", "failed"].includes(current.status)) tx.update(ref, { providerRefundId: result.id });
     });
-    await adminDb.runTransaction(async (tx) => {
+    await todayTransaction(async (tx, markTodayChanged) => {
       const current = (await tx.get(ref)).data();
       const bookingRef = adminDb.collection("bookings").doc(claim.bookingId);
       const booking = (await tx.get(bookingRef)).data();
+      markTodayChanged(booking?.propertyId);
       if (!current || current.leaseOwner !== owner || current.leaseExpiresAt?.toMillis() <= Date.now() || ["processed", "failed"].includes(current.status) || !booking) return;
       tx.update(ref, { providerRefundId: result.id, status: result.status, ...(result.status === "processed" ? { processedAt: FieldValue.serverTimestamp() } : {}), leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + 60_000), updatedAt: FieldValue.serverTimestamp() });
       if (result.status === "processed") {
@@ -68,7 +71,7 @@ export async function processRefund(refundId: string) {
         } else {
         const refundedPaise = (booking.refundedPaise ?? 0) + claim.amountPaise;
         const refundDuePaise = Math.max(0, (booking.refundDuePaise ?? 0) - claim.amountPaise);
-        tx.update(bookingRef, { refundedAt: FieldValue.serverTimestamp(), refundedPaise, refundDuePaise, paymentStatus: refundDuePaise > 0 ? "refund_pending" : refundedPaise >= booking.paidPaise ? "refunded" : "partially_refunded", updatedAt: FieldValue.serverTimestamp() });
+        tx.update(bookingRef, { balanceDuePaise: stayFinancials({ ...booking, refundedPaise, refundDuePaise }).balanceDuePaise, refundedAt: FieldValue.serverTimestamp(), refundedPaise, refundDuePaise, paymentStatus: refundDuePaise > 0 ? "refund_pending" : refundedPaise >= booking.paidPaise ? "refunded" : "partially_refunded", updatedAt: FieldValue.serverTimestamp() });
         }
         tx.create(bookingRef.collection("events").doc(), { type: "refund_processed", refundId, amountPaise: claim.amountPaise, actorId: "system:refunds", createdAt: FieldValue.serverTimestamp() });
       }

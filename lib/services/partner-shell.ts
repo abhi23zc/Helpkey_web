@@ -20,16 +20,53 @@ export async function loadPartnerShell(user: AppUser) {
   const { setupStatusForAccess } = await import("@/lib/partner/pms/setup");
   const capabilities = new Map<string, { role: string; permissions: readonly string[]; accessRevision: number; pmsState: string; operationsReason: string | null; operationsIssues: SetupItem[] }>();
   const accessible: typeof docs = [];
-  for (const doc of docs) {
-    if (!doc.exists) continue;
-    try {
-      const a = await propertyAccess(user.uid, doc.id);
-      const state = a.property.pms?.activatedAt ? await setupStatusForAccess(a, doc.id) : null;
-      capabilities.set(doc.id, { role: a.role, permissions: a.permissions, accessRevision: a.revision, pmsState: state?.state || (a.block ? "disabled" : "not_activated"), operationsReason: a.block || state?.reason || (state && state.state !== "ready" ? "Complete the setup checks below before using this hotel’s operations." : a.role !== "owner" && !state ? "The hotel owner needs to activate PMS before staff can use hotel operations." : null), operationsIssues: state?.state === "setup" ? state.items.filter(item => !item.complete) : [] });
-      accessible.push(doc);
-    } catch (error) {
-      if (!(error && typeof error === "object" && "status" in error && error.status === 403)) throw error;
-    }
+  const evaluated = await Promise.all(
+    docs.map(async (doc) => {
+      if (!doc.exists) return null;
+      try {
+        const a = await propertyAccess(user.uid, doc.id);
+        const state = a.property.pms?.activatedAt
+          ? await setupStatusForAccess(a, doc.id)
+          : null;
+        return {
+          doc,
+          capability: {
+            role: a.role,
+            permissions: a.permissions,
+            accessRevision: a.revision,
+            pmsState: state?.state || (a.block ? "disabled" : "not_activated"),
+            operationsReason:
+              a.block ||
+              state?.reason ||
+              (state && state.state !== "ready"
+                ? "Complete the setup checks below before using this hotel’s operations."
+                : a.role !== "owner" && !state
+                  ? "The hotel owner needs to activate PMS before staff can use hotel operations."
+                  : null),
+            operationsIssues:
+              state?.state === "setup"
+                ? state.items.filter((item) => !item.complete)
+                : [],
+          },
+        };
+      } catch (error) {
+        if (
+          !(
+            error &&
+            typeof error === "object" &&
+            "status" in error &&
+            error.status === 403
+          )
+        )
+          throw error;
+        return null;
+      }
+    }),
+  );
+  for (const item of evaluated) {
+    if (!item) continue;
+    capabilities.set(item.doc.id, item.capability);
+    accessible.push(item.doc);
   }
   const properties = { docs: accessible };
   const partnerProfileSnap = await adminDb.collection("partnerProfiles").doc(user.uid).get();

@@ -364,14 +364,46 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
     [data],
   );
 
+  const startingNightlyPaise = useMemo(() => {
+    if (!data?.ratePlans.length) return null;
+    const overnightPlans = data.ratePlans.filter(
+      (rate) =>
+        rate.status === "active" &&
+        eligiblePricing(rate) &&
+        rate.bookingMode !== "hourly" &&
+        rate.basePricePaise > 0,
+    );
+    if (!overnightPlans.length) return null;
+    return Math.min(...overnightPlans.map((r) => r.basePricePaise));
+  }, [data]);
+
+  const startingHourlyPaise = useMemo(() => {
+    if (!data?.ratePlans.length) return null;
+    const hourlyPlans = data.ratePlans.filter(
+      (rate) =>
+        rate.status === "active" &&
+        eligiblePricing(rate) &&
+        rate.bookingMode === "hourly",
+    );
+    if (!hourlyPlans.length) return null;
+    const prices = hourlyPlans
+      .map((r) => {
+        const firstDuration = r.durationPrices?.[0];
+        return firstDuration?.pricePaise || r.basePricePaise;
+      })
+      .filter((p): p is number => typeof p === "number" && p > 0);
+    return prices.length ? Math.min(...prices) : null;
+  }, [data]);
+
   const startingPricePaise = useMemo(() => {
+    if (startingNightlyPaise !== null) return startingNightlyPaise;
     if (!data?.ratePlans.length) return null;
     const prices = data.ratePlans
       .filter((rate) => rate.status === "active" && eligiblePricing(rate))
       .map((rate) => rate.basePricePaise)
       .filter((value): value is number => typeof value === "number" && value > 0);
     return prices.length ? Math.min(...prices) : null;
-  }, [data]);
+  }, [data, startingNightlyPaise]);
 
   // Join room types with their cheapest rate plan for the Rooms Summary card.
   const roomsWithPricing = useMemo<RoomWithPrice[]>(() => {
@@ -401,6 +433,8 @@ export function usePropertyListing(propertyId: string | undefined, view: "listin
     checklist,
     roomsWithPricing,
     startingPricePaise,
+    startingNightlyPaise,
+    startingHourlyPaise,
     currency,
     loading: query.isPending,
     error: query.error instanceof Error ? query.error.message : "",

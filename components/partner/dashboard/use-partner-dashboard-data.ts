@@ -95,6 +95,8 @@ export function usePartnerDashboardData() {
     url.searchParams.set(key, value);
     if (key === "propertyId") {
       url.searchParams.delete("bookingId");
+      url.searchParams.delete("section");
+      url.searchParams.delete("cursor");
       url.searchParams.delete("q");
     }
     window.history.pushState(null, "", url);

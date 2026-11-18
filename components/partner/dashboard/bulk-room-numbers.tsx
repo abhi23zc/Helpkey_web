@@ -1,40 +1,59 @@
 "use client";
+
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, CheckCircle2, Layers } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import type {
   BulkUnitPreview,
   BulkUnitSource,
 } from "@/lib/partner/reservations/bulk-unit-domain";
+import { Drawer } from "./drawer";
+import {
+  pmsButton,
+  pmsInput,
+  pmsPrimaryButton,
+  StatusPill,
+} from "./settings/settings-shared";
 
-const inputClass =
-  "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm";
-const buttonClass =
-  "min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50";
 export function BulkRoomNumbers({
   propertyId,
   rooms,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   propertyId: string;
   rooms: { id: string; name: string; inventory: number }[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }) {
   const client = useQueryClient();
-  const [open, setOpen] = useState(false),
-    [roomTypeId, setRoomTypeId] = useState("");
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (onOpenChange) onOpenChange(next);
+    else setInternalOpen(next);
+  };
+
+  const [roomTypeId, setRoomTypeId] = useState("");
   const [mode, setMode] = useState<"range" | "list">("range");
-  const [start, setStart] = useState(""),
-    [end, setEnd] = useState(""),
-    [text, setText] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [text, setText] = useState("");
   const [preview, setPreview] = useState<BulkUnitPreview | null>(null);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
   function edit(change: () => void) {
     change();
     setPreview(null);
     setError("");
     setNotice("");
   }
+
   async function submit(create: boolean) {
     setBusy(true);
     setError("");
@@ -78,36 +97,47 @@ export function BulkRoomNumbers({
       setBusy(false);
     }
   }
+
   return (
-    <div className="mt-5 rounded-xl border border-slate-200 p-4">
-      <button
-        type="button"
-        className={buttonClass}
-        aria-expanded={open}
-        disabled={busy}
-        onClick={() => setOpen(!open)}
+    <>
+      {!hideTrigger && (
+        <div className="mt-5">
+          <button
+            type="button"
+            className={pmsPrimaryButton}
+            aria-expanded={open}
+            disabled={busy}
+            onClick={() => setOpen(!open)}
+          >
+            <Layers className="h-4 w-4" aria-hidden="true" />
+            Add multiple room numbers
+          </button>
+        </div>
+      )}
+
+      <Drawer
+        open={open}
+        onClose={() => {
+          if (!busy) setOpen(false);
+        }}
+        title="Add multiple room numbers"
+        description="Add up to 100 numbers for one room type. Existing numbers are skipped, including inactive rooms."
+        badge={<StatusPill tone="gold">Up to 100</StatusPill>}
       >
-        Add multiple room numbers
-      </button>
-      {open && (
-        <div className="mt-4 space-y-4">
-          <p className="text-sm text-slate-500">
-            Add up to 100 numbers for one room type. Existing numbers are
-            skipped, including inactive rooms.
-          </p>
+        <div className="space-y-5">
           <form
-            className="space-y-3"
+            className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs"
             onSubmit={(e) => {
               e.preventDefault();
               void submit(false);
             }}
           >
-            <fieldset disabled={busy} className="space-y-3">
-              <label className="block text-sm">
-                Room type for multiple numbers
+            <fieldset disabled={busy} className="space-y-4">
+              <label className="block space-y-1.5 text-sm font-medium text-[#061224]">
+                <span>Room type for multiple numbers</span>
                 <select
                   required
-                  className={inputClass}
+                  className={pmsInput}
                   value={roomTypeId}
                   onChange={(e) => edit(() => setRoomTypeId(e.target.value))}
                 >
@@ -119,10 +149,11 @@ export function BulkRoomNumbers({
                   ))}
                 </select>
               </label>
-              <label className="block text-sm">
-                Entry method
+
+              <label className="block space-y-1.5 text-sm font-medium text-[#061224]">
+                <span>Entry method</span>
                 <select
-                  className={inputClass}
+                  className={pmsInput}
                   value={mode}
                   onChange={(e) =>
                     edit(() => setMode(e.target.value as "range" | "list"))
@@ -132,29 +163,30 @@ export function BulkRoomNumbers({
                   <option value="list">Paste a list</option>
                 </select>
               </label>
+
               {mode === "range" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm">
-                    First number
+                  <label className="space-y-1.5 text-sm font-medium text-[#061224]">
+                    <span>First number</span>
                     <input
                       required
                       inputMode="numeric"
                       pattern="[0-9]+"
                       maxLength={40}
-                      className={inputClass}
+                      className={pmsInput}
                       placeholder="001"
                       value={start}
                       onChange={(e) => edit(() => setStart(e.target.value))}
                     />
                   </label>
-                  <label className="text-sm">
-                    Last number
+                  <label className="space-y-1.5 text-sm font-medium text-[#061224]">
+                    <span>Last number</span>
                     <input
                       required
                       inputMode="numeric"
                       pattern="[0-9]+"
                       maxLength={40}
-                      className={inputClass}
+                      className={pmsInput}
                       placeholder="050"
                       value={end}
                       onChange={(e) => edit(() => setEnd(e.target.value))}
@@ -162,20 +194,21 @@ export function BulkRoomNumbers({
                   </label>
                 </div>
               ) : (
-                <label className="block text-sm">
-                  Room numbers (commas or one per line)
+                <label className="block space-y-1.5 text-sm font-medium text-[#061224]">
+                  <span>Room numbers (commas or one per line)</span>
                   <textarea
                     required
                     rows={5}
                     maxLength={5000}
-                    className={inputClass}
+                    className={pmsInput}
                     placeholder={"A101, A102\nB201"}
                     value={text}
                     onChange={(e) => edit(() => setText(e.target.value))}
                   />
                 </label>
               )}
-              <button className={buttonClass} type="submit">
+
+              <button className={`${pmsButton} w-full`} type="submit">
                 {busy
                   ? "Working…"
                   : preview
@@ -184,45 +217,89 @@ export function BulkRoomNumbers({
               </button>
             </fieldset>
           </form>
+
           {preview && (
             <div
-              className="space-y-3 rounded-xl bg-slate-50 p-3 text-sm"
+              className="space-y-3.5 rounded-2xl border border-[#e9ddc1] bg-[#fbf5e8]/60 p-4 sm:p-5 text-sm"
               aria-label="Room numbers preview"
             >
-              <p className="font-semibold">
-                {preview.newLabels.length} new room numbers ·{" "}
-                {preview.remainingCapacity} capacity remaining
-              </p>
-              <p className="break-words">
-                Proposed: {preview.proposed.join(", ")}
-              </p>
-              <p className="break-words">
-                New: {preview.newLabels.join(", ") || "None"}
-              </p>
-              <p className="break-words">
-                Existing (skipped):{" "}
-                {preview.existing
-                  .map(
-                    (u) =>
-                      `${u.label} (${u.status}; ${rooms.find((r) => r.id === u.roomTypeId)?.name || "another room type"})`,
-                  )
-                  .join(", ") || "None"}
-              </p>
-              <p className="break-words">
-                Repeated entries (skipped):{" "}
-                {preview.duplicates.join(", ") || "None"}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold text-[#061224]">
+                  {preview.newLabels.length} new room numbers ·{" "}
+                  {preview.remainingCapacity} capacity remaining
+                </p>
+                <StatusPill
+                  tone={preview.capacityAfter < 0 ? "rose" : "emerald"}
+                >
+                  {preview.capacityAfter < 0
+                    ? `Over by ${-preview.capacityAfter}`
+                    : `${preview.capacityAfter} left after`}
+                </StatusPill>
+              </div>
+
+              {preview.newLabels.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {preview.newLabels.slice(0, 24).map((lbl) => (
+                    <span
+                      key={lbl}
+                      className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+                    >
+                      {lbl}
+                    </span>
+                  ))}
+                  {preview.newLabels.length > 24 && (
+                    <span className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      +{preview.newLabels.length - 24} more
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-3 text-xs text-slate-600">
+                <p className="break-words">
+                  <strong className="text-[#061224]">Proposed:</strong>{" "}
+                  {preview.proposed.join(", ")}
+                </p>
+                <p className="break-words">
+                  <strong className="text-[#061224]">New:</strong>{" "}
+                  {preview.newLabels.join(", ") || "None"}
+                </p>
+                <p className="break-words">
+                  <strong className="text-[#061224]">
+                    Existing (skipped):
+                  </strong>{" "}
+                  {preview.existing
+                    .map(
+                      (u) =>
+                        `${u.label} (${u.status}; ${rooms.find((r) => r.id === u.roomTypeId)?.name || "another room type"})`,
+                    )
+                    .join(", ") || "None"}
+                </p>
+                <p className="break-words">
+                  <strong className="text-[#061224]">
+                    Repeated entries (skipped):
+                  </strong>{" "}
+                  {preview.duplicates.join(", ") || "None"}
+                </p>
+              </div>
+
               {preview.capacityAfter < 0 ? (
-                <p role="alert" className="text-red-700">
+                <p
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-800"
+                >
                   Exceeds capacity by {-preview.capacityAfter}. Edit the numbers
                   or choose another room type, then preview again.
                 </p>
               ) : (
-                <p>Capacity remaining after adding: {preview.capacityAfter}</p>
+                <p className="text-xs font-medium text-slate-700">
+                  Capacity remaining after adding: {preview.capacityAfter}
+                </p>
               )}
+
               <button
                 type="button"
-                className={buttonClass}
+                className={`${pmsPrimaryButton} w-full`}
                 disabled={busy || !preview.canSave}
                 onClick={() => void submit(true)}
               >
@@ -230,18 +307,34 @@ export function BulkRoomNumbers({
               </button>
             </div>
           )}
+
           {error && (
-            <p role="alert" className="text-sm text-red-700">
-              {error}
-            </p>
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm font-medium text-rose-800"
+            >
+              <AlertCircle
+                className="mt-0.5 h-4 w-4 shrink-0 text-rose-600"
+                aria-hidden="true"
+              />
+              <span className="break-words">{error}</span>
+            </div>
           )}
+
           {notice && (
-            <p role="status" className="text-sm text-emerald-700">
-              {notice}
-            </p>
+            <div
+              role="status"
+              className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm font-medium text-emerald-800"
+            >
+              <CheckCircle2
+                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+                aria-hidden="true"
+              />
+              <span className="break-words">{notice}</span>
+            </div>
           )}
         </div>
-      )}
-    </div>
+      </Drawer>
+    </>
   );
 }

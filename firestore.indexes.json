@@ -2461,7 +2461,207 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "physicalUnits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomTypeId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "physicalUnitCalendars",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "unitId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkIn",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bookingStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "checkOut",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cashierShifts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "openedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cashierShifts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "actorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "openedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "cashierShifts",
+      "fieldPath": "snapshot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "activity",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "late",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "sourceKeys",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "shiftSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "lateShiftSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "unresolved",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "pendingRefunds",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "openShifts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "blockers",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "activityTotals",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "lateTotals",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "dailyClosings",
+      "fieldPath": "coverage",
+      "indexes": []
+    }
+  ]
 }

@@ -1,3 +1,4 @@
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
@@ -48,7 +49,7 @@ export async function workspace(
   start: string,
   end: string,
 ) {
-  await propertyAccess(uid, propertyId, "rooms.read");
+  const access = await propertyAccess(uid, propertyId, "rooms.read");
   const dates = days(start, end);
   const [p, rooms, rates, units, bookings, blocks] = await Promise.all([
     adminDb.collection("properties").doc(propertyId).get(),
@@ -61,7 +62,7 @@ export async function workspace(
     adminDb
       .collection("bookings")
       .where("propertyId", "==", propertyId)
-      .where("bookingStatus", "==", "checked_in")
+      .where("bookingStatus", "in", ["confirmed", "checked_in"])
       .get(),
     adminDb
       .collection("inventoryBlocks")
@@ -103,12 +104,60 @@ export async function workspace(
       ...safeData(d.data() || {}),
     })),
     prices: prices.filter((d) => d.exists).map((d) => safeData(d.data()!)),
-    units: units.docs.map((d) => ({
-      id: d.id,
-      ...safeData(d.data()),
-      occupied: bookings.docs.some((b) => b.get("physicalUnitId") === d.id),
-      revision: d.get("revision") || 0,
-    })),
+    units: units.docs.map((d) => {
+      const activeBooking = bookings.docs.find(
+        (b) => b.get("physicalUnitId") === d.id && b.get("bookingStatus") === "checked_in"
+      );
+      const upcomingBooking = !activeBooking
+        ? bookings.docs.find(
+            (b) =>
+              b.get("physicalUnitId") === d.id &&
+              b.get("bookingStatus") === "confirmed" &&
+              b.get("checkIn") === start
+          )
+        : null;
+      const canReadReservations = access.permissions.includes("reservation.read");
+
+      const formatStay = (b: FirebaseFirestore.DocumentSnapshot) => {
+        const lead = (b.get("leadGuest") as Record<string, unknown> | undefined) || {};
+        const totalPaise = Number(b.get("totalPaise")) || 0;
+        const paidPaise = Number(b.get("paidPaise")) || 0;
+        const adults = Number(b.get("adults")) || 1;
+        const children = Number(b.get("children")) || 0;
+        const occupants = (b.get("occupants") as unknown[] | undefined) || [];
+        return {
+          bookingId: b.id,
+          guestName: (lead.name as string) || "Guest",
+          guestPhone: (lead.phone as string) || "",
+          guestEmail: (lead.email as string) || "",
+          checkIn: (b.get("checkIn") as string) || "",
+          checkOut: (b.get("checkOut") as string) || "",
+          startAt: (b.get("startAt") as string) || "",
+          endAt: (b.get("endAt") as string) || "",
+          confirmationCode: (b.get("confirmationCode") as string) || b.id,
+          bookingStatus: (b.get("bookingStatus") as string) || "checked_in",
+          totalPaise,
+          paidPaise,
+          balanceDuePaise: Math.max(0, totalPaise - paidPaise),
+          guestCount: occupants.length || adults + children,
+          source: (b.get("source") as string) || "direct",
+        };
+      };
+
+      return {
+        id: d.id,
+        ...safeData(d.data()),
+        occupied: !!activeBooking,
+        ...(canReadReservations
+          ? {
+              bookingId: activeBooking?.id || upcomingBooking?.id || null,
+              currentStay: activeBooking ? formatStay(activeBooking) : null,
+              upcomingStay: upcomingBooking ? formatStay(upcomingBooking) : null,
+            }
+          : {}),
+        revision: d.get("revision") || 0,
+      };
+    }),
     blocks: blocks.docs.map((d) => ({ id: d.id, ...safeData(d.data()) })),
   };
 }
@@ -235,7 +284,8 @@ export async function bulk(uid: string, propertyId: string, raw: unknown) {
     .parse(raw);
   if (input.action === "preview") {
     const previewId = randomUUID();
-    const preview = await adminDb.runTransaction(async (tx) => {
+    const preview = await todayTransaction(async (tx, markTodayChanged) => {
+      markTodayChanged(propertyId);
       const data = await readBulk(tx, uid, propertyId, input.input);
       tx.create(adminDb.collection("roomBulkPreviews").doc(previewId), {
         ...data,
@@ -249,7 +299,8 @@ export async function bulk(uid: string, propertyId: string, raw: unknown) {
     return { previewId, cells: preview.cells };
   }
   if (!input.previewId) throw new Error("PREVIEW_REQUIRED");
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(propertyId);
     const ref = adminDb.collection("roomBulkPreviews").doc(input.previewId!);
     const snap = await tx.get(ref);
     const p = snap.data();
@@ -330,7 +381,8 @@ export async function housekeeping(
 ) {
   enabled("housekeeping");
   const input = housekeepingInput.parse(raw);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(propertyId);
     await operationalAccess(uid, propertyId, "housekeeping", tx);
     const ref = adminDb.collection("physicalUnits").doc(input.unitId);
     const unit = await tx.get(ref);
@@ -379,7 +431,8 @@ export async function maintenance(
   const blockId = createHash("sha256")
     .update(`${propertyId}:${uid}:${input.requestId}`)
     .digest("hex");
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
+    markTodayChanged(propertyId);
     await operationalAccess(uid, propertyId, "maintenance", tx);
     const ref = adminDb.collection("inventoryBlocks").doc(blockId);
     const previous = await tx.get(ref);

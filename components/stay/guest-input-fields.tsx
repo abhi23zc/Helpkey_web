@@ -1,4 +1,5 @@
 "use client";
+import { ChevronDown } from "lucide-react";
 import { needsResponseText, resolveResponse } from "@/lib/stay/response";
 import type { Offering, Selection } from "@/lib/stay/contracts";
 const field =
@@ -85,20 +86,23 @@ export function GuestInputFields({
       {(o.choiceGroups ?? []).map((g) => (
         <label className="block" key={g.id}>
           {g.name} {g.required ? "*" : "(optional)"}
-          <select
-            className={field}
-            value={value.choices?.[g.id] ?? ""}
-            onChange={(e) =>
-              patch({ choices: { ...value.choices, [g.id]: e.target.value } })
-            }
-          >
-            <option value="">Choose {g.name.toLowerCase()}</option>
-            {g.options.map((x) => (
-              <option key={x} value={x}>
-                {x}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              className={`${field} appearance-none pr-10`}
+              value={value.choices?.[g.id] ?? ""}
+              onChange={(e) =>
+                patch({ choices: { ...value.choices, [g.id]: e.target.value } })
+              }
+            >
+              <option value="">Choose {g.name.toLowerCase()}</option>
+              {g.options.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          </div>
         </label>
       ))}
       {(o.noteLabel || resolveResponse(o).responseType === "text" || o.formType === "custom") && (

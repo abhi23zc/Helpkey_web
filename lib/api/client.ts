@@ -4,6 +4,7 @@ export class ApiClientError extends Error {
     public readonly code: string,
     message = code,
     public readonly requestId?: string,
+    public readonly eligibility?: import("@/lib/partner/reservations/eligibility").ActionEligibility,
   ) {
     super(message);
   }
@@ -42,7 +43,7 @@ export async function apiFetch<T>(
     const payload = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
       const standard = (payload.apiError ?? payload.error) as
-        { code?: string; message?: string } | string | undefined;
+        { code?: string; message?: string; eligibility?: import("@/lib/partner/reservations/eligibility").ActionEligibility } | string | undefined;
       const code =
         typeof standard === "string"
           ? standard
@@ -56,7 +57,11 @@ export async function apiFetch<T>(
         typeof payload.requestId === "string"
           ? payload.requestId
           : (response.headers.get("x-request-id") ?? undefined),
+        typeof standard === "object" ? standard?.eligibility : undefined,
       );
+    }
+    if (typeof window !== "undefined" && !["GET", "HEAD"].includes((request.method || "GET").toUpperCase())) {
+      window.dispatchEvent(new Event("operational-data-changed"));
     }
     return (payload.data ?? payload) as T;
   } catch (error) {

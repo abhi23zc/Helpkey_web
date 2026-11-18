@@ -44,12 +44,28 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
     if (!review.exists) throw new ApiException("NOT_FOUND", 404);
     propertyId = review.get("propertyId");
   }
-  if (path.startsWith("/api/partner/reviews")) {
+  if (path.startsWith("/api/partner/cashier-shifts")) {
+    permission = "shift.operate";
+  } else if (path.startsWith("/api/partner/daily-closing")) {
+    permission = "closing.manage";
+  } else if (path.startsWith("/api/partner/reviews")) {
     permission = "reviews.manage";
     operational = write;
   } else if (path === "/api/partner/dashboard/overview") {
     permission = "reports.read";
     operational = true;
+  } else if (path.startsWith("/api/partner/today/")) {
+    permission = "reservation.read";
+    operational = true;
+  } else if (path.includes("/invoice-settings")) {
+    permission = "invoice.settings";
+    operational = write;
+  } else if (/^\/api\/partner\/bookings\/[^/]+\/invoices(?:\/|$)/.test(path)) {
+    permission = write ? (body.action === "credit_note" ? "invoice.credit" : "invoice.issue") : "invoice.read";
+    operational = write;
+  } else if (/^\/api\/partner\/bookings\/[^/]+\/folio(?:\/statement)?$/.test(path)) {
+    permission = write ? (body.action === "post" ? "billing.post" : "billing.adjust") : "payment.read";
+    operational = write;
   } else if (path.startsWith("/api/partner/bookings")) {
     operational = true;
     permission = path.endsWith("/export") ? "guest.export" : "reservation.read";
@@ -129,14 +145,17 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
       throw new ApiException("FORBIDDEN", 403);
     return;
   }
+  // Lifecycle handlers recheck restrictions and current facts in their transaction.
+  if (bookingMatch && write && path.endsWith("/status")) operational = false;
   const access = operational
     ? await operationalAccess(uid, propertyId, permission)
     : await propertyAccess(uid, propertyId, permission);
   if (write && access.block && !path.includes("/pms"))
     throw new ApiException("PMS_RESTRICTED", 403, access.block);
   if (path === "/api/partner/bookings" && write) {
-    if (body.paymentMethod === "paid")
+    if ((body.initialCollectionPaise !== undefined ? body.initialCollectionPaise > 0 : body.paymentMethod === "paid"))
       await operationalAccess(uid, propertyId, "payment.collect");
+    if (body.physicalUnitId) await operationalAccess(uid, propertyId, "reservation.assign");
     if (body.negotiatedSubtotalPaise !== undefined)
       await operationalAccess(uid, propertyId, "rates.manage");
   }

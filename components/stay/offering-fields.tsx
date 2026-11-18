@@ -5,8 +5,10 @@ import {
   CalendarClock,
   Camera,
   Check,
+  ChevronDown,
   Gift,
   ImagePlus,
+  IndianRupee,
   Package,
   Plus,
   SlidersHorizontal,
@@ -21,9 +23,10 @@ import { CategoryIcon } from "./category-icon";
 import { resolveResponse } from "@/lib/stay/response";
 import { searchTemplates, type OfferingTemplate } from "@/lib/stay/templates";
 import { formatMoney } from "@/lib/customer/offer";
+import { getOfferingImageUrl } from "@/lib/stay/imagery";
 
 const field =
-  "mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-[#061224] placeholder-slate-400 focus:border-[#c89b3c] focus:outline-hidden focus:ring-2 focus:ring-[#c89b3c]/20 transition-all";
+  "mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-base sm:text-sm text-[#061224] placeholder-slate-400 focus:border-[#c89b3c] focus:outline-hidden focus:ring-2 focus:ring-[#c89b3c]/20 transition-all";
 
 type ExtraType = "item" | "choice" | "package" | "scheduled";
 
@@ -110,8 +113,17 @@ export function TemplateLibrary({
             onClick={() => choose(t)}
             className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-all hover:border-amber-500/60 hover:shadow-xs"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 border border-amber-200/50">
-              <CategoryIcon category={t.draft.category || "other"} className="h-4 w-4" />
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-2xs">
+              <img
+                src={getOfferingImageUrl(t.draft)}
+                alt={t.draft.name}
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.src =
+                    "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80";
+                }}
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <span className="block text-sm font-bold text-slate-900 group-hover:text-amber-700">
@@ -295,35 +307,58 @@ export function OfferingFields({
         <>
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Pricing
+              Pricing Mode
             </label>
-            <select
-              aria-label="Price"
-              className={field}
-              value={paid ? "paid" : "free"}
-              onChange={(e) => onPaidChange(e.target.value === "paid")}
-            >
-              <option value="free">Free (Complimentary Amenity)</option>
-              <option value="paid">Paid (Bookable Add-on)</option>
-            </select>
+            <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-100/80 p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => onPaidChange(false)}
+                className={`flex-1 h-full flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  !paid
+                    ? "bg-white text-emerald-800 shadow-2xs border border-emerald-200/60 font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Gift className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Free</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onPaidChange(true)}
+                className={`flex-1 h-full flex items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  paid
+                    ? "bg-[#061224] text-white shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <IndianRupee className="h-3.5 w-3.5 text-amber-400" />
+                <span>Paid Add-on</span>
+              </button>
+            </div>
           </div>
 
           {paid && (
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Price (₹)
+                Price ({currency || "₹"})
               </label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                aria-invalid={Boolean(issueFor("unitPricePaise"))}
-                value={value.unitPricePaise / 100}
-                onChange={(e) =>
-                  patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
-                }
-                className={field}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0"
+                  aria-invalid={Boolean(issueFor("unitPricePaise"))}
+                  value={value.unitPricePaise ? value.unitPricePaise / 100 : ""}
+                  onChange={(e) =>
+                    patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
+                  }
+                  className={`${field} pl-8`}
+                />
+              </div>
               {issueFor("unitPricePaise") && (
                 <span className="mt-1 block text-xs text-red-700">{issueFor("unitPricePaise")}</span>
               )}
@@ -335,16 +370,19 @@ export function OfferingFields({
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Pricing Multiplier
               </label>
-              <select
-                aria-label="Pricing unit"
-                className={field}
-                value={value.pricingUnit ?? "item"}
-                onChange={(e) => patch({ pricingUnit: e.target.value as OfferingInput["pricingUnit"] })}
-              >
-                <option value="item">Price × selected quantity (Once per stay)</option>
-                <option value="night">Price × quantity × booked nights (Overnight stays)</option>
-                <option value="stay">Flat fee for the entire stay</option>
-              </select>
+              <div className="relative">
+                <select
+                  aria-label="Pricing unit"
+                  className={`${field} appearance-none pr-10`}
+                  value={value.pricingUnit ?? "item"}
+                  onChange={(e) => patch({ pricingUnit: e.target.value as OfferingInput["pricingUnit"] })}
+                >
+                  <option value="item">Price × selected quantity (Once per stay)</option>
+                  <option value="night">Price × quantity × booked nights (Overnight stays)</option>
+                  <option value="stay">Flat fee for the entire stay</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              </div>
             </div>
           )}
 
@@ -371,15 +409,20 @@ export function OfferingFields({
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Maximum Quantity per Booking
                 </label>
-                <input
-                  required
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={value.maxQuantity}
-                  onChange={(e) => patch({ maxQuantity: Number(e.target.value) })}
-                  className={field}
-                />
+                <div className="relative sm:w-48">
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={value.maxQuantity}
+                    onChange={(e) => patch({ maxQuantity: Number(e.target.value) })}
+                    className={`${field} pr-12`}
+                  />
+                  <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                    max
+                  </span>
+                </div>
                 <p className="mt-1 text-xs text-slate-500">
                   Guests can order up to this quantity per room/stay.
                 </p>
@@ -396,53 +439,78 @@ export function OfferingFields({
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Pricing
             </label>
-            <select
-              aria-label="Price"
-              className={field}
-              value={paid ? "paid" : "free"}
-              onChange={(e) => onPaidChange(e.target.value === "paid")}
-            >
-              <option value="free">Free (Complimentary Choices)</option>
-              <option value="paid">Paid (Bookable Choices)</option>
-            </select>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => onPaidChange(false)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
+                  !paid
+                    ? "bg-white text-emerald-700 shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Gift className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Free Choice</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onPaidChange(true)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
+                  paid
+                    ? "bg-[#061224] text-white shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <IndianRupee className="h-3.5 w-3.5 text-amber-400" />
+                <span>Paid Choice</span>
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Guest Selection Rule
             </label>
-            <select
-              className={field}
-              value={resolveResponse(value).responseType}
-              onChange={(e) => {
-                const responseType = e.target.value as "single" | "multiple";
-                patch({
-                  formType: responseType === "multiple" ? "variants" : "choice",
-                  responseConfig: { ...resolveResponse(value), responseType },
-                });
-              }}
-            >
-              <option value="single">Single Choice (Guest picks only 1)</option>
-              <option value="multiple">Multiple Choices (Guest can pick several)</option>
-            </select>
+            <div className="relative">
+              <select
+                className={`${field} appearance-none pr-10`}
+                value={resolveResponse(value).responseType}
+                onChange={(e) => {
+                  const responseType = e.target.value as "single" | "multiple";
+                  patch({
+                    formType: responseType === "multiple" ? "variants" : "choice",
+                    responseConfig: { ...resolveResponse(value), responseType },
+                  });
+                }}
+              >
+                <option value="single">Single Choice (Guest picks only 1)</option>
+                <option value="multiple">Multiple Choices (Guest can pick several)</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            </div>
           </div>
 
           {paid && (
             <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Default Price (₹)
+                Default Price ({currency || "₹"})
               </label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder="0"
-                value={value.unitPricePaise / 100}
-                onChange={(e) =>
-                  patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
-                }
-                className={field}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0"
+                  value={value.unitPricePaise ? value.unitPricePaise / 100 : ""}
+                  onChange={(e) =>
+                    patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
+                  }
+                  className={`${field} pl-8`}
+                />
+              </div>
               <p className="mt-1 text-xs text-slate-500">
                 Fallback price for any option where you don&apos;t enter a custom price below.
               </p>
@@ -487,31 +555,36 @@ export function OfferingFields({
                   {paid && (
                     <div className="w-full sm:w-44">
                       <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                        Custom Price (₹)
+                        Custom Price ({currency || "₹"})
                       </span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder={`Default: ${formatMoney(value.unitPricePaise, currency)}`}
-                        value={v.unitPricePaise == null ? "" : v.unitPricePaise / 100}
-                        onChange={(e) =>
-                          patch({
-                            variants: value.variants.map((n) =>
-                              n.id === v.id
-                                ? {
-                                    ...n,
-                                    unitPricePaise:
-                                      e.target.value === ""
-                                        ? null
-                                        : Math.round(Number(e.target.value) * 100),
-                                  }
-                                : n,
-                            ),
-                          })
-                        }
-                        className={field}
-                      />
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder={`Default: ${formatMoney(value.unitPricePaise, currency)}`}
+                          value={v.unitPricePaise == null ? "" : v.unitPricePaise / 100}
+                          onChange={(e) =>
+                            patch({
+                              variants: value.variants.map((n) =>
+                                n.id === v.id
+                                  ? {
+                                      ...n,
+                                      unitPricePaise:
+                                        e.target.value === ""
+                                          ? null
+                                          : Math.round(Number(e.target.value) * 100),
+                                    }
+                                  : n,
+                              ),
+                            })
+                          }
+                          className={`${field} pl-7`}
+                        />
+                      </div>
                     </div>
                   )}
                   {value.variants.length > 1 && (
@@ -584,31 +657,36 @@ export function OfferingFields({
                   </div>
                   <div className="w-full sm:w-48">
                     <span className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                      Package Price (₹)
+                      Package Price ({currency || "₹"})
                     </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="e.g. 1500"
-                      value={v.unitPricePaise == null ? "" : v.unitPricePaise / 100}
-                      onChange={(e) =>
-                        patch({
-                          variants: value.variants.map((n) =>
-                            n.id === v.id
-                              ? {
-                                  ...n,
-                                  unitPricePaise:
-                                    e.target.value === ""
-                                      ? null
-                                      : Math.round(Number(e.target.value) * 100),
-                                }
-                              : n,
-                          ),
-                        })
-                      }
-                      className={field}
-                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                        ₹
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="e.g. 1500"
+                        value={v.unitPricePaise == null ? "" : v.unitPricePaise / 100}
+                        onChange={(e) =>
+                          patch({
+                            variants: value.variants.map((n) =>
+                              n.id === v.id
+                                ? {
+                                    ...n,
+                                    unitPricePaise:
+                                      e.target.value === ""
+                                        ? null
+                                        : Math.round(Number(e.target.value) * 100),
+                                  }
+                                : n,
+                            ),
+                          })
+                        }
+                        className={`${field} pl-7`}
+                      />
+                    </div>
                   </div>
                   {value.variants.length > 1 && (
                     <button
@@ -671,32 +749,55 @@ export function OfferingFields({
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Pricing
             </label>
-            <select
-              aria-label="Price"
-              className={field}
-              value={paid ? "paid" : "free"}
-              onChange={(e) => onPaidChange(e.target.value === "paid")}
-            >
-              <option value="free">Free (Complimentary Service)</option>
-              <option value="paid">Paid (Bookable Service)</option>
-            </select>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => onPaidChange(false)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
+                  !paid
+                    ? "bg-white text-emerald-700 shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Gift className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Free Service</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onPaidChange(true)}
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
+                  paid
+                    ? "bg-[#061224] text-white shadow-2xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <IndianRupee className="h-3.5 w-3.5 text-amber-400" />
+                <span>Paid Service</span>
+              </button>
+            </div>
           </div>
 
           {paid && (
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Service Price (₹)
+                Service Price ({currency || "₹"})
               </label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={value.unitPricePaise / 100}
-                onChange={(e) =>
-                  patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
-                }
-                className={field}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0"
+                  value={value.unitPricePaise ? value.unitPricePaise / 100 : ""}
+                  onChange={(e) =>
+                    patch({ unitPricePaise: Math.round(Number(e.target.value) * 100) })
+                  }
+                  className={`${field} pl-8`}
+                />
+              </div>
             </div>
           )}
 
@@ -705,17 +806,20 @@ export function OfferingFields({
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Pricing Multiplier
               </label>
-              <select
-                aria-label="Pricing unit"
-                className={field}
-                value={value.pricingUnit ?? "hour"}
-                onChange={(e) => patch({ pricingUnit: e.target.value as OfferingInput["pricingUnit"] })}
-              >
-                <option value="hour">Price per hour</option>
-                <option value="person">Price per participating person</option>
-                <option value="stay">Flat service fee per stay</option>
-                <option value="item">Price per service appointment</option>
-              </select>
+              <div className="relative">
+                <select
+                  aria-label="Pricing unit"
+                  className={`${field} appearance-none pr-10`}
+                  value={value.pricingUnit ?? "hour"}
+                  onChange={(e) => patch({ pricingUnit: e.target.value as OfferingInput["pricingUnit"] })}
+                >
+                  <option value="hour">Price per hour</option>
+                  <option value="person">Price per participating person</option>
+                  <option value="stay">Flat service fee per stay</option>
+                  <option value="item">Price per service appointment</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              </div>
             </div>
           )}
 

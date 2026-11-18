@@ -6,6 +6,7 @@ export class ApiException extends Error {
     public readonly status: number,
     message = code,
     public readonly fieldErrors?: Record<string, string[]>,
+    public readonly eligibility?: import("@/lib/partner/reservations/eligibility").ActionEligibility,
   ) {
     super(message);
     this.name = "ApiException";

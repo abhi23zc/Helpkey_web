@@ -26,6 +26,18 @@ export const permissions = [
   "reservation.note",
   "reservation.assign",
   "reservation.amend",
+  "reservation.category",
+  "reservation.extend",
+  "reservation.early_departure",
+  "invoice.settings",
+  "invoice.issue",
+  "invoice.credit",
+  "invoice.read",
+  "billing.post",
+  "billing.adjust",
+  "shift.operate",
+  "shift.history",
+  "closing.manage",
   "payment.read",
   "payment.collect",
   "payment.reverse",
@@ -53,7 +65,7 @@ export const rolePermissions: Record<HotelRole, readonly Permission[]> = {
     "rooms.read",
     "requests.prepare",
   ],
-  cashier: ["setup.read", "payment.read", "payment.collect", "payment.reverse"],
+  cashier: ["shift.operate", "invoice.read", "setup.read", "payment.read", "payment.collect", "payment.reverse"],
   housekeeper: ["setup.read", "housekeeping"],
   maintenance: ["setup.read", "maintenance"],
 };
@@ -105,11 +117,9 @@ export function publicBookable(p: OperationalProperty) {
   );
 }
 export function landing(role: unknown) {
-  return role === "owner"
-    ? "/partner/settings"
-    : role === "manager" || role === "receptionist"
-      ? "/partner/reservations"
-      : "/partner/operations";
+  return ["owner", "manager", "receptionist"].includes(String(role))
+    ? "/partner/today"
+    : "/partner/operations";
 }
 export type SetupItem = {
   id: string;

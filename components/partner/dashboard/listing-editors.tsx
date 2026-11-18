@@ -3,15 +3,12 @@
 import { GuestPolicyFields } from "@/components/partner/guest-policy-fields";
 import { publicGuestPolicies } from "@/lib/partner/guest-policies";
 
-import { DurationPriceEditor } from "@/components/partner/duration-price-editor";
-import { validDurationPrices, type DurationPrice } from "@/lib/booking/duration-pricing";
+import Link from "next/link";
+import { eligiblePricing } from "@/lib/booking/duration-pricing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { AlertTriangle, CheckCircle2, ImageIcon, Loader2, MapPin, Navigation, Plus, Search, Star, Upload, X } from "lucide-react";
-import { formatPaise, toPaise } from "@/lib/currency";
-import { requestJson, uploadErrorMessage, uploadKycDocument, uploadPropertyPhoto } from "@/lib/partner/upload-client";
-import { propertyPhotoCategories as PHOTO_CATEGORIES, photoRequirements, isRoomPhoto } from "@/lib/partner/photo-requirements";
-import { PhotoChecklist, PhotoDetailsEditor } from "@/components/partner/photo-requirements";
+import { AlertTriangle, ArrowRight, ArrowUpRight, BedDouble, CheckCircle2, ChevronDown, ChevronUp, Loader2, MapPin, Navigation, Plus, Search, Shield } from "lucide-react";
+import { requestJson, uploadErrorMessage, uploadKycDocument } from "@/lib/partner/upload-client";
 import { mapsLibrary, markerLibrary, placesLibrary } from "@/lib/google/maps-loader";
 import type { ListingMutations, ListingProperty, ListingResponse } from "./use-property-listing";
 
@@ -82,23 +79,28 @@ function TextArea({ name, label, defaultValue, minLength, placeholder }: { name:
   );
 }
 
-export function SaveBar({ saving, error, saved, label = "Save changes" }: { saving: boolean; error?: string; saved?: boolean; label?: string }) {
+export function SaveBar({ saving, error, saved, label = "Save & Continue" }: { saving: boolean; error?: string; saved?: boolean; label?: string }) {
   // `useFormStatus` reflects the true pending state of the enclosing <form>
   // action across the whole submit lifecycle, so the button always shows a
   // spinner even when our manual `saving` flag flips too quickly to notice.
   const { pending } = useFormStatus();
   const busy = saving || pending;
   return (
-    <div className="space-y-2">
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+    <div className="space-y-2 pt-2">
+      {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">{error}</p>}
       {saved && !error && !busy && (
-        <p className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-          <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+        <p className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Saved successfully
         </p>
       )}
-      <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all disabled:opacity-60 disabled:cursor-progress">
-        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-        {busy ? "Saving…" : label}
+      <button
+        type="submit"
+        disabled={busy}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#061224] px-5 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition-all disabled:opacity-60 disabled:cursor-progress"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        <span>{busy ? "Saving…" : label}</span>
+        {!busy && <ArrowRight className="h-4 w-4" />}
       </button>
     </div>
   );
@@ -142,7 +144,7 @@ function useSave(options?: { onSettled?: () => void; onBusyChange?: (busy: boole
 
 export function BasicDetailsEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
   const p = listing.property;
-  const { saving, error, saved, run } = useSave({ onBusyChange });
+  const { error, run } = useSave({ onBusyChange });
 
   const submit = (form: FormData) =>
     run(async () => {
@@ -164,7 +166,7 @@ export function BasicDetailsEditor({ propertyId, listing, onSaved, mutations, on
     });
 
   return (
-    <form action={submit} className="space-y-4">
+    <form id="listing-editor-form" action={submit} className="space-y-4">
       <Field name="name" label="Hotel name" defaultValue={p.name} minLength={2} />
       <TextArea name="description" label="Short description" defaultValue={p.description} minLength={20} placeholder="Describe what makes your property special (min 20 characters)." />
       <div className="grid grid-cols-2 gap-3">
@@ -175,7 +177,7 @@ export function BasicDetailsEditor({ propertyId, listing, onSaved, mutations, on
         <Field name="checkInTime" label="Check-in time" type="time" defaultValue={p.checkInTime} />
         <Field name="checkOutTime" label="Check-out time" type="time" defaultValue={p.checkOutTime} />
       </div>
-      <SaveBar saving={saving} error={error} saved={saved} />
+      {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">{error}</p>}
     </form>
   );
 }
@@ -253,7 +255,7 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
   const p = listing.property;
   const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
   const mapConfigError = !mapId ? "Map preview needs NEXT_PUBLIC_GOOGLE_MAP_ID. Search and location selection still work, but configure a production Map ID to show the pin." : "";
-  const { saving, error, saved, run } = useSave({ onBusyChange });
+  const { error, run } = useSave({ onBusyChange });
   const searchRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -566,7 +568,7 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
         </div>
       </div>
 
-      <form action={submit} className="space-y-4">
+      <form id="listing-editor-form" action={submit} className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block text-xs font-semibold text-slate-700 md:col-span-2">
             Address shown to guests
@@ -589,7 +591,7 @@ export function LocationEditor({ propertyId, listing, onSaved, mutations, onBusy
             <input value="India" readOnly className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500`} />
           </label>
         </div>
-        <SaveBar saving={saving} error={error} saved={saved} label="Save confirmed location" />
+        {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">{error}</p>}
       </form>
 
       <div className="rounded-2xl border border-[#E6E2DA] bg-white p-4">
@@ -609,7 +611,7 @@ const AMENITY_OPTIONS = ["Wi-Fi", "Parking", "Restaurant", "Air conditioning", "
 
 export function AmenitiesEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
   const [selected, setSelected] = useState<string[]>(listing.property.amenityIds ?? []);
-  const { saving, error, saved, run } = useSave({ onBusyChange });
+  const { error, run } = useSave({ onBusyChange });
 
   const toggle = (option: string) =>
     setSelected((current) => (current.includes(option) ? current.filter((item) => item !== option) : [...current, option]));
@@ -639,8 +641,8 @@ export function AmenitiesEditor({ propertyId, listing, onSaved, mutations, onBus
           );
         })}
       </div>
-      <form action={submit}>
-        <SaveBar saving={saving} error={error} saved={saved} label="Save amenities" />
+      <form id="listing-editor-form" action={submit}>
+        {error && <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">{error}</p>}
       </form>
     </div>
   );
@@ -649,392 +651,457 @@ export function AmenitiesEditor({ propertyId, listing, onSaved, mutations, onBus
 /* ---------- Policies (cancellation) ---------- */
 
 export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
-  const { saving, error, saved, run } = useSave({ onBusyChange });
+  const { saving, error, run } = useSave({ onBusyChange });
 
   const [guestPolicies, setGuestPolicies] = useState(() => publicGuestPolicies(listing.property));
+
+  // Cancellation policy form state
+  const [showCancellationSection, setShowCancellationSection] = useState(listing.policies.length === 0);
+  const [showAddPolicy, setShowAddPolicy] = useState(listing.policies.length === 0);
+  const [preset, setPreset] = useState<"flexible" | "moderate" | "non_refundable" | "custom">("flexible");
+  const [policyName, setPolicyName] = useState("Flexible (24h)");
+  const [policyDesc, setPolicyDesc] = useState("Free cancellation up to 24 hours before check-in. 100% fee thereafter.");
+  const [hours, setHours] = useState("24");
+  const [fee, setFee] = useState("100");
+  const [policyAdded, setPolicyAdded] = useState(false);
+
+  const applyPreset = (type: "flexible" | "moderate" | "non_refundable" | "custom") => {
+    setPreset(type);
+    if (type === "flexible") {
+      setPolicyName("Flexible (24h)");
+      setPolicyDesc("Free cancellation up to 24 hours before check-in. 100% fee thereafter.");
+      setHours("24");
+      setFee("100");
+    } else if (type === "moderate") {
+      setPolicyName("Moderate (48h)");
+      setPolicyDesc("Free cancellation up to 48 hours before check-in. 100% fee thereafter.");
+      setHours("48");
+      setFee("100");
+    } else if (type === "non_refundable") {
+      setPolicyName("Non-Refundable");
+      setPolicyDesc("Non-refundable booking. Full charges apply upon cancellation.");
+      setHours("0");
+      setFee("100");
+    } else {
+      setPolicyName("");
+      setPolicyDesc("");
+      setHours("24");
+      setFee("100");
+    }
+  };
+
   const saveGuestPolicies = () => run(async () => {
     await requestJson(`/api/partner/properties/${propertyId}`, guestPolicies, "PATCH");
     mutations.patchProperty(guestPolicies);
     onSaved();
   });
 
-  const submit = (form: FormData) =>
-    run(async () => {
+  const submitPolicy = (event: React.FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
       const res = await requestJson<{ policy: { id: string; name: string } }>(
         `/api/partner/properties/${propertyId}/cancellation-policies`,
         {
-          name: form.get("name"),
-          description: form.get("description"),
-          refundableUntilHours: Number(form.get("hours")),
-          cancellationFeePercent: Number(form.get("fee")),
+          name: policyName,
+          description: policyDesc,
+          refundableUntilHours: Number(hours),
+          cancellationFeePercent: Number(fee),
         },
       );
       if (res.policy) mutations.addPolicy({ id: res.policy.id, name: res.policy.name });
+      setPolicyAdded(true);
+      setShowAddPolicy(false);
       onSaved();
     });
+  };
 
   return (
-    <div className="space-y-5">
-      <form action={saveGuestPolicies} className="space-y-3">
+    <div className="space-y-6">
+      <form id="listing-editor-form" action={saveGuestPolicies} className="space-y-4">
+        <div>
+          <h3 className="text-base sm:text-lg font-bold text-[#061224]">Guest & House Policies</h3>
+        </div>
+
         <GuestPolicyFields value={guestPolicies} onChange={setGuestPolicies} disabled={saving} />
-        <SaveBar saving={saving} error={error} saved={saved} label="Save guest policies" />
+
+        {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700">{error}</p>}
       </form>
-      {listing.policies.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Existing policies</p>
-          {listing.policies.map((policy) => (
-            <div key={policy.id} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs font-semibold text-slate-700">{policy.name ?? policy.id}</div>
-          ))}
-        </div>
-      )}
-      <form action={submit} className="space-y-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Add a cancellation policy</p>
-        <Field name="name" label="Policy name" placeholder="Flexible" minLength={2} />
-        <TextArea name="description" label="Policy details" minLength={10} placeholder="Free cancellation until 24 hours before check-in." />
-        <div className="grid grid-cols-2 gap-3">
-          <Field name="hours" label="Refundable until (hours before)" type="number" />
-          <Field name="fee" label="Cancellation fee (%)" type="number" />
-        </div>
-        <SaveBar saving={saving} error={error} saved={saved} label="Add policy" />
-      </form>
+
+      {/* Cancellation Policies Section (Accordion / Collapsible) */}
+      <section className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => setShowCancellationSection((prev) => !prev)}
+          className="w-full flex items-center justify-between px-4 py-3 sm:py-3.5 text-left hover:bg-slate-50/60 transition-colors"
+        >
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-[#061224] border border-slate-200/60">
+              <Shield className="h-5 w-5 text-[#c89b3c]" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-bold text-[#061224] leading-snug">
+                Cancellation Policies
+              </h3>
+              <p className="text-xs sm:text-sm font-normal text-slate-500 leading-normal mt-0.5 truncate">
+                {listing.policies.length > 0
+                  ? `${listing.policies.length} active policy (${listing.policies.map((p) => p.name || "Standard").join(", ")})`
+                  : "Add at least one policy to assign to your rooms"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0 ml-3">
+            {listing.policies.length > 0 ? (
+              <span className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-2.5 py-1">
+                {listing.policies.length} Active
+              </span>
+            ) : (
+              <span className="rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold px-2.5 py-1">
+                Required
+              </span>
+            )}
+            <div className="grid h-8 w-8 place-items-center rounded-lg text-slate-400">
+              {showCancellationSection ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+        </button>
+
+        {showCancellationSection && (
+          <div className="p-4 sm:p-5 pt-3 border-t border-slate-100 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-medium text-slate-500">
+                Cancellation terms assigned to your room rate plans.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddPolicy((prev) => !prev);
+                  setPolicyAdded(false);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-[#061224] hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-2xs"
+              >
+                <Plus className="h-3.5 w-3.5 text-[#c89b3c]" />
+                <span>{showAddPolicy ? "Cancel" : "Add Cancellation Policy"}</span>
+              </button>
+            </div>
+
+            {policyAdded && (
+              <p className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Cancellation policy added successfully!
+              </p>
+            )}
+
+            {/* Existing Policy Cards */}
+            {listing.policies.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {listing.policies.map((policy) => (
+                  <div
+                    key={policy.id}
+                    className="rounded-2xl border border-slate-200/90 bg-white p-4 space-y-2 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm sm:text-base font-bold text-[#061224] truncate">
+                        {policy.name ?? policy.id}
+                      </span>
+                      <span className="rounded-md bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 shrink-0">
+                        Active
+                      </span>
+                    </div>
+                    {policy.description && (
+                      <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed font-normal">
+                        {policy.description}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold text-slate-500">
+                      {policy.refundableUntilHours !== undefined && (
+                        <span className="rounded-md bg-slate-100 px-2.5 py-1">
+                          {policy.refundableUntilHours > 0
+                            ? `Refundable up to ${policy.refundableUntilHours}h before`
+                            : "Non-refundable"}
+                        </span>
+                      )}
+                      {policy.cancellationFeePercent !== undefined && (
+                        <span className="rounded-md bg-slate-100 px-2.5 py-1">
+                          Fee: {policy.cancellationFeePercent}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/50 p-4 text-center space-y-1">
+                <p className="text-xs sm:text-sm font-bold text-amber-900">No cancellation policy added yet</p>
+                <p className="text-xs text-amber-700 font-medium">
+                  You need at least one cancellation policy to assign to your rooms. Use the form below to add one.
+                </p>
+              </div>
+            )}
+
+            {/* Add Policy Form */}
+            {showAddPolicy && (
+              <form
+                onSubmit={submitPolicy}
+                className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5 space-y-4 shadow-2xs"
+              >
+                <div>
+                  <p className="text-sm sm:text-base font-bold text-[#061224]">Add a new cancellation policy</p>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium">
+                    Choose a common preset or customize terms.
+                  </p>
+                </div>
+
+                {/* Presets */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "flexible", label: "Flexible (24 hrs)" },
+                    { id: "moderate", label: "Moderate (48 hrs)" },
+                    { id: "non_refundable", label: "Non-Refundable" },
+                    { id: "custom", label: "Custom Terms" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => applyPreset(item.id as typeof preset)}
+                      className={`rounded-xl px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold border transition-all ${
+                        preset === item.id
+                          ? "border-[#c89b3c] bg-white text-[#9a6b18] shadow-2xs"
+                          : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-3.5">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700">
+                    Policy name
+                    <input
+                      type="text"
+                      required
+                      minLength={2}
+                      value={policyName}
+                      onChange={(e) => setPolicyName(e.target.value)}
+                      placeholder="e.g. Flexible"
+                      className={inputClass}
+                    />
+                  </label>
+
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700">
+                    Policy details
+                    <textarea
+                      required
+                      rows={2}
+                      minLength={10}
+                      value={policyDesc}
+                      onChange={(e) => setPolicyDesc(e.target.value)}
+                      placeholder="e.g. Free cancellation up to 24 hours before check-in."
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:border-[#c89b3c]"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700">
+                      Refundable until (hours before check-in)
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        value={hours}
+                        onChange={(e) => setHours(e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+
+                    <label className="block text-xs sm:text-sm font-bold text-slate-700">
+                      Cancellation fee (%)
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        required
+                        value={fee}
+                        onChange={(e) => setFee(e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPolicy(false)}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#061224] px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0c1f3b] transition disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    <span>Add Policy</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
 
 /* ---------- Rooms & rates ---------- */
 
-export function RoomsEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
-  const [pricingModel, setPricingModel] = useState<"nightly" | "duration">("nightly");
-  const room = useSave({ onBusyChange });
-  const rate = useSave({ onBusyChange });
+export function RoomsEditor({ listing }: EditorProps) {
+  const activeRooms = useMemo(() => {
+    return listing.roomTypes.filter((r) => !["paused", "archived"].includes(r.status ?? "active"));
+  }, [listing.roomTypes]);
 
-  const submitRoom = (form: FormData) =>
-    room.run(async () => {
-      const res = await requestJson<{ roomType: ListingResponse["roomTypes"][number] }>(
-        `/api/partner/properties/${propertyId}/room-types`,
-        {
-          name: form.get("name"),
-          description: form.get("description"),
-          totalInventory: Number(form.get("inventory")),
-          maxAdults: Number(form.get("adults")),
-          maxChildren: 0,
-          maxInfants: 0,
-          bedConfigurations: [{ bedType: "double", count: 1 }],
-        },
-      );
-      if (res.roomType) mutations.addRoomType(res.roomType);
-      onSaved();
-    });
+  const activeRates = useMemo(() => {
+    return listing.ratePlans.filter((r) => r.status === "active");
+  }, [listing.ratePlans]);
 
-  const submitRate = (form: FormData) =>
-    rate.run(async () => {
-      if (!listing.policies[0]) throw new Error("Add a cancellation policy first.");
-      const durationPrices: DurationPrice[] = pricingModel === "duration" ? JSON.parse(String(form.get("durationPrices"))) : [];
-      if (pricingModel === "duration" && !validDurationPrices(durationPrices)) throw new Error("Add a unique, positive total price for each duration.");
-      if (pricingModel === "duration") {
-        const room = listing.roomTypes.find(room => room.id === form.get("roomTypeId"));
-        await requestJson(`/api/partner/properties/${propertyId}`, { bookingModes: [...new Set([...(listing.property.bookingModes ?? ["overnight"]), "hourly"])] }, "PATCH");
-        await requestJson(`/api/partner/properties/${propertyId}/room-types/${room?.id}`, { bookingModes: [...new Set([...(room?.bookingModes ?? listing.property.bookingModes ?? ["overnight"]), "hourly"])] }, "PATCH");
-      }
-      const res = await requestJson<{ ratePlan: ListingResponse["ratePlans"][number] }>(
-        `/api/partner/properties/${propertyId}/rate-plans`,
-        {
-          roomTypeId: form.get("roomTypeId"),
-          name: String(form.get("rateName") ?? "").trim() || "Standard rate",
-          bookingMode: pricingModel === "duration" ? "hourly" : "overnight",
-          pricingModel,
-          ...(pricingModel === "duration" ? { durationPrices } : {}),
-          basePricePaise: pricingModel === "duration" ? Math.min(...durationPrices.map(row => row.pricePaise)) : toPaise(Number(form.get("price"))),
-          cancellationPolicyId: listing.policies[0].id,
-          paymentMode: "full",
-        },
-      );
-      if (res.ratePlan) mutations.addRatePlan(res.ratePlan);
-      onSaved();
-    });
+  const roomsWithRate = useMemo(() => {
+    const sellable = new Set(activeRooms.map((r) => r.id));
+    return new Set(
+      activeRates
+        .filter((r) => sellable.has(r.roomTypeId) && r.cancellationPolicyId && eligiblePricing(r))
+        .map((r) => r.roomTypeId),
+    );
+  }, [activeRooms, activeRates]);
+
+  const allRoomsReady = activeRooms.length > 0 && roomsWithRate.size === activeRooms.length;
 
   return (
     <div className="space-y-6">
-      <form action={submitRoom} className="space-y-4 rounded-2xl border border-slate-200 p-4">
-        <p className="text-xs font-bold text-[#061224]">1. Add a room type</p>
-        <Field name="name" label="Room name" placeholder="Deluxe Double" minLength={2} />
-        <TextArea name="description" label="Short description" minLength={10} placeholder="A comfortable room with…" />
-        <div className="grid grid-cols-2 gap-3">
-          <Field name="inventory" label="Rooms to sell" type="number" />
-          <Field name="adults" label="Max guests" type="number" />
-        </div>
-        <SaveBar saving={room.saving} error={room.error} saved={room.saved} label="Add room type" />
-      </form>
-
-      {listing.roomTypes.length > 0 && (
-        <form action={submitRate} className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-          <p className="text-xs font-bold text-[#061224]">2. Add a sellable rate</p>
-          {!listing.policies.length && <p className="rounded-lg bg-white px-3 py-2 text-[11px] font-semibold text-amber-700">Add a cancellation policy first (Policies section).</p>}
-          <label className="block text-xs font-semibold text-slate-700">
-            Room type
-            <select name="roomTypeId" required className={inputClass}>
-              {listing.roomTypes.map((rt) => (
-                <option key={rt.id} value={rt.id}>{rt.name}</option>
-              ))}
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <Field name="rateName" label="Rate name" placeholder="Standard rate" required={false} />
-
+      {/* Configured Room Types List */}
+      {listing.roomTypes.length > 0 ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Configured Room Types ({listing.roomTypes.length})
+            </p>
+            <span className="text-xs font-semibold text-slate-500">
+              {roomsWithRate.size} of {listing.roomTypes.length} sellable
+            </span>
           </div>
-          <label className="block text-xs font-semibold text-slate-700">Pricing<select value={pricingModel} onChange={e => setPricingModel(e.target.value as typeof pricingModel)} className={inputClass}><option value="nightly">Overnight per night</option><option value="duration">Hourly stays</option></select></label>
-          {pricingModel === "nightly" ? <Field name="price" label="Price per night (₹)" type="number" /> : <><DurationPriceEditor /><p className="text-xs text-slate-600">Arrival and operating times can be configured under Rooms → Manage rates.</p></>}
-          <SaveBar saving={rate.saving} error={rate.error} saved={rate.saved} label="Add rate" />
-        </form>
+
+          <div className="space-y-2.5">
+            {listing.roomTypes.map((rt) => {
+              const rates = listing.ratePlans.filter((r) => r.roomTypeId === rt.id && r.status === "active");
+              const hasRate = rates.length > 0 && rates.some((r) => eligiblePricing(r) && r.cancellationPolicyId);
+              const roomPhotos = listing.media.filter((m) => m.kind === "property_image" && m.roomTypeId === rt.id);
+              const coverImg = roomPhotos.find((p) => p.isCover)?.imageUrl || roomPhotos[0]?.imageUrl || null;
+
+              return (
+                <div
+                  key={rt.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs transition hover:border-slate-300"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100 border border-slate-200">
+                      {coverImg ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={coverImg} alt={rt.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="grid h-full place-items-center text-slate-400">
+                          <BedDouble className="h-6 w-6" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-[#06142B] truncate">{rt.name}</h4>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {rt.inventory} unit{rt.inventory === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Max {rt.maxAdults} adult{rt.maxAdults === 1 ? "" : "s"} · {rt.bedConfigurations?.[0]?.bedType ? `${rt.bedConfigurations[0].bedType} bed` : "Double bed"}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {hasRate ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            {rates.map((r) => (r.pricingModel === "duration" ? "Hourly stays" : `₹${(r.basePricePaise / 100).toLocaleString("en-IN")}/night`)).join(", ")}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                            <AlertTriangle className="h-3 w-3" />
+                            No rate plan assigned
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <Link
+                      href="/partner/rooms?section=types"
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                    >
+                      <span>Manage in Rooms</span>
+                      <ArrowUpRight className="h-3 w-3 text-slate-400" />
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="grid min-h-[200px] place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-6 text-center">
+          <div>
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-slate-400 shadow-2xs border border-slate-200">
+              <BedDouble className="h-6 w-6" />
+            </div>
+            <h4 className="mt-3 text-sm font-bold text-[#06142B]">No room types configured yet</h4>
+            <p className="mt-1 max-w-sm text-xs text-slate-500">
+              Configure your room types, physical inventory, and pricing in the Rooms workspace.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/partner/rooms?section=types"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#061224] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-[#0c1f3b] transition"
+              >
+                <span>Set Up Rooms in Rooms Workspace</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* Validation Status & Continue Button */}
+      <div className="pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="text-xs">
+          {allRoomsReady ? (
+            <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> All room types have active rates and policies configured.
+            </span>
+          ) : (
+            <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              {activeRooms.length === 0
+                ? "Configure at least one room type to proceed."
+                : "Every active room type must have at least one rate plan."}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ---------- Photos ---------- */
 
-type LocalPhotoStatus = "queued" | "uploading" | "processing" | "uploaded" | "failed";
-type LocalPhoto = {
-  id: string;
-  file: File;
-  category: (typeof PHOTO_CATEGORIES)[number]["value"];
-  roomTypeId?: string | null;
-  previewUrl: string;
-  status: LocalPhotoStatus;
-  progress: number;
-  error?: string;
-};
-
-const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
-const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const PHOTO_CATEGORY_LABELS = Object.fromEntries(PHOTO_CATEGORIES.map((item) => [item.value, item.label])) as Record<(typeof PHOTO_CATEGORIES)[number]["value"], string>;
-
-export function PhotosEditor({ propertyId, listing, onSaved, mutations, onBusyChange }: EditorProps) {
-  const [category, setCategory] = useState<(typeof PHOTO_CATEGORIES)[number]["value"]>("exterior");
-  const [roomTypeId, setRoomTypeId] = useState("");
-  const [queue, setQueue] = useState<LocalPhoto[]>([]);
-  const [notice, setNotice] = useState("");
-  const [activeUploads, setActiveUploads] = useState(0);
-  const [coverPendingId, setCoverPendingId] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    onBusyChange?.(activeUploads > 0 || coverPendingId !== null);
-  }, [activeUploads, coverPendingId, onBusyChange]);
-
-  const photos = listing.media.filter((m) => m.kind === "property_image");
-  const photoCheck = photoRequirements(listing.media, listing.roomTypes, listing.property.coverMediaId);
-  const groupedPhotos = useMemo(() => {
-    return PHOTO_CATEGORIES.map((photoCategory) => ({
-      ...photoCategory,
-      photos: photos.filter((photo) => photo.category === photoCategory.value),
-    })).filter((group) => group.photos.length > 0);
-  }, [photos]);
-
-  const updateQueueItem = (id: string, patch: Partial<LocalPhoto>) =>
-    setQueue((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
-
-  const uploadOne = async (item: LocalPhoto): Promise<boolean> => {
-    updateQueueItem(item.id, { status: "uploading", progress: 1, error: undefined });
-    setActiveUploads((count) => count + 1);
-    try {
-      const finalized = await uploadPropertyPhoto(propertyId, item.file, item.category, (progress) => updateQueueItem(item.id, { progress }), item.roomTypeId);
-      updateQueueItem(item.id, { status: "processing", progress: 100 });
-      if (finalized.media) mutations.addMedia(finalized.media as ListingResponse["media"][number], finalized.coverMediaId ?? undefined);
-      updateQueueItem(item.id, { status: "uploaded", progress: 100 });
-      window.setTimeout(() => {
-        URL.revokeObjectURL(item.previewUrl);
-        setQueue((current) => current.filter((queued) => queued.id !== item.id));
-      }, 900);
-      return true;
-    } catch (cause) {
-      updateQueueItem(item.id, { status: "failed", error: uploadErrorMessage(cause), progress: 0 });
-      return false;
-    } finally {
-      setActiveUploads((count) => Math.max(0, count - 1));
-    }
-  };
-
-  const runQueue = async (items: LocalPhoto[]) => {
-    let cursor = 0;
-    const results: boolean[] = [];
-    const worker = async () => {
-      while (cursor < items.length) {
-        const item = items[cursor++];
-        results.push(await uploadOne(item));
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, items.length) }, () => worker()));
-    const uploaded = results.filter(Boolean).length;
-    const failed = results.length - uploaded;
-    if (uploaded > 0) onSaved();
-    setNotice(failed ? `${uploaded} photo${uploaded === 1 ? "" : "s"} uploaded, ${failed} failed. Retry the failed files.` : `${uploaded} photo${uploaded === 1 ? "" : "s"} uploaded. They stay private until Helpkey approves them.`);
-  };
-
-  const handleFiles = (files: File[]) => {
-    if (!files.length) return;
-    if (isRoomPhoto(category) && !roomTypeId) { setNotice("Choose a room type before uploading bedroom or bathroom photos."); return; }
-    const nextItems: LocalPhoto[] = files.map((file, index) => {
-      const valid = ACCEPTED_PHOTO_TYPES.has(file.type) && file.size <= MAX_PHOTO_BYTES;
-      return {
-        id: `${Date.now()}-${index}-${file.name}`,
-        file,
-        category,
-        roomTypeId: isRoomPhoto(category) ? roomTypeId : null,
-        previewUrl: URL.createObjectURL(file),
-        status: valid ? "queued" : "failed",
-        progress: 0,
-        error: valid ? undefined : "Use JPG, PNG, or WebP images up to 12 MB.",
-      };
-    });
-    setQueue((current) => [...current, ...nextItems]);
-    const validItems = nextItems.filter((item) => item.status === "queued");
-    if (validItems.length) void runQueue(validItems);
-  };
-
-  const retry = (item: LocalPhoto) => {
-    updateQueueItem(item.id, { status: "queued", progress: 0, error: undefined });
-    void runQueue([{ ...item, status: "queued", progress: 0, error: undefined }]);
-  };
-
-  const removeLocal = (item: LocalPhoto) => {
-    URL.revokeObjectURL(item.previewUrl);
-    setQueue((current) => current.filter((queued) => queued.id !== item.id));
-  };
-
-  const setCover = async (mediaId: string) => {
-    if (coverPendingId) return;
-    setCoverPendingId(mediaId);
-    mutations.setCoverMedia(mediaId);
-    try {
-      await withMinVisible(() =>
-        requestJson(`/api/partner/properties/${propertyId}/media/${mediaId}`, { makeCover: true }, "PATCH"),
-      );
-    } catch {
-      // Reconcile from the server if the cover change did not persist.
-      mutations.reload();
-    } finally {
-      setCoverPendingId(null);
-    }
-  };
-
-  const removeSaved = async (mediaId: string) => {
-    if (!window.confirm("Remove this photo permanently? This cannot be undone.")) return;
-    setRemovingId(mediaId);
-    try {
-      const result = await requestJson<{ coverMediaId: string | null }>(`/api/partner/properties/${propertyId}/media/${mediaId}`, undefined, "DELETE");
-      mutations.removeMedia(mediaId, result.coverMediaId);
-    } catch (cause) {
-      setNotice(uploadErrorMessage(cause));
-    } finally {
-      setRemovingId(null);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <label className="block text-xs font-semibold text-slate-700">
-        Photo category
-        <select value={category} onChange={(e) => setCategory(e.target.value as typeof category)} className={inputClass}>
-          {PHOTO_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-      </label>
-
-      {isRoomPhoto(category) && <label className="block text-xs font-semibold text-slate-700">Room type<select aria-label="Photo room type" value={roomTypeId} onChange={(event) => setRoomTypeId(event.target.value)} className={inputClass}><option value="">Choose room type</option>{listing.roomTypes.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>}
-      <PhotoChecklist photos={listing.media} rooms={listing.roomTypes} coverMediaId={listing.property.coverMediaId} />
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-8 text-center hover:border-[#c89b3c] transition-colors">
-        <Upload className="mb-2 h-6 w-6 text-slate-400" />
-        <span className="text-xs font-bold text-slate-700">Choose JPG, PNG or WebP</span>
-        <span className="mt-1 text-[11px] text-slate-500">Up to 12 MB each · multiple allowed</span>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          multiple
-          className="hidden"
-          disabled={activeUploads > 0}
-          onChange={(event) => {
-            const files = Array.from(event.currentTarget.files ?? []);
-            event.currentTarget.value = "";
-            handleFiles(files);
-          }}
-        />
-      </label>
-
-      {notice && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">{notice}</p>}
-
-      {queue.length > 0 && (
-        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-bold text-[#061224]">New photos</p>
-            {activeUploads > 0 && <p className="text-[11px] font-semibold text-slate-500">Uploading {activeUploads} at a time</p>}
-          </div>
-          {queue.map((item) => (
-            <div key={item.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-2">
-              <img src={item.previewUrl} alt={item.file.name} className="h-12 w-12 shrink-0 rounded-lg object-cover" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-[#061224]">{item.file.name}</p>
-                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-[#9a6b18]">{PHOTO_CATEGORY_LABELS[item.category]}</p>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${item.status === "failed" ? "bg-rose-500" : item.status === "uploaded" ? "bg-emerald-500" : "bg-[#c89b3c]"}`} style={{ width: `${item.progress}%` }} /></div>
-                <p className={`mt-1 text-[10px] font-semibold ${item.status === "failed" ? "text-rose-600" : item.status === "uploaded" ? "text-emerald-600" : "text-slate-500"}`}>
-                  {item.status === "queued" ? "Queued" : item.status === "uploading" ? `Uploading ${item.progress}%` : item.status === "processing" ? "Saving photo…" : item.status === "uploaded" ? "Uploaded" : item.error}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {item.status === "failed" && <button type="button" onClick={() => retry(item)} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-[#061224]">Retry</button>}
-                {(item.status === "failed" || item.status === "queued") && <button type="button" onClick={() => removeLocal(item)} className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove ${item.file.name}`}><X className="h-3.5 w-3.5" /></button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-xs font-semibold">
-        <span className="text-slate-500">{photoCheck.photos.length} / {photoCheck.minimum} photos</span>
-        {photoCheck.complete ? <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Enough photos</span> : <span className="text-amber-600">Complete the photo checklist</span>}
-      </div>
-
-      {groupedPhotos.map((group) => (
-        <section key={group.value} className="space-y-2" aria-label={`${group.label} photos`}>
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{group.label}</p>
-            <span className="text-[11px] font-semibold text-slate-400">{group.photos.length} photo{group.photos.length === 1 ? "" : "s"}</span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {group.photos.map((photo) => (
-              <div key={photo.id} className="rounded-xl border border-slate-200 bg-white p-2"><div className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100">
-                {photo.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.imageUrl} alt={photo.altText || `${group.label} property photo`} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center"><ImageIcon className="h-4 w-4 text-slate-300" /></div>
-                )}
-                {photo.isCover ? (
-                  <span className="absolute left-1 top-1 flex items-center gap-0.5 rounded-full bg-[#c89b3c] px-1.5 py-0.5 text-[8px] font-bold text-[#061224]"><Star className="h-2.5 w-2.5 fill-current" /> Cover</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void setCover(photo.id)}
-                    disabled={coverPendingId !== null}
-                    className={`absolute inset-x-1 bottom-1 flex items-center justify-center gap-1 rounded-md bg-slate-900/80 py-0.5 text-[9px] font-bold text-white transition-opacity disabled:cursor-not-allowed ${
-                      coverPendingId === photo.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                    }`}
-                  >
-                    {coverPendingId === photo.id ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> Setting…</> : "Set cover"}
-                  </button>
-                )}
-                <button type="button" onClick={() => void removeSaved(photo.id)} disabled={removingId !== null} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-md bg-rose-600/90 text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-100" aria-label={`Remove ${photo.fileName ?? "photo"}`}>
-                  {removingId === photo.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                </button>
-              </div><PhotoDetailsEditor key={`${photo.id}_${photo.category}_${photo.roomTypeId}`} propertyId={propertyId} photo={photo} rooms={listing.roomTypes} onSaved={async () => { mutations.reload(); }} /></div>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-}
+export { PhotosEditor } from "./photos-editor";
 
 /* ---------- Safety (KYC) ---------- */
 

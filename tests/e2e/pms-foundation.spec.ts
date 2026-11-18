@@ -287,6 +287,8 @@ test("owner sees both hotels, real setup state and independent public pause", as
   await expect(
     page.getByRole("heading", { name: "Public bookings: Available" }),
   ).toBeVisible();
+  await page.getByRole("link", { name: /PMS Setup & Readiness/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/partner/settings/pms\\?propertyId=${hotelA}`));
   await page
     .getByRole("combobox")
     .filter({ has: page.locator('option[value="none"]') })

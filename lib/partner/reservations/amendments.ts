@@ -1,3 +1,5 @@
+import { amendmentRestriction } from "./action-rules";
+import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess } from "@/lib/partner/pms/access";
 import { withDatePrices } from "@/lib/booking/date-prices";
 import "server-only";
@@ -89,31 +91,8 @@ async function readAmendment(
     b = (await tx.get(ref)).data();
   if (!b) throw new ApiException("NOT_FOUND", 404);
   await operationalAccess(uid, b.propertyId, "reservation.amend", tx);
-  if (
-    b.bookingStatus !== "confirmed" ||
-    b.inventoryReleased ||
-    b.inventoryEngine !== "interval_v1" ||
-    !b.startAt ||
-    Date.parse(b.startAt) <= Date.now()
-  )
-    throw new ApiException(
-      "AMENDMENT_NOT_ALLOWED",
-      409,
-      "Only future confirmed bookings on interval inventory can be changed.",
-    );
-  if (
-    (b.customizations ?? []).length ||
-    b.extrasTotalPaise ||
-    b.customizationCreditPaise ||
-    b.couponId ||
-    b.couponDiscountPaise ||
-    b.refundDuePaise
-  )
-    throw new ApiException(
-      "RESOLVE_AGREEMENTS_FIRST",
-      409,
-      "Bookings with extras, discounts or pending refunds need those agreements resolved before dates or room type can change.",
-    );
+  const restriction = amendmentRestriction(b, Date.now());
+  if (restriction) throw new ApiException(restriction.code, restriction.status, restriction.message);
   const [propertyDoc, roomDoc, rateDoc, holdDoc] = await Promise.all([
     tx.get(adminDb.collection("properties").doc(b.propertyId)),
     tx.get(adminDb.collection("roomTypes").doc(input.roomTypeId)),
@@ -310,11 +289,12 @@ export async function confirmAmendment(
   if (!key || key.length > 180)
     throw new ApiException("IDEMPOTENCY_KEY_REQUIRED", 422);
   const eventId = hash(`${uid}\0${bookingId}\0amend\0${key}`);
-  await adminDb.runTransaction(async (tx) => {
+  await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId),
       existing = await tx.get(ref.collection("events").doc(eventId));
     if (existing.exists) {
       const b = (await tx.get(ref)).data();
+      markTodayChanged(b?.propertyId);
       if (!b) throw new ApiException("NOT_FOUND", 404);
       await operationalAccess(uid, b.propertyId, "reservation.amend", tx);
       if (existing.get("previewToken") !== token)
@@ -328,6 +308,7 @@ export async function confirmAmendment(
         "Preview expired. Review the price again.",
       );
     const r = await readAmendment(tx, uid, bookingId, preview.input);
+    markTodayChanged(r.b.propertyId);
     if (r.fingerprint !== preview.fingerprint)
       throw new ApiException(
         "QUOTE_CHANGED",
