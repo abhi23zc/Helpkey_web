@@ -9,7 +9,7 @@ import type { StayRequest } from "@/lib/stay/contracts";
 import { getOfferingImageUrl } from "@/lib/stay/imagery";
 import {
   CreditCard,
-  Sparkles,
+  Tag,
   ShieldCheck,
   CheckCircle2,
   Clock,
@@ -448,7 +448,7 @@ export function ExtrasOffers({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e8d9b5]/70 pb-3">
                   <div className="flex items-center gap-2">
                     <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#fbf7ee] text-[#785d1c] border border-[#e8d9b5]">
-                      <Sparkles className="h-4 w-4" />
+                      <Tag className="h-4 w-4" />
                     </span>
                     <div>
                       <h3 className="text-sm font-bold text-[#061224]">

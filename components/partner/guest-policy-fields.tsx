@@ -9,7 +9,7 @@ import {
   PawPrint,
   ScrollText,
   ShieldCheck,
-  Sparkles,
+  Zap,
   UserCheck,
 } from "lucide-react";
 import type { GuestPolicies } from "@/lib/partner/guest-policies";
@@ -260,7 +260,7 @@ export function GuestPolicyFields({
           <div className="p-4 sm:p-5 pt-0 border-t border-slate-100 space-y-3.5">
             <div className="flex items-center justify-between pt-3">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-[#c89b3c]" /> Quick-add common rules:
+                <Zap className="h-3.5 w-3.5 text-[#c89b3c]" /> Quick-add common rules:
               </p>
               <span className="text-xs sm:text-sm font-semibold text-slate-400">
                 {value.additionalHouseRules?.length ?? 0} / 2,000

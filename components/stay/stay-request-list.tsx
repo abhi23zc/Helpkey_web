@@ -5,7 +5,7 @@ import {
   ChevronDown,
   MessageSquare,
   Package,
-  Sparkles,
+  Sliders,
   ConciergeBell,
 } from "lucide-react";
 import { RequestSelectionEditor } from "./request-selection-editor";
@@ -93,7 +93,7 @@ export function StayRequestList({
         const ResponseContainer = compactStaff ? "details" : "div";
         const Icon =
           r.kind === "preference"
-            ? Sparkles
+            ? Sliders
             : r.kind === "service"
               ? ConciergeBell
               : Package;

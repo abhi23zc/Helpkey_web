@@ -371,12 +371,8 @@ function CreationDialog({
       initialized.current = true;
       const hotel = choices.data!.property,
         zone = hotel?.timezone || "Asia/Kolkata",
-        local = localParts(Date.now(), zone),
-        date =
-          initialDate ||
-          (local.time >= (hotel?.checkInTime || "14:00")
-            ? nextDay(local.date)
-            : local.date);
+        local = localParts(Date.now(), zone);
+      const walkIn = initialPurpose === "walk_in";
       const mode =
         hotel?.bookingModes?.length === 1
           ? (hotel.bookingModes[0] as "overnight" | "hourly")
@@ -398,6 +394,14 @@ function CreationDialog({
         Math.ceil((Date.now() + 30 * 60000) / 900000) * 900000,
         zone,
       );
+      const reservationDate =
+        mode === "hourly"
+          ? slot.date
+          : local.time >= (hotel?.checkInTime || "14:00")
+            ? nextDay(local.date)
+            : local.date;
+      const date = walkIn ? local.date : initialDate || reservationDate;
+      const arrivalTime = walkIn ? local.time : slot.time;
       setForm((f) =>
         f.checkIn || f.guestName
           ? f
@@ -405,9 +409,11 @@ function CreationDialog({
               ...f,
               reservationPurpose: initialPurpose || f.reservationPurpose,
               bookingMode: mode,
-              checkIn: mode === "hourly" ? slot.date : date,
-              checkOut: nextDay(mode === "hourly" ? slot.date : date),
-              arrivalTime: mode === "hourly" ? slot.time : f.arrivalTime,
+              checkIn: date,
+              checkOut: nextDay(date),
+              arrivalTime:
+                walkIn || mode === "hourly" ? arrivalTime : f.arrivalTime,
+              recordedArrivalTime: walkIn ? local.time : f.recordedArrivalTime,
               roomTypeId: roomId,
               physicalUnitId: initialUnitId || "",
               ratePlanId: eligible.length === 1 ? eligible[0].id : "",
@@ -462,6 +468,8 @@ function CreationDialog({
     infants: form.infants,
   };
   const scope = JSON.stringify(priceRequest);
+  const hasArrivalTime =
+    form.reservationPurpose !== "walk_in" || !!form.recordedArrivalTime;
 
   const quote = useQuery({
     queryKey: ["partner", propertyId, "manual-date-price", priceRequest],
@@ -469,6 +477,7 @@ function CreationDialog({
       !!propertyId &&
       !!form.ratePlanId &&
       !!form.checkIn &&
+      hasArrivalTime &&
       (form.bookingMode === "hourly"
         ? !!form.durationMinutes
         : !!form.checkOut) &&
@@ -880,7 +889,7 @@ function CreationDialog({
                     <Info className="h-4 w-4 text-[#c89b3c] shrink-0 mt-0.5" />
                     <p>
                       Saving confirms the reservation. Check-in is a separate
-                      action. Walk-ins record today's hotel date directly.
+                      action. Walk-ins record today&apos;s hotel date directly.
                     </p>
                   </div>
 
@@ -1011,6 +1020,7 @@ function CreationDialog({
                       <input
                         type="time"
                         className={field}
+                        required
                         value={form.recordedArrivalTime}
                         onChange={(e) => {
                           setDirty(true);
@@ -1176,7 +1186,7 @@ function CreationDialog({
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 rounded-lg border border-[#ede7dc] bg-[#fbfaf8] px-2.5 py-1 text-[11px] font-semibold text-[#68758c] hover:bg-[#fbf5e8] hover:text-[#061224] hover:border-[#c89b3c] transition-colors disabled:opacity-50"
-                        disabled={quote.isFetching}
+                        disabled={quote.isFetching || !hasArrivalTime}
                         onClick={() => {
                           setMore(undefined);
                           void quote.refetch();

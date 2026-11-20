@@ -11,7 +11,6 @@ import {
   List,
   Plus,
   Search,
-  Sparkles,
   Clock3,
   CheckCircle2,
   SlidersHorizontal,

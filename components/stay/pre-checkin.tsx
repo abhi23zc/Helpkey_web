@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 import { localParts, resolveLocal } from "@/lib/booking/domain";
 import type { StayBookingData } from "@/lib/stay/contracts";
-import { CalendarDays, Check, ChevronDown, Clock3, Info, Mail, Phone, UserRound, Sparkles } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Clock3, Info, Mail, Phone, UserRound, ListPlus } from "lucide-react";
 import { PartnerDatePicker } from "@/components/partner/dashboard/partner-date-picker";
 import { Drawer } from "@/components/partner/dashboard/drawer";
 import { StayRequestList } from "./stay-request-list";
@@ -57,7 +57,7 @@ export function PreCheckinPanel({ booking }: { booking: Booking }) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="grid h-8 w-8 place-items-center rounded-lg bg-[#fbf7ee] border border-[#e8d9b5] text-[#b48a3c]">
-            <Sparkles className="h-4 w-4" />
+            <ListPlus className="h-4 w-4" />
           </div>
           <div>
             <h2 className="text-base font-bold text-[#061224]">Your requested additions</h2>

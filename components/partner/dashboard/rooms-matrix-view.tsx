@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { localParts } from "@/lib/booking/domain";
 import { formatPaise } from "@/lib/currency";
 import { requestJson } from "@/lib/partner/upload-client";
 import type { ListingRoomType, ListingRatePlan } from "./use-property-listing";
@@ -19,6 +20,7 @@ import { PhysicalRoomRegister } from "./reservation-operations";
 import { useHotelCapabilities } from "./hotel-capabilities";
 import {
   BedDouble,
+  Broom,
   Calendar,
   Check,
   ChevronLeft,
@@ -32,7 +34,6 @@ import {
   LogOut,
   Plus,
   Search,
-  Sparkles,
   Wrench,
   X,
 } from "lucide-react";
@@ -88,6 +89,10 @@ function shiftDay(dateStr: string, offset: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function todayInZone(timezone: string) {
+  return localParts(Date.now(), timezone).date;
+}
+
 function formatHeadingDate(dateStr: string) {
   try {
     const [y, m, d] = dateStr.split("-").map(Number);
@@ -131,9 +136,11 @@ export function RoomsMatrixView({
 
   const [registerOpen, setRegisterOpen] = useState(false);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
-  const [walkInUnit, setWalkInUnit] = useState<{
+  const [bookingRoom, setBookingRoom] = useState<{
     unitId: string;
     roomTypeId: string;
+    purpose: "walk_in" | "reservation";
+    date: string;
   } | null>(null);
   const [selectedStay, setSelectedStay] = useState<{
     unitLabel: string;
@@ -357,9 +364,12 @@ export function RoomsMatrixView({
       });
     } else {
       if (permits("reservation.create")) {
-        setWalkInUnit({
+        const today = todayInZone(data.timezone);
+        setBookingRoom({
           unitId: unit.id,
           roomTypeId: unit.roomTypeId,
+          purpose: date > today ? "reservation" : "walk_in",
+          date,
         });
       }
     }
@@ -415,7 +425,7 @@ export function RoomsMatrixView({
               detail: `dirty / ${stats.clean} clean`,
               note:
                 stats.dirty === 0 ? "No dirty rooms" : "Turnover needed",
-              Icon: Sparkles,
+              Icon: Broom,
             },
           ] as const
         ).map(({ status, title, count, detail, note, Icon }) => {
@@ -1110,7 +1120,7 @@ export function RoomsMatrixView({
 
                               <div className="mt-3.5 space-y-1.5">
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#d97706] text-white px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.02em]">
-                                  <Sparkles className="h-3 w-3" />
+                                  <Broom className="h-3 w-3" />
                                   Needs Cleaning
                                 </span>
                                 <p className="text-xs text-[#92400e]/80 font-medium">
@@ -1284,18 +1294,18 @@ export function RoomsMatrixView({
           onOpenSection={handleOpenStaySection}
         />
       )}
-      {walkInUnit && (
+      {bookingRoom && (
         <ManualBookingDialog
           open={true}
           propertyId={propertyId}
           propertyName={propertyName}
-          initialRoomTypeId={walkInUnit.roomTypeId}
-          initialUnitId={walkInUnit.unitId}
-          initialPurpose="walk_in"
-          initialDate={date}
-          onClose={() => setWalkInUnit(null)}
+          initialRoomTypeId={bookingRoom.roomTypeId}
+          initialUnitId={bookingRoom.unitId}
+          initialPurpose={bookingRoom.purpose}
+          initialDate={bookingRoom.date}
+          onClose={() => setBookingRoom(null)}
           onCreated={(id) => {
-            setWalkInUnit(null);
+            setBookingRoom(null);
             void refresh();
             if (id)
               router.replace(

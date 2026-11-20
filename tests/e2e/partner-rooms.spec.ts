@@ -533,3 +533,43 @@ test("live room board allows quick marking a dirty room clean with one click", a
   await page.goto("/partner/rooms?propertyId=hotel-one&date=2026-11-03&section=board");
   await expect(page.getByRole("button", { name: "Mark Clean", exact: true })).toBeVisible();
 });
+
+for (const { date, purpose, arrivalTime } of [
+  { date: "2026-11-18", purpose: "walk_in", arrivalTime: "00:17" },
+  { date: "2026-11-19", purpose: "reservation", arrivalTime: undefined },
+]) {
+  test(`Book Stay quotes a ${purpose} for the selected room`, async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-11-17T18:47:00Z"));
+    await fixture(page);
+    await page.route("**/api/partner/bookings/quote", (route) =>
+      route.fulfill({
+        json: {
+          subtotalPaise: rate.basePricePaise,
+          requestedDurationPriced: true,
+          roomOptions: {
+            rooms: [
+              { id: "unit-one", label: "101", available: true, readyNow: true, housekeeping: "Clean" },
+            ],
+            nextCursor: null,
+          },
+        },
+      }),
+    );
+    await page.goto(`/partner/rooms?propertyId=hotel-one&date=${date}&section=board`);
+    const request = page.waitForRequest("**/api/partner/bookings/quote");
+    await page.getByRole("button", { name: "Book Stay", exact: true }).click();
+    const quoteRequest = (await request).postDataJSON();
+    expect(quoteRequest).toMatchObject({
+      checkIn: date,
+      roomTypeId: room.id,
+      ratePlanId: rate.id,
+      reservationPurpose: purpose,
+    });
+    expect(quoteRequest.recordedArrivalTime).toBe(arrivalTime);
+    const dialog = page.getByRole("dialog", { name: "Add Manual Booking" });
+    const physicalRoom = dialog.getByLabel("Physical room", { exact: true });
+    await expect(physicalRoom).toBeEnabled();
+    await expect(physicalRoom.locator("option:checked")).toContainText("101");
+    await expect(dialog.getByText("Total: ₹200.00", { exact: true })).toBeVisible();
+  });
+}
