@@ -298,6 +298,9 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     const { input, propertyId } = await fixture();
     await db.collection("propertyMemberships").doc(`${propertyId}_partner`).set({ propertyId, userId: "partner", role: "owner", status: "active" });
     await db.collection("ratePlans").doc(input.ratePlanId).update({ taxBasisPoints: 1800 });
+    // Cash collection always requires an open cashier shift.
+    const shifts = await import("@/lib/partner/closing/shifts");
+    await shifts.commandShift("partner", propertyId, { action: "open", openingPaise: 500 }, "manual-shift");
     const manual = { ...input, propertyId, guestName: "Manual Guest", negotiatedSubtotalPaise: 80000, negotiatedPriceReason: "Agreed corporate price", paymentMethod: "paid" };
     await expect(bookings.createManualReservation("intruder", manual, "manual")).rejects.toThrow("FORBIDDEN");
     const created = await bookings.createManualReservation("partner", manual, "manual");

@@ -176,6 +176,16 @@ describe.skipIf(!safe)(
       });
     }
 
+    async function openShift(actor: string, propertyId: string) {
+      const shifts = await import("@/lib/partner/closing/shifts");
+      return shifts.commandShift(
+        actor,
+        propertyId,
+        { action: "open", openingPaise: 500 },
+        crypto.randomUUID(),
+      );
+    }
+
     function request(id: string, extra: Record<string, unknown> = {}) {
       return {
         propertyId: id,
@@ -386,6 +396,8 @@ describe.skipIf(!safe)(
           role: "manager",
           status: "active",
         });
+      await openShift(owner.uid, id);
+      await openShift(manager.uid, id);
       await db
         .collection("roomTypes")
         .doc(`${id}-room`)
@@ -593,6 +605,7 @@ describe.skipIf(!safe)(
             cancellationPolicyId: `${id}-policy`,
           });
         await ready(owner.uid, id);
+        await openShift(owner.uid, id);
         const raw = request(id, {
           bookingMode: "hourly",
           ratePlanId: `${id}-hourly`,
@@ -644,6 +657,7 @@ describe.skipIf(!safe)(
       const owner = await user("partner"),
         id = await hotel(owner.uid);
       await ready(owner.uid, id);
+      await openShift(owner.uid, id);
       const saved = await bookings.createManualReservation(
         owner.uid,
         request(id, { initialCollectionPaise: 50050 }),
@@ -759,6 +773,8 @@ describe.skipIf(!safe)(
           role: "manager",
           status: "active",
         });
+      await openShift(owner.uid, id);
+      await openShift(manager.uid, id);
       const raw = request(id, { initialCollectionPaise: 20000 });
       const outcomes = await Promise.allSettled([
         bookings.createManualReservation(owner.uid, raw, crypto.randomUUID()),

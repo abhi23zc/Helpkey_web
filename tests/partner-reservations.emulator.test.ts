@@ -85,6 +85,14 @@ describe.skipIf(!safe)("partner reservations transactions", () => {
       .collection("propertyMemberships")
       .doc(`${propertyId}_${uid}`)
       .set({ userId: uid, propertyId, status: "active", role: "owner" });
+    // Cash collections require an open cashier shift for the acting user.
+    const shifts = await import("@/lib/partner/closing/shifts");
+    await shifts.commandShift(
+      uid,
+      propertyId,
+      { action: "open", openingPaise: 500 },
+      crypto.randomUUID(),
+    );
     await db.collection("roomTypes").doc(roomTypeId).set({
       propertyId,
       name: "Deluxe",
