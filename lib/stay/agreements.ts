@@ -4,6 +4,7 @@ import type { RequestQuote, StayRequest } from "./contracts";
 export function requestLabel(r: StayRequest, now = Date.now()) {
   if (["declined", "cancelled"].includes(r.status))
     return r.status === "declined" ? "Declined" : "Cancelled";
+  if (r.settlement === "hotel_collection") return "Pay at hotel";
   if (r.quote?.paymentStatus === "refund_pending") return "Refund pending";
   if (r.quote?.paymentStatus === "refunded") return "Refunded";
   if (
@@ -68,11 +69,11 @@ export function supplementalFinancials(
           paidPaise: sum.paidPaise + r.amountPaise,
           refundDuePaise:
             sum.refundDuePaise +
-            (r.status === "refund_pending" ? r.amountPaise : 0),
+            (r.status === "refund_pending" ? r.refundAmountPaise ?? r.amountPaise : 0),
           refundedPaise:
-            sum.refundedPaise + (r.status === "refunded" ? r.amountPaise : 0),
+            sum.refundedPaise + (r.status === "refunded" ? r.refundAmountPaise ?? r.amountPaise : 0),
           totalPaise:
-            sum.totalPaise + (r.status === "paid" ? r.amountPaise : 0),
+            sum.totalPaise + (r.status === "paid" ? r.amountPaise : Math.max(0, r.amountPaise - (r.refundAmountPaise ?? r.amountPaise))),
         }),
         { paidPaise: 0, refundDuePaise: 0, refundedPaise: 0, totalPaise: 0 },
       ),
@@ -81,13 +82,14 @@ export function supplementalFinancials(
   return requests.reduce(
     (sum, r) => {
       const q = r.quote;
+      // Hotel-collected services already belong to the reservation balance.
+      if (r.settlement === "hotel_collection") return sum;
       if (q?.paymentId) {
         sum.paidPaise += q.amountPaise;
         if (q.paymentStatus === "refund_pending")
-          sum.refundDuePaise += q.amountPaise;
-        if (q.paymentStatus === "refunded") sum.refundedPaise += q.amountPaise;
-        if (!["refund_pending", "refunded"].includes(q.paymentStatus ?? ""))
-          sum.totalPaise += q.amountPaise;
+          sum.refundDuePaise += q.refundAmountPaise ?? q.amountPaise;
+        if (q.paymentStatus === "refunded") sum.refundedPaise += q.refundAmountPaise ?? q.amountPaise;
+        sum.totalPaise += ["refund_pending", "refunded"].includes(q.paymentStatus ?? "") ? Math.max(0, q.amountPaise - (q.refundAmountPaise ?? q.amountPaise)) : q.amountPaise;
       }
       if (
         r.status === "requested" &&

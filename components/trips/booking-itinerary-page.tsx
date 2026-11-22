@@ -1,4 +1,5 @@
 "use client";
+import { SavedCalculation, SavedCancellation, SavedFinancialHistory } from "@/components/finance/saved-calculation";
 
 import { supplementalFinancials } from "@/lib/stay/agreements";
 import { PreCheckinPanel } from "@/components/stay/pre-checkin";
@@ -1073,7 +1074,8 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
 
               {/* Itemized Price Breakdown */}
               <dl className="mt-4 space-y-2.5 text-xs">
-                {booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
+                {booking.financialHistory ? <SavedFinancialHistory history={booking.financialHistory} currency={booking.currency} /> : booking.calculation && <SavedCalculation calculation={booking.calculation} currency={booking.currency} />}
+                {!booking.calculation && booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
                   <AmountRow
                     label={`Room charges (${
                       booking.bookingMode === "hourly"
@@ -1083,20 +1085,20 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                     value={formatMoney(booking.subtotalPaise, booking.currency)}
                   />
                 )}
-                {booking.taxPaise !== undefined && booking.taxPaise > 0 && (
+                {!booking.calculation && booking.taxPaise !== undefined && booking.taxPaise > 0 && (
                   <AmountRow
                     label="Taxes & GST"
                     value={formatMoney(booking.taxPaise, booking.currency)}
                   />
                 )}
-                {booking.customerFeePaise !== undefined && booking.customerFeePaise > 0 && (
+                {!booking.calculation && booking.customerFeePaise !== undefined && booking.customerFeePaise > 0 && (
                   <AmountRow
                     label="Platform fee"
                     value={formatMoney(booking.customerFeePaise, booking.currency)}
                   />
                 )}
 
-                {!!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
+                {!booking.calculation && !!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
                 {!!booking.billingNetPaise && <AmountRow label="Hotel charges / adjustments" value={formatMoney(booking.billingNetPaise, booking.currency)} />}
                 {!!booking.customizationCreditPaise && <AmountRow label="Declined extras credit" value={formatMoney(booking.customizationCreditPaise, booking.currency)} />}
                 {supplemental.paidPaise>0 && <><AmountRow label="Original booking total" value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise,booking.currency)}/><AmountRow label="Separately agreed extras" value={formatMoney(supplemental.totalPaise,booking.currency)}/>{supplemental.refundDuePaise>0 && <AmountRow label="Quoted extras refund pending" value={formatMoney(supplemental.refundDuePaise,booking.currency)}/>} {supplemental.refundedPaise>0 && <AmountRow label="Quoted extras refunded" value={formatMoney(supplemental.refundedPaise,booking.currency)}/>}</>}
@@ -1144,7 +1146,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
             </section>
 
             {/* CANCELLATION POLICY & ACTIONS */}
-            {booking.cancellationPolicy && (
+            {booking.calculation ? <SavedCancellation calculation={booking.calculation} timezone={booking.timezone} /> : booking.cancellationPolicy && (
               <section className="rounded-2xl border border-[#e7e4dc] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-[#0f172a]">Cancellation Policy</h3>

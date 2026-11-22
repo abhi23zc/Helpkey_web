@@ -21,6 +21,7 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 
 type Booking = {
+  calculation?: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"] | null;
   bookingMode?: "overnight" | "hourly";
   startAt?: string | null;
   endAt?: string | null;

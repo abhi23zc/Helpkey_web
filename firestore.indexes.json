@@ -2662,6 +2662,34 @@
       "collectionGroup": "dailyClosings",
       "fieldPath": "coverage",
       "indexes": []
+    },
+    {
+      "collectionGroup": "assessments",
+      "fieldPath": "counterKey",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "journals",
+      "fieldPath": "lines",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "financeAccounts",
+      "fieldPath": "projection",
+      "indexes": []
     }
   ]
 }

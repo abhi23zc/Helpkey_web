@@ -1,3 +1,4 @@
+vi.mock("@/lib/finance/tax-configuration", () => ({ priceReview: async () => ({ basis: "tax_exclusive", reviewedBy: "owner", reviewedAt: "2026-01-01T00:00:00.000Z" }) }));
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 const mock = vi.hoisted(() => ({ records: new Map<string, Record<string, unknown>>(), update: vi.fn(), set: vi.fn(), owner: vi.fn() }));
 vi.mock("@/lib/partner/service", () => ({ propertyOwner: mock.owner, requireRole: vi.fn() }));
@@ -39,7 +40,7 @@ it("does not permit edited inputs after preparation starts", async () => {
 it("saves independent paid preferences and checks ownership and version", async () => {
   const { id, version } = offering;
   const input = Object.fromEntries(Object.entries(offering).filter(([key]) => !["id", "propertyId", "version"].includes(key)));
-  await saveOffering("owner", "hotel", { id, version, offering: { ...input, unitPricePaise: 70050 } });
+  await saveOffering("owner", "hotel", { id, version, offering: { taxCategory: "example", priceEntryBasis: "tax_exclusive", ...input, unitPricePaise: 70050 } });
   expect(mock.set.mock.calls[0][1]).toMatchObject({ unitPricePaise: 70050, responseConfig: input.responseConfig, version: 2 });
   await expect(saveOffering("owner", "hotel", { id, version: 0, offering: input })).rejects.toThrow("CONFLICT");
   mock.owner.mockRejectedValueOnce(new Error("FORBIDDEN"));

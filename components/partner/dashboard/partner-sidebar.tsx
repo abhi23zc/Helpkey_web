@@ -33,6 +33,7 @@ const navItems = [
   { label: "Rooms", href: "/partner/rooms", icon: BedDouble },
   { label: "Property Listing", href: "/partner/listing", icon: Building2 },
   { label: "Reviews", href: "/partner/reviews", icon: Star },
+  { label: "Finance", href: "/partner/finance", icon: Wallet },
   { label: "Settings", href: "/partner/settings", icon: Settings },
 ] as const;
 
@@ -148,8 +149,9 @@ export function PartnerSidebar({
             },
           ]
             .filter((item) => {
-              if (!permissions) return item.href !== "/partner/operations";
+              if (!permissions) return !["/partner/operations", "/partner/finance"].includes(item.href);
               const required: Record<string, string> = {
+                "/partner/finance": "finance.read",
                 "/partner/cashier-shifts": "shift.operate",
                 "/partner/daily-closing": "closing.manage",
                 "/partner/today": "reservation.read",

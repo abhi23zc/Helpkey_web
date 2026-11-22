@@ -1,3 +1,4 @@
+import { testBookingCalculation } from "../helpers/finance-calculation";
 import { expect, test, type Page } from "@playwright/test";
 import { selectedRequests, extraTotals } from "../../lib/stay/domain";
 import { quotedPrice } from "../../lib/stay/agreements";
@@ -185,7 +186,7 @@ async function fixture(page: Page, catalog?: Offering[], upgraded = false) {
   await page.route("**/api/notifications**", (r) =>
     r.fulfill({ json: { notifications: [], unreadCount: 0 } }),
   );
-  await page.route("**/api/bookings/quote", (r) => {
+  await page.route("**/api/bookings/quote", async (r) => {
     const data = r.request().postDataJSON();
     const customizations = selectedRequests(
       offerings,
@@ -197,12 +198,15 @@ async function fixture(page: Page, catalog?: Offering[], upgraded = false) {
       Date.now(),
       { startAt, endAt, nights: 1, adults: 1, children: 0 },
     );
+    const agreement = await testBookingCalculation({ propertyId: "hotel", rate: { basePricePaise: 100000, paymentMode: "deposit" }, stay: quote, requests: customizations, offerings, policy, selected: data.paymentOption });
+    const c = agreement.publicCalculation;
     return r.fulfill({
       json: {
         quote: {
           ...quote,
           customizations,
           ...extraTotals(100000, 25000, "deposit", customizations),
+          calculation: c, paymentOption: c.selected, totalPaise: c.totalPaise, payableNowPaise: c.payableNowPaise, balanceDuePaise: c.hotelBalancePaise,
           fingerprint: (customizations.length ? "b" : "a").repeat(64),
         },
       },
@@ -475,12 +479,12 @@ for (const viewport of [
       .getByRole("button", { name: /^(Add|Request)$/, exact: true })
       .click();
     await expect(
-      page.getByText("Booking total: ₹1,200", { exact: false }),
+      page.getByText("₹1,200", { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
     await expect(
-      page.getByText("Room decoration × 1", { exact: true }).first(),
+      page.getByText("Room decoration", { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Remove all extras" }).click();
+    await page.getByRole("button", { name: "Clear checkout extras", exact: true }).click();
     await expect(
       extraCard(page, "Room decoration").getByRole("button", {
         name: "Add",
@@ -492,7 +496,7 @@ for (const viewport of [
       fullPage: true,
     });
     await page.goto("/arrival-fixture");
-    await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+    await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
     await page.getByLabel("Choose arrival time", { exact: true }).check();
     await page.getByRole("button", { name: "Arrival date", exact: true }).click();
     const calendar = page.getByRole("dialog", { name: "Arrival date", exact: true });
@@ -506,7 +510,7 @@ for (const viewport of [
     await expect(page.getByRole("heading", { name: "Check your guest details" })).toBeVisible();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.getByRole("button", { name: "Confirm pre-check-in", exact: true }).click();
-    await expect(page.getByText("Pre-check-in confirmed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pre-check-in confirmed. Your arrival plan and guest information have been saved.", { exact: true })).toBeVisible();
     expect(submissions.at(-1)).toMatchObject({ submit: true, guestsReviewed: true, arrivalChoice: "time", notes: "Arriving by train at 3 PM" });
     expect(submissions.at(-1)).not.toHaveProperty("selections");
     expect(submissions.at(-1)).not.toHaveProperty("travelerPreferences");
@@ -723,7 +727,7 @@ for (const width of [1366, 390]) {
         },
       }),
     );
-    await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+    await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
     await expect(page.getByRole("dialog").getByText("Room Aroma", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("dialog").getByRole("combobox")).toHaveCount(0);
     expect(
@@ -761,25 +765,22 @@ for (const width of [390, 768, 1366]) {
     });
     await completeGuestDetails(page);
     await expect(page.getByRole("article")).toHaveCount(8);
-    await page.getByRole("button", { name: "Browse all", exact: true }).click();
+    await page.getByRole("button", { name: "Browse all →", exact: true }).click();
     await expect(page.getByRole("article")).toHaveCount(47);
     await expect(
       page.getByRole("heading", { name: "Primary Guest Details" }),
     ).toHaveCount(0);
-    await page
-      .getByLabel("Extra categories", { exact: true })
-      .selectOption("technology");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("button", { name: "Technology & connectivity", exact: true }).click();
     await expect(page.getByRole("article")).toHaveCount(23);
-    await page
-      .getByLabel("Extra categories", { exact: true })
-      .selectOption("all");
+    await page.getByRole("button", { name: "All extras", exact: true }).click();
     await page.getByLabel("Search stay options").fill("Comfort option 01");
     await expect(page.getByRole("article")).toHaveCount(1);
     await extraCard(page, "Comfort option 01")
       .getByRole("button", { name: /^(Add|Request)$/, exact: true })
       .click();
     await expect(
-      page.getByText("Booking total: ₹1,000", { exact: false }),
+      page.getByText("₹1,000", { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
     await page.getByLabel("Search stay options").fill("");
     await page.screenshot({
@@ -787,9 +788,7 @@ for (const width of [390, 768, 1366]) {
       fullPage: true,
     });
     await page.screenshot({ path: info.outputPath("extras-viewport.png") });
-    await page
-      .getByRole("button", { name: "Selected (1)", exact: true })
-      .click();
+    await page.getByLabel("Search stay options").fill("Comfort option 01");
     await expect(page.getByRole("article")).toHaveCount(1);
     await page
       .getByText("Anything else the hotel should know?", { exact: false })
@@ -810,10 +809,10 @@ for (const width of [390, 768, 1366]) {
       page.getByText("Arriving by train", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Comfort option 01 × 1", { exact: true }).first(),
+      page.getByText("Comfort option 01 × 1", { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
     await expect(page.getByRole("article")).toHaveCount(0);
-    await page.getByText("Included with your room", { exact: true }).click();
+    await page.getByText("What's included with your room", { exact: true }).click();
     await expect(page.getByText("Large desk", { exact: true })).toBeVisible();
     await page.screenshot({
       path: info.outputPath("review.png"),
@@ -840,12 +839,10 @@ for (const width of [390, 768, 1366]) {
       .getByRole("button", { name: "Continue to personalize", exact: true })
       .filter({ visible: true })
       .click();
-    await page
-      .getByRole("button", { name: "Selected (1)", exact: true })
-      .click();
+    await page.getByLabel("Search stay options").fill("Comfort option 01");
     await expect(
-      page.getByLabel("Comfort option 01 Quantity quantity", { exact: true }),
-    ).toHaveText("1");
+      extraCard(page, "Comfort option 01").getByText("Requested: 1 / 3", { exact: true }),
+    ).toHaveText("Requested: 1 / 3");
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -929,7 +926,7 @@ test("quote failures retain selected requests and provide a removal recovery pat
       .filter({ visible: true }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Remove all extras", exact: true }),
+    page.getByRole("button", { name: "Clear checkout extras", exact: true }),
   ).toBeEnabled();
 });
 
@@ -1091,7 +1088,7 @@ for (const width of [390, 1366]) {
     await expect(
       page.getByRole("heading", { name: "Extra pillows", exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Browse all", exact: true }).click();
+    await page.getByRole("button", { name: "Browse all →", exact: true }).click();
     await expect(
       page.getByText("Unavailable for this stay (3)", { exact: true }),
     ).toBeVisible();
@@ -1688,7 +1685,7 @@ for (const width of [390, 768, 1366]) {
     await page.setViewportSize({ width, height: 900 });
     const { submissions } = await fixture(page);
     await page.goto("/arrival-fixture");
-    await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+    await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
@@ -1698,15 +1695,15 @@ for (const width of [390, 768, 1366]) {
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("heading", { name: "Check your guest details" })).toBeFocused();
     await page.reload();
-    await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+    await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
     await expect(dialog.getByRole("heading", { name: "Check your guest details" })).toBeVisible();
     await dialog.getByRole("button", { name: "Back", exact: true }).click();
     await expect(dialog.getByLabel("Not sure yet", { exact: true })).toBeChecked();
     await expect(dialog.getByLabel("Arrival note (optional)")).toHaveValue("Train schedule pending");
     await dialog.getByRole("button", { name: "Save and close", exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Start pre-check-in", exact: true })).toBeFocused();
-    await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Set estimated arrival time", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("checkbox")).toHaveCount(0);
@@ -1714,7 +1711,7 @@ for (const width of [390, 768, 1366]) {
     await page.screenshot({ path: info.outputPath("arrival-review.png"), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await dialog.getByRole("button", { name: "Confirm pre-check-in", exact: true }).click();
-    await expect(page.getByText("Pre-check-in confirmed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pre-check-in confirmed. Your arrival plan and guest information have been saved.", { exact: true })).toBeVisible();
     expect(submissions.at(-1)).toMatchObject({ submit: true, arrivalChoice: "unknown", expectedArrivalLocal: null, guestsReviewed: true });
   });
 }
@@ -1722,7 +1719,7 @@ for (const width of [390, 768, 1366]) {
 test("arrival save errors retain draft and close warns before keeping changes", async ({ page }) => {
   await fixture(page);
   await page.goto("/arrival-fixture");
-  await page.getByRole("button", { name: "Start pre-check-in", exact: true }).click();
+  await page.getByRole("button", { name: "Set estimated arrival time", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Not sure yet", { exact: true }).check();
   await page.route("**/api/bookings/booking/pre-checkin", route => route.request().method() === "PATCH" ? route.fulfill({ status: 409, json: { error: "This information changed. Review before retrying." } }) : route.fallback());
@@ -1774,4 +1771,33 @@ test("existing requests edit universal responses once without changing arrival",
   await row("Extra pillows").getByRole("button", { name: "Save request" }).click();
   expect(edits.at(-1)).toMatchObject({ selection: { quantity: 2 } });
   await expect(page.locator("summary").filter({ hasText: "Room Aroma" })).toHaveCount(1);
+});
+
+
+test("finance v2 payment options refresh totals on desktop and mobile", async ({ page }) => {
+  const { calculateAgreement } = await import("../../lib/finance/calculation");
+  const { DEFAULT_POLICY } = await import("../../lib/finance/domain");
+  const { syntheticRules } = await import("../../lib/finance/development-fixtures");
+  await fixture(page);
+  const selections: string[] = [];
+  await page.route("**/api/bookings/quote", async route => {
+    const body = route.request().postDataJSON();
+    const effective = { ...DEFAULT_POLICY, paymentOptions: ["full_online", "advance_online", "pay_at_property"] as ("full_online" | "advance_online" | "pay_at_property")[] };
+    const result = calculateAgreement({ global: effective, effective, profile: { jurisdiction: "example", registration: "registered", profileKind: "example", supplierId: "hotel", invoiceResponsibility: "hotel", reviewedBy: "example", reviewedAt: "2026-01-01T00:00:00.000Z", profileContentRevision: 1 }, rules: syntheticRules(), charges: [{ id: "room", kind: "room", category: "accommodation", quantity: 1, enteredUnitPaise: 200000, basis: "tax_exclusive", reviewedBasis: "tax_exclusive", bookingMode: "overnight", serviceDates: { night_date: checkIn }, supplierId: "hotel", invoiceResponsibility: "hotel" }], source: "marketplace", selected: body.paymentOption, cancellation: { freeUntil: startAt, lateCharge: { kind: "fixed", amountPaise: 10000 }, noShow: { kind: "fixed", amountPaise: 10000 }, taxTreatmentReference: "example" }, versions: { fixture: 1 } });
+    const c = result.publicCalculation; selections.push(c.selected);
+    await route.fulfill({ json: { quote: { ...quote, calculation: c, paymentOption: c.selected, totalPaise: c.totalPaise, subtotalPaise: c.taxablePaise, taxPaise: c.taxPaise, payableNowPaise: c.payableNowPaise, balanceDuePaise: c.hotelBalancePaise, ratePlan: { ...quote.ratePlan, paymentMode: c.selected === "pay_at_property" ? "pay_at_property" : c.selected === "advance_online" ? "deposit" : "full" }, fingerprint: (c.selected === "full_online" ? "a" : c.selected === "advance_online" ? "b" : "c").repeat(64) } } });
+  });
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/checkout-fixture");
+    await expect(page.getByRole("radio", { name: "Pay in full online", exact: true })).toBeChecked();
+    await page.getByRole("radio", { name: "Pay an advance online", exact: true }).click();
+    await expect.poll(() => selections.at(-1)).toBe("advance_online");
+    await expect(page.getByRole("radio", { name: "Pay an advance online", exact: true })).toBeChecked();
+    await expect(page.getByText("₹550", { exact: true }).filter({ visible: true }).first()).toBeVisible();
+    await page.getByRole("radio", { name: "Pay at property", exact: true }).click();
+    await expect.poll(() => selections.at(-1)).toBe("pay_at_property");
+    await expect(page.getByRole("radio", { name: "Pay at property", exact: true })).toBeChecked();
+    await expect(page.getByText("₹0", { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  }
 });

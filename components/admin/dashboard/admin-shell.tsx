@@ -48,6 +48,7 @@ const adminNav = [
   { href: "/admin/privacy-requests", label: "Privacy Requests", icon: LockKeyhole, exact: false, disabled: false },
   { href: "/admin/aadhaar-lab", label: "Aadhaar Lab", icon: Fingerprint, exact: false, disabled: false },
   { href: "/admin/reviews", label: "Reviews", icon: MessageSquare, exact: false, disabled: false },
+  { href: "/admin/finance", label: "Finance", icon: WalletCards, exact: false, disabled: false },
   { href: "/admin/payments", label: "Payments", icon: WalletCards, exact: false, disabled: true },
   { href: "/admin/support", label: "Support", icon: Headphones, exact: false, disabled: true },
   { href: "/admin/settings", label: "Settings", icon: Settings, exact: false, disabled: true },

@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { seedTransactionFinance, transactionCancellation } from "./helpers/finance-emulator";
 const provider = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/providers/http", () => ({ providerFetch: provider }));
 
@@ -56,17 +57,19 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           "ratePlans",
           "roomTypes",
           "cancellationPolicies",
+          "verificationDocuments",
+          "propertyFinance",
         ]) {
           const records = await db
             .collection(c)
             .where("propertyId", "==", propertyId)
             .get();
-          for (const row of records.docs) await row.ref.delete();
+          for (const row of records.docs) await db.recursiveDelete(row.ref);
         }
         await db.recursiveDelete(db.collection("properties").doc(propertyId));
       }
     }, 30000);
-    async function fixture(paid = false, mixed = false) {
+    async function fixture(paid = false, mixed = false, pending = false) {
       const id = `stay_${crypto.randomUUID()}`;
       properties.push(id);
       const checkIn = new Date(Date.now() + 3 * 86400000)
@@ -75,6 +78,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       const checkOut = new Date(Date.now() + 4 * 86400000)
         .toISOString()
         .slice(0, 10);
+      await seedTransactionFinance(db, id, owner, paid);
       await db
         .collection("properties")
         .doc(id)
@@ -104,6 +108,9 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
         description: "Free cancellation",
         refundableUntilHours: 24,
         cancellationFeePercent: 0,
+        lateCharge: { kind: "fixed", amountPaise: 0 },
+        noShow: { kind: "fixed", amountPaise: 0 },
+        taxTreatmentReference: "transaction_cancellation_service:1",
       });
       await db
         .collection("ratePlans")
@@ -116,6 +123,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           basePricePaise: 100000,
           paymentMode: paid ? "deposit" : "pay_at_property",
           depositBasisPoints: 2500,
+          priceReview: { basis: "tax_exclusive", reviewedBy: owner, reviewedAt: "2026-01-01T00:00:00.000Z" },
           cancellationPolicyId: `${id}_policy`,
         });
       await db.collection("propertyMemberships").doc(`${id}_${owner}`).set({
@@ -154,7 +162,10 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
         .set({
           ...free,
           name: "Room decoration",
-          confirmation: "immediate",
+          confirmation: pending ? "approval" : "immediate",
+          taxCategory: "food",
+          priceEntryBasis: "tax_exclusive",
+          priceReview: { basis: "tax_exclusive", reviewedBy: owner, reviewedAt: "2026-01-01T00:00:00.000Z" },
           kind: "service",
           unitPricePaise: mixed ? 99999 : 20000,
           variants: mixed
@@ -164,30 +175,35 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
               ]
             : [],
         });
-      const input = {
+      const quoteInput = {
         propertySlug: id,
         roomTypeId: `${id}_room`,
         ratePlanId: `${id}_rate`,
         checkIn,
         checkOut,
         adults: 1,
+        paymentOption: paid ? "advance_online" as const : "pay_at_property" as const,
         paymentMethod: paid ? "online" : "pay_at_property",
         leadEmail: "guest@example.com",
         leadPhone: "+919876543210",
         adultGuestNames: ["Guest Name"],
-        travelerPreferences: ["Family"],
+        travelerPreferences: ["Family" as const],
         customizationSelections: [
           { offeringId: "pillows", variantId: null, quantity: 1 },
           {
             offeringId: "decoration",
             variantId: mixed ? "premium" : null,
             quantity: 1,
+            inputs: { serviceAt: `${checkIn}T15:00:00.000Z` },
           },
           ...(mixed
             ? [{ offeringId: "decoration", variantId: "simple", quantity: 1 }]
             : []),
         ],
       };
+      const quote = await bookings.quote(quoteInput);
+      const input = { ...quoteInput, expectedTotalPaise: quote.totalPaise,
+        quoteFingerprint: quote.fingerprint, termsAccepted: true };
       if (paid)
         provider.mockResolvedValueOnce(Response.json({ id: `order_${id}` }));
       const created = await bookings.createBooking("guest", input, id);
@@ -236,7 +252,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       };
       return { id, input, ref, created, body, free };
     }
-    it("snapshots extras, preserves the room deposit, and replays the same booking", async () => {
+    it("snapshots extras, preserves the configured fixed advance, and replays the same booking", async () => {
       const { input, ref, id } = await fixture(true, true);
       const b = (await ref.get()).data()!;
       expect(b).toMatchObject({
@@ -619,6 +635,8 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       );
       const offering = {
         ...input,
+        priceEntryBasis: "tax_exclusive",
+        taxCategory: "food",
         variants: [{ id: "stable", name: "Choice", unitPricePaise: 12345 }],
       };
       await stay.saveOffering(owner, id, {
@@ -720,7 +738,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
     }, 30000);
 
     async function upgradedFixture() {
-      const f = await fixture();
+      const f = await fixture(false, false, true);
       const b = (await f.ref.get()).data()!;
       await f.ref.update({
         totalPaise: 100000,
@@ -735,8 +753,23 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
           }),
         ),
       });
-      const requests = await import("@/lib/stay/requests"),
+      const requestService = await import("@/lib/stay/requests"),
         payments = await import("@/lib/stay/payments");
+      // Exercise real quote/accept services with explicitly reviewed finance terms.
+      const requests = { ...requestService, decideRequest: async (...args: Parameters<typeof requestService.decideRequest>) => {
+        const [actor, bookingId, raw, staff] = args;
+        const command = raw as Record<string, unknown>;
+        const booking = (await db.collection("bookings").doc(bookingId).get()).data()!;
+        const current = booking.customizations.find((r: { id: string }) => r.id === command.requestId);
+        const terms = staff && ["quote", "approve_price"].includes(String(command.action)) ? {
+          priceEntryBasis: "tax_exclusive", taxCategory: "food", serviceAt: booking.startAt,
+          cancellationTerms: transactionCancellation(booking.startAt),
+        } : command.action === "accept" ? {
+          expectedTotalPaise: current?.quote?.amountPaise,
+          quoteFingerprint: current?.quote?.fingerprint,
+        } : {};
+        return requestService.decideRequest(actor, bookingId, { ...terms, ...command }, staff);
+      } };
       const target = (
         (await f.ref.get()).get(
           "customizations",
@@ -826,7 +859,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)(
       expect(requestQuote.totalPaise).toBe(100000);
       const created = await bookings.createBooking(
         "guest",
-        { ...withRequest, quoteFingerprint: requestQuote.fingerprint },
+        { ...withRequest, expectedTotalPaise: requestQuote.totalPaise, quoteFingerprint: requestQuote.fingerprint },
         `unlisted_${f.id}`,
       );
       expect(

@@ -1,3 +1,4 @@
+import { financeTransaction } from "../finance/transaction";
 import { FieldValue, type Firestore, type DocumentReference, type Transaction, type WriteBatch } from "firebase-admin/firestore";
 import { backgroundMode } from "./config";
 export type DeliveryRecord = { collection: string; id: string };
@@ -54,7 +55,7 @@ export function withBackgroundDelivery(db: Firestore, delivery?: Delivery): Fire
       const committed = await target.runTransaction(async tx => {
         // Each SDK retry owns a fresh collection; only the committed callback's records escape.
         const records = new Map<string, DeliveryRecord>();
-        const value = await callback(writer(tx, records));
+        const value = await financeTransaction(target, writer(tx, records), callback);
         return { value, records };
       }, options);
       await deliver(committed.records); return committed.value;

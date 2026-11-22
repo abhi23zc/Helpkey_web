@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   validDate,
-  evaluateStay,
+  evaluateStayRules as evaluateStay,
   localParts,
   resolveLocal,
 } from "@/lib/booking/domain";
@@ -21,6 +21,7 @@ export const stayChangeInput = z.discriminatedUnion("action", [
       settlement: z.enum(["complimentary", "charge", "credit"]),
       adjustmentPaise: adjustment,
       reductionSourceId: z.string().max(200).optional(),
+      originalChargeLineId: z.string().min(1).max(1800).optional(),
     })
     .strict(),
   z
@@ -45,6 +46,7 @@ export const stayChangeInput = z.discriminatedUnion("action", [
       settlement: z.enum(["retain", "reduce"]),
       adjustmentPaise: adjustment,
       reductionSourceId: z.string().max(200).optional(),
+      originalChargeLineId: z.string().min(1).max(1800).optional(),
     })
     .strict(),
 ]);
@@ -110,6 +112,7 @@ export function extensionQuote(
     room,
     {
       ...rate,
+      taxBasisPoints: 0,
       customerFeePaise: 0,
       stayRules: {
         ...rate.stayRules,
@@ -172,6 +175,6 @@ export function extensionQuote(
   return {
     endAt: new Date(end).toISOString(),
     price: q,
-    adjustmentPaise: input.negotiatedPaise ?? q.totalPaise,
+    adjustmentPaise: input.negotiatedPaise ?? q.subtotalPaise,
   };
 }

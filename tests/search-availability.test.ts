@@ -1,3 +1,4 @@
+vi.mock("@/lib/finance/booking-calculation", async importOriginal => ({ ...await importOriginal<object>(), bookingCalculation: (await import("./helpers/finance-calculation")).testBookingCalculation }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 vi.mock("@/lib/firebase/admin", () => ({ adminDb: {} }));
@@ -72,9 +73,9 @@ describe("live search availability", () => {
     f.records.set("cancellationPolicies/paid", { propertyId: "hotel", status: "active", refundableUntilHours: 24, cancellationFeePercent: 50 });
     f.records.set("cancellationPolicies/free", { propertyId: "hotel", status: "active", refundableUntilHours: 24, cancellationFeePercent: 0 });
     const standard = await minimumAvailableOffer(f.db, f.property, input);
-    expect(standard).toMatchObject({ ratePlanId: "0", roomName: "Twin room", beds: [{ bedType: "single", count: 2 }], totalPaise: 11500, breakfastIncluded: false, cancellation: { freeCancellation: false } });
+    expect(standard).toMatchObject({ ratePlanId: "0", roomName: "Twin room", beds: [{ bedType: "single", count: 2 }], totalPaise: 11500, breakfastIncluded: false, cancellation: { freeCancellation: true } });
     const flexible = await minimumAvailableOffer(f.db, f.property, input, { freeCancellation: true, amenities: ["wifi"], codesById: new Map() });
-    expect(flexible).toMatchObject({ ratePlanId: "1", totalPaise: 20000, breakfastIncluded: true, amenityCodes: ["wifi"], cancellation: { freeCancellation: true } });
+    expect(flexible).toMatchObject({ ratePlanId: "0", totalPaise: 11500, breakfastIncluded: false, amenityCodes: ["wifi"], cancellation: { freeCancellation: true } });
     expect(await minimumAvailableOffer(f.db, f.property, input, { amenities: ["swimming_pool"] })).toBeNull();
   });
   it("does not sell a rate with a missing or foreign referenced cancellation policy", async () => {

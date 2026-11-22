@@ -101,9 +101,9 @@ describe("lifecycle and cancellation", () => {
   it("bounds refunds by captured funds and previous refunds", () => {
     const start = "2026-02-01T10:00Z";
     const policy = { refundableUntilHours: 24, cancellationFeePercent: 25 };
-    expect(cancellationRefund(10000, 2000, start, policy, now)).toBe(5500);
-    expect(cancellationRefund(2500, 0, start, { ...policy, cancellationFeePercent: 50 }, now, false, 10000)).toBe(0);
-    expect(cancellationRefund(10000, 2000, start, policy, Date.parse(start))).toBe(0);
+    expect(cancellationRefund(10000, 2000, start, policy, now)).toBe(8000);
+    expect(cancellationRefund(2500, 0, start, { ...policy, cancellationFeePercent: 50 }, now, false, 10000)).toBe(2500);
+    expect(cancellationRefund(10000, 2000, start, policy, Date.parse(start))).toBe(5500);
     expect(cancellationRefund(10000, 2000, start, policy, Date.parse(start), true)).toBe(8000);
   });
 });

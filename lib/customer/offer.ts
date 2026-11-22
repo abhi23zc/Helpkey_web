@@ -15,7 +15,7 @@ export function cancellationTerms(policy: Record<string, unknown> | null | undef
   const valid = Number.isInteger(hours) && Number(hours) >= 0 && Number.isInteger(fee) && Number(fee) >= 0 && Number(fee) <= 100;
   const deadlineMs = valid ? Date.parse(startAt) - Number(hours) * 3600_000 : NaN;
   const deadline = Number.isFinite(deadlineMs) ? new Date(deadlineMs).toISOString() : null;
-  return { freeCancellation: !!deadline && fee === 0 && now <= deadlineMs, deadline, feePercent: valid ? Number(fee) : null, name: typeof policy?.name === "string" ? policy.name : null };
+  return { freeCancellation: !!deadline && now <= deadlineMs, deadline, feePercent: valid ? Number(fee) : null, name: typeof policy?.name === "string" ? policy.name : null };
 }
 
 export function cancellationLabel(terms: CancellationTerms, timezone: string, now = Date.now()) {

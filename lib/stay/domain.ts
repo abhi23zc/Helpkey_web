@@ -1,3 +1,5 @@
+import { cancellationRefundV2, type calculateAgreement } from "@/lib/finance/calculation";
+import { hotelCollectionTotal } from "./hotel-collections";
 import { resolveResponse, responseLimit, needsResponseText } from "./response";
 import { includedOffering } from "./inclusions";
 import { billableUnits, type PricingContext, variantPrice } from "./pricing";
@@ -245,10 +247,13 @@ export function stayFinancials(data: {
   customizationCreditPaise?: number;
   billingNetPaise?: number;
   bookingStatus?: string;
+  customizations?: Parameters<typeof hotelCollectionTotal>[0];
 }) {
+  const hotelServicesPaise = hotelCollectionTotal(data.customizations);
   const effectiveTotalPaise = Math.max(
     0,
-    (data.totalPaise ?? 0) - (data.customizationCreditPaise ?? 0) + (data.billingNetPaise ?? 0),
+    (data.totalPaise ?? 0) - (data.customizationCreditPaise ?? 0) +
+      (data.billingNetPaise ?? 0) + hotelServicesPaise,
   );
   const netPaidPaise = Math.max(
     0,
@@ -299,11 +304,14 @@ export function remainingCancellationRefund(
     totalPaise?: number;
     startAt?: string;
     checkIn: string;
+    calculation?: ReturnType<typeof calculateAgreement>["publicCalculation"];
     cancellationPolicy?: Parameters<typeof cancellationRefund>[3];
   },
   now: number,
   partnerCaused: boolean,
+  noShow = false,
 ) {
+  if (data.calculation?.version === 2 && !partnerCaused) return cancellationRefundV2(data.calculation, data.paidPaise ?? 0, (data.refundedPaise ?? 0) + (data.refundDuePaise ?? 0), now, noShow);
   const credit = data.customizationCreditPaise ?? 0;
   return cancellationRefund(
     Math.max(0, (data.paidPaise ?? 0) - credit),

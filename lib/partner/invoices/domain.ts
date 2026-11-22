@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { hotelCollectionRequests } from "@/lib/stay/hotel-collections";
+import { gstinSchema } from "@/lib/finance/identity";
 import type { BillingEntry } from "../billing/domain";
 import type { RecordData } from "../dashboard/domain";
 const text = z.string().trim().min(1).max(500);
@@ -9,9 +11,7 @@ const indianStateCode = z
     /^(0[1-9]|[12][0-9]|3[0-8]|97)$/,
     "Use a supported Indian state/territory code. Foreign supplies are unavailable.",
   );
-const gstin = z
-  .string()
-  .regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/);
+const gstin = gstinSchema;
 export const identity = z
   .object({
     name: text,
@@ -178,6 +178,11 @@ export function documentSources(
       amountPaise: r.status === "declined" ? 0 : r.totalPaise,
     })),
     ...groups.values(),
+    ...hotelCollectionRequests<RecordData>(b.customizations ?? []).map((r) => ({
+      id: `service:${r.id}:${r.quote.version}`,
+      description: r.name || "Hotel-collected service",
+      amountPaise: r.quote.amountPaise,
+    })),
   ];
   const linked = new Map<string, number>();
   for (const e of entries.filter((e) => e.reductionSourceId))

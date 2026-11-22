@@ -2,6 +2,7 @@
 import { PartnerDatePicker } from "./partner-date-picker";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api/client";
 import { requestJson } from "@/lib/partner/upload-client";
 import { formatPaise } from "@/lib/currency";
 import { DurationPriceEditor } from "@/components/partner/duration-price-editor";
@@ -437,6 +438,7 @@ export function RoomsOperations({
       setQuickCleaningId(null);
     }
   };
+  const priceContext = useQuery({ queryKey: ["price-context", propertyId], queryFn: () => apiFetch<{ basis: "tax_exclusive" | "tax_inclusive" }>(`/api/partner/properties/${propertyId}/price-context`) });
   const previewBulk = () =>
     perform(async () => {
       const count = (Date.parse(to) - Date.parse(from)) / 86400000 + 1;
@@ -444,6 +446,7 @@ export function RoomsOperations({
         throw new Error("Select a range of 1–31 days.");
       if (operation.includes("price") && !selectedRate)
         throw new Error("Select a rate plan.");
+      if (operation.includes("price") && !priceContext.data) throw new Error("Load current price basis before reviewing date prices.");
       const cells = Array.from({ length: count }, (_, i) => ({
         roomTypeId: roomId,
         date: shiftDate(from, i),
@@ -451,6 +454,7 @@ export function RoomsOperations({
           ? { stopSell: operation === "stop" }
           : {
               ratePlanId: rateId,
+              priceEntryBasis: priceContext.data?.basis,
               ...(operation === "clear-price"
                 ? { clearPrice: true }
                 : selectedRate?.bookingMode === "hourly"
@@ -476,7 +480,7 @@ export function RoomsOperations({
           }[];
         },
       );
-    }, "Review the changes before confirming.");
+    }, `Review date prices ${priceContext.data?.basis === "tax_inclusive" ? "including tax" : "before tax"} before confirming.`);
   const prettyPrice = (rate: ListingRatePlan, date: string) => {
     const override = data.prices.find(
       (p) => p.ratePlanId === rate.id && p.date === date,

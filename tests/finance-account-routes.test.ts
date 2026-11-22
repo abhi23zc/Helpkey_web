@@ -1,0 +1,21 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiException } from "@/lib/api/errors";
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), access: vi.fn(), read: vi.fn(), mutate: vi.fn(), transactions: vi.fn(), configuration: vi.fn() }));
+vi.mock("@/lib/auth/session", () => ({ getAuthenticatedUser: mocks.auth }));
+vi.mock("@/lib/partner/pms/route-access", () => ({ authorizePartnerRequest: mocks.access }));
+vi.mock("@/lib/finance/account-service", () => ({ readAccount: mocks.read, mutateAccount: mocks.mutate, accountTransactions: mocks.transactions, readAccountConfiguration: mocks.configuration }));
+import { GET as adminGET } from "@/app/api/admin/finance/accounts/route";
+import { POST as adminPOST } from "@/app/api/admin/finance/accounts/commands/route";
+import { GET as ownerGET } from "@/app/api/partner/properties/[propertyId]/finance/account/route";
+import { GET as ownerTransactions } from "@/app/api/partner/properties/[propertyId]/finance/account/transactions/route";
+const context = { params: Promise.resolve({ propertyId: "hotel" }) };
+const request = (path: string, body?: unknown) => new Request(`http://localhost${path}`, body ? { method: "POST", headers: { origin: "http://localhost", host: "localhost", "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+beforeEach(() => { vi.clearAllMocks(); mocks.auth.mockResolvedValue({ uid: "owner" }); mocks.access.mockResolvedValue(undefined); mocks.read.mockResolvedValue({ contractVersion: 3, accountRevision: 1 }); mocks.mutate.mockResolvedValue({ revision: 2 }); mocks.transactions.mockResolvedValue({ transactions: [], nextCursor: null }); });
+describe("hotel account HTTP boundaries", () => {
+  it("requires strict authentication before loading account state", async () => { mocks.auth.mockResolvedValue(null); expect((await ownerGET(request("/api/partner/properties/hotel/finance/account"), context)).status).toBe(401); expect(mocks.read).not.toHaveBeenCalled(); });
+  it("applies owner finance middleware before private reads", async () => { mocks.access.mockRejectedValue(new ApiException("FORBIDDEN", 403)); expect((await ownerGET(request("/api/partner/properties/hotel/finance/account"), context)).status).toBe(403); expect(mocks.read).not.toHaveBeenCalled(); });
+  it("takes owner property scope from route params, never a query override", async () => { const response = await ownerGET(request("/api/partner/properties/hotel/finance/account?propertyId=another"), context); expect(response.status).toBe(200); expect(mocks.read).toHaveBeenCalledWith("owner", "hotel", false); expect(response.headers.get("Cache-Control")).toContain("private"); });
+  it("routes Admin account reads and commands with Admin transaction checks", async () => { await adminGET(request("/api/admin/finance/accounts?propertyId=hotel"), { params: Promise.resolve({}) }); expect(mocks.read).toHaveBeenCalledWith("owner", "hotel", true); await adminPOST(request("/api/admin/finance/accounts/commands?propertyId=hotel", { action: "hold" }), { params: Promise.resolve({}) }); expect(mocks.mutate).toHaveBeenCalledWith("owner", "hotel", { action: "hold" }); });
+  it("forwards transaction cursors through the authorized property scope", async () => { await ownerTransactions(request("/api/partner/properties/hotel/finance/account/transactions?cursor=example"), context); expect(mocks.transactions).toHaveBeenCalledWith("owner", "hotel", false, "example"); });
+  it("checks CSRF before any Admin command", async () => { const response = await adminPOST(new Request("http://localhost/api/admin/finance/accounts/commands?propertyId=hotel", { method: "POST", headers: { origin: "https://attacker.example", host: "localhost" }, body: "{}" }), context); expect(response.status).toBe(403); expect(mocks.mutate).not.toHaveBeenCalled(); });
+});

@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { paymentOptionSchema } from "@/lib/finance/calculation";
 import { selectionsSchema, travelerPreferencesSchema, unlistedRequestSchema } from "@/lib/stay/contracts";
 import { validDate } from "./domain";
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 export const bookingInput = z.object({
+  paymentOption: paymentOptionSchema.optional(),
   unlistedRequests: z.array(unlistedRequestSchema).max(5).optional().default([]),
   customizationSelections: selectionsSchema.optional().default([]),
   travelerPreferences: travelerPreferencesSchema.optional().default([]),
@@ -21,8 +23,8 @@ export const bookingInput = z.object({
 });
 
 export const createBookingInput = bookingInput.extend({
-  expectedTotalPaise: z.number().int().nonnegative().optional(),
-  quoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  expectedTotalPaise: z.number().int().nonnegative(),
+  quoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   paymentMethod: z.enum(["online", "pay_at_property"]),
   leadEmail: z.string().trim().email(),
   leadPhone: z.string().regex(/^\+91[6-9]\d{9}$/),
@@ -37,10 +39,7 @@ export const createBookingInput = bookingInput.extend({
   }).optional(),
   specialRequest: z.string().trim().max(1000).optional().default(""),
   billing: z.object({ legalName: z.string().trim().min(2).max(160), gstin: z.string().trim().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/), address: z.object({ line1: z.string().trim().min(3).max(180), city: z.string().trim().min(2).max(100), state: z.string().trim().min(2).max(100), postalCode: z.string().regex(/^\d{6}$/) }) }).nullable().default(null),
-  // Older checkout tabs can remain open through a deployment. Treat their
-  // already-rendered confirmation action as consent rather than rejecting a
-  // valid reservation with an opaque 422; current UI still requires the box.
-  termsAccepted: z.boolean().optional().default(true),
+  termsAccepted: z.literal(true),
 });
 
 export const paymentVerificationInput = z.object({

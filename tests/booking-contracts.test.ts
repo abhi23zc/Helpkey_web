@@ -28,7 +28,7 @@ describe("booking compatibility and hourly links", () => {
     const result = createBookingInput.parse({
       ...base,
       checkOut: "2026-10-22",
-      paymentMethod: "pay_at_property",
+      expectedTotalPaise: 10000, quoteFingerprint: "a".repeat(64), paymentMethod: "pay_at_property",
       leadEmail: "guest@example.com",
       leadPhone: "+919876543210",
       adultGuestNames: ["Staying Guest", "Second Guest"],
@@ -41,7 +41,7 @@ describe("booking compatibility and hourly links", () => {
     expect(createBookingInput.safeParse({
       ...base,
       checkOut: "2026-10-22",
-      paymentMethod: "pay_at_property",
+      expectedTotalPaise: 10000, quoteFingerprint: "a".repeat(64), paymentMethod: "pay_at_property",
       leadEmail: "guest@example.com",
       leadPhone: "+919876543210",
       adultGuestNames: ["Staying Guest", "Second Guest"],

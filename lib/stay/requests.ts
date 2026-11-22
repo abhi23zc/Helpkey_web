@@ -1,7 +1,10 @@
+import { serviceCalculation } from "@/lib/finance/service-calculation";
+import { basisSchema, cancellationSchema, cancellationRefundV2 } from "@/lib/finance/calculation";
+import { financeFingerprint } from "@/lib/finance/booking-calculation";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
-import { StaySelectionError } from "./domain";
+import { StaySelectionError, stayFinancials } from "./domain";
 import "server-only";
 import { offersEnabled } from "./offers";
 import { createHash } from "node:crypto";
@@ -54,6 +57,13 @@ export function unlistedSnapshots(
 }
 const decision = z
   .object({
+    serviceAt: z.string().datetime().optional(),
+    priceEntryBasis: basisSchema.optional(),
+    taxCategory: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional(),
+    cancellationTerms: cancellationSchema.optional(),
+    collection: z.enum(["online", "hotel"]).optional(),
+    expectedTotalPaise: z.number().int().nonnegative().optional(),
+    quoteFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     revision: z.number().int().nonnegative(),
     requestId: z.string().min(1).max(1800),
     action: z.enum([
@@ -123,6 +133,7 @@ export async function decideRequest(
       updatedAt: new Date().toISOString(),
       response: input.response || r.response,
     };
+    let acceptedFinance: Awaited<ReturnType<typeof serviceCalculation>> | null = null;
     if (["decline", "reject"].includes(input.action)) {
       if (staff && !input.response)
         throw new Error("Explain why this request is declined.");
@@ -140,10 +151,15 @@ export async function decideRequest(
       };
     } else if (input.action === "accept") {
       const q = assertLiveQuote(r, input.quoteVersion ?? 0);
+      if (q.amountPaise > 0) {
+        if (!q.financeCharge || !q.calculation || input.expectedTotalPaise !== q.amountPaise || input.quoteFingerprint !== q.fingerprint) throw new Error("QUOTE_CHANGED");
+        acceptedFinance = await serviceCalculation(b.propertyId, r.id, q.financeCharge, b.timezone, tx, b.source === "manual_partner" ? "hotel_direct" : "marketplace");
+        if (financeFingerprint(acceptedFinance.publicCalculation) !== q.fingerprint) throw new Error("QUOTE_CHANGED");
+      }
       next = {
         ...next,
-        status: q.amountPaise === 0 ? "confirmed" : "requested",
-        settlement: q.amountPaise === 0 ? "included" : "awaiting_payment",
+        status: q.amountPaise === 0 || q.calculation?.selected === "pay_at_property" ? "confirmed" : "requested",
+        settlement: q.amountPaise === 0 ? "included" : q.calculation?.selected === "pay_at_property" ? "hotel_collection" : "awaiting_payment",
         quote: {
           ...q,
           status: "accepted",
@@ -199,21 +215,33 @@ export async function decideRequest(
         throw new Error(
           "Choose a quote expiry after now and no later than the service time or booked departure.",
         );
+      let quotedFinance: Awaited<ReturnType<typeof serviceCalculation>> | null = null;
+      let financeCharge: import("@/lib/finance/service-calculation").ServiceCharge | null = null;
+      if (amount > 0) {
+        if (!input.priceEntryBasis || !input.taxCategory || !input.cancellationTerms || !(input.serviceAt ?? r.inputs?.serviceAt)) throw new Error("SERVICE_FINANCE_TERMS_REQUIRED");
+        financeCharge = { enteredPaise: amount, basis: input.priceEntryBasis, category: input.taxCategory, serviceAt: (input.serviceAt ?? r.inputs?.serviceAt)!, cancellation: input.cancellationTerms, collection: input.collection ?? "online" };
+        if (Date.parse(financeCharge.serviceAt) < Math.max(Date.now(), Date.parse(b.startAt)) || Date.parse(financeCharge.serviceAt) >= Date.parse(b.endAt)) throw new Error("INVALID_SERVICE_DATE");
+        quotedFinance = await serviceCalculation(b.propertyId, r.id, financeCharge, b.timezone, tx, b.source === "manual_partner" ? "hotel_direct" : "marketplace");
+      }
       next = quotedPrice(next, {
+        ...(quotedFinance && financeCharge ? { calculation: quotedFinance.publicCalculation, financeCharge, fingerprint: financeFingerprint(quotedFinance.publicCalculation) } : {}),
         version: (r.quote?.version ?? 0) + 1,
-        amountPaise: amount,
+        amountPaise: quotedFinance?.publicCalculation.totalPaise ?? amount,
         scope,
         conditions:
           input.conditions ||
-          "Unfulfilled services are refunded in full if the booking is cancelled. All charges included.",
+          "See the separately accepted cancellation and collection terms.",
         expiresAt,
         status: "offered",
       });
     }
-    if (["approve_price", "quote"].includes(input.action) && offersEnabled()) next = { ...next, offerDraft: true };
+    if (["approve_price", "quote"].includes(input.action) && offersEnabled() && next.quote?.calculation?.selected !== "pay_at_property") next = { ...next, offerDraft: true };
     const revision = (b.stayRevision ?? 0) + 1;
+    const customizations = requests.map((r) => (r.id === next.id ? next : r));
+    if (acceptedFinance) tx.create(ref.collection("financialAgreements").doc(`service_${financeFingerprint({ requestId: r.id, version: next.quote!.version })}`), { ...acceptedFinance, requestId: r.id, quoteVersion: next.quote!.version, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp() });
     tx.update(ref, {
-      customizations: requests.map((r) => (r.id === next.id ? next : r)),
+      customizations,
+      balanceDuePaise: stayFinancials({ ...b, customizations }).balanceDuePaise,
       stayRevision: revision,
       updatedBy: uid,
       updatedAt: FieldValue.serverTimestamp(),
@@ -269,6 +297,7 @@ export function cancelQuotePayments(
   bookingId: string,
   propertyId: string,
   requests: StayRequest[],
+  partnerCaused = false,
 ) {
   return requests.map((r) => {
     if (
@@ -277,18 +306,20 @@ export function cancelQuotePayments(
       r.status === "fulfilled"
     )
       return r;
+    const refundPaise = r.quote.calculation && !partnerCaused ? cancellationRefundV2(r.quote.calculation, r.quote.amountPaise, 0, Date.now()) : r.quote.amountPaise;
+    if (!refundPaise) return r;
     queueQuoteRefund(
       tx,
       bookingId,
       propertyId,
       r.id,
       r.quote.paymentId,
-      r.quote.amountPaise,
+      refundPaise,
       r.offerId ? r.id : undefined,
     );
     return {
       ...r,
-      quote: { ...r.quote, paymentStatus: "refund_pending" as const },
+      quote: { ...r.quote, refundAmountPaise: refundPaise, paymentStatus: "refund_pending" as const },
     };
   });
 }

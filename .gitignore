@@ -18,6 +18,7 @@
 # next.js
 /.next/
 /.next-pms/
+/.next-finance-phase3/
 /out/
 
 # production

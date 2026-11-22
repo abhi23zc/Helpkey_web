@@ -1,3 +1,4 @@
+vi.mock("@/lib/finance/booking-calculation", async importOriginal => ({ ...await importOriginal<object>(), bookingCalculation: (await import("./helpers/finance-calculation")).testBookingCalculation }));
 import { datePriceId } from "@/lib/booking/date-prices";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { evaluateStay } from "@/lib/booking/domain";
@@ -55,7 +56,7 @@ describe("hotel detail contracts and evaluation", () => {
   it("matches authoritative stay math for every rate, including paise and deposits", async () => {
     const result = (await loadBookableProperty("garden", stay))!;
     const expected = evaluateStay(stay, settings, room, rate);
-    expect(result.rooms[0].rates.find(item => item.id === "flexible")).toMatchObject({ totalPaise: expected.totalPaise, subtotalPaise: expected.subtotalPaise, taxPaise: expected.taxPaise, customerFeePaise: 99, payableNowPaise: expected.payableNowPaise, balanceDuePaise: expected.balanceDuePaise, startAt: expected.startAt, endAt: expected.endAt, nights: 2 });
+    expect(result.rooms[0].rates.find(item => item.id === "flexible")).toMatchObject({ totalPaise: expected.totalPaise - 1, subtotalPaise: expected.subtotalPaise + 99, taxPaise: expected.taxPaise - 1, customerFeePaise: 99, payableNowPaise: expected.payableNowPaise, balanceDuePaise: expected.balanceDuePaise - 1, startAt: expected.startAt, endAt: expected.endAt, nights: 2 });
     expect(formatMoney(12345)).toBe("₹123.45");
     expect(result.expiresAt).toBe(Date.now() + 30_000);
     expect(result.ratePlanModes).toEqual({ flexible: "overnight", standard: "overnight" });
@@ -167,7 +168,7 @@ describe("Category 9 hourly public availability", () => {
     expect(config.hourlyDurations[0].prices).toEqual([{ hours: 4, pricePaise: 70000 }]);
     const result = (await loadBookableProperty("garden", { ...hourly, durationMinutes: 240 }))!;
     expect(result.hourlyDurations[0].prices).toEqual([{ hours: 4, pricePaise: 70000 }]);
-    expect(result.rooms[0].rates[0].subtotalPaise).toBe(70000);
+    expect(result.rooms[0].rates[0].subtotalPaise).toBe(70099);
     expect((await loadBookableProperty("garden", hourly))!.rooms).toEqual([]);
   });
   it("keeps valid configuration when an unpriced duration yields no offer", async () => {

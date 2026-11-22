@@ -1,3 +1,5 @@
+import { priceReview } from "@/lib/finance/tax-configuration";
+import { basisSchema } from "@/lib/finance/calculation";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess, propertyAccess } from "@/lib/partner/pms/access";
 import "server-only";
@@ -165,6 +167,7 @@ const cell = z
   .object({
     roomTypeId: id,
     ratePlanId: id.optional(),
+    priceEntryBasis: basisSchema.optional(),
     date,
     stopSell: z.boolean().optional(),
     clearPrice: z.boolean().optional(),
@@ -204,7 +207,7 @@ async function readBulk(
   await propertyAccess(uid, propertyId, "rates.manage", tx);
   const { cells } = bulkInput.parse(raw);
   const prop = await tx.get(adminDb.collection("properties").doc(propertyId));
-  const refs = cells.flatMap((c) => [
+  const refs = [adminDb.collection("financeConfiguration").doc("global"), adminDb.collection("propertyFinance").doc(propertyId), ...cells.flatMap((c) => [
     adminDb.collection("roomTypes").doc(c.roomTypeId),
     ...(c.ratePlanId
       ? [
@@ -212,7 +215,7 @@ async function readBulk(
           datePriceRef(propertyId, c.ratePlanId, c.date),
         ]
       : [calendarRef(propertyId, c.roomTypeId, c.date)]),
-  ]);
+  ])];
   const docs = await tx.getAll(
     ...[...new Map(refs.map((r) => [r.path, r])).values()],
   );
@@ -312,7 +315,8 @@ export async function bulk(uid: string, propertyId: string, raw: unknown) {
     const current = await readBulk(tx, uid, propertyId, { cells: p.cells });
     if (current.fingerprint !== p.fingerprint)
       throw new Error("DATA_CHANGED_PREVIEW_AGAIN");
-    for (const c of current.cells) {
+    const reviews = await Promise.all(current.cells.map(c => c.ratePlanId && !c.clearPrice ? priceReview(uid, propertyId, c.priceEntryBasis, tx) : Promise.resolve(null)));
+    for (const [index, c] of current.cells.entries()) {
       if (!c.ratePlanId)
         tx.set(
           calendarRef(propertyId, c.roomTypeId, c.date),
@@ -334,6 +338,7 @@ export async function bulk(uid: string, propertyId: string, raw: unknown) {
           roomTypeId: c.roomTypeId,
           ratePlanId: c.ratePlanId,
           date: c.date,
+          priceReview: reviews[index],
           ...(c.durationPrices
             ? { durationPrices: c.durationPrices }
             : { basePricePaise: c.basePricePaise }),
@@ -614,7 +619,7 @@ export async function pricingPreview(
   )
     throw new Error("RATE_NOT_AVAILABLE");
   const { withDatePrices } = await import("@/lib/booking/date-prices"),
-    { evaluateStay } = await import("@/lib/booking/domain");
+    { evaluateStayRules: evaluateStay } = await import("@/lib/booking/domain");
   const effective = await withDatePrices(
     propertyId,
     rate.id,
@@ -630,21 +635,12 @@ export async function pricingPreview(
     durationPrices.some(
       (p: { hours: number }) => p.hours * 60 === input.durationMinutes,
     );
-  return {
-    requestedDurationPriced,
-    ...evaluateStay(
-      requestedDurationPriced
-        ? input
-        : { ...input, durationMinutes: durationPrices[0]?.hours * 60 },
-      property.data()!,
-      room.data()!,
-      effective,
-    ),
-    durationPrices:
-      effective.datePrices[input.checkIn]?.durationPrices ||
-      rate.get("durationPrices") ||
-      [],
-  };
+  const stay = evaluateStay(requestedDurationPriced ? input : { ...input, durationMinutes: durationPrices[0]?.hours * 60 }, property.data()!, room.data()!, effective);
+  const policy = effective.cancellationPolicyId ? (await adminDb.collection("cancellationPolicies").doc(effective.cancellationPolicyId).get()).data() : null;
+  const { bookingCalculation, calculationTotals } = await import("@/lib/finance/booking-calculation");
+  const agreement = await bookingCalculation({ propertyId, rate: effective, stay, requests: [], offerings: [], policy, source: "hotel_direct" });
+  return { requestedDurationPriced, ...stay, ...calculationTotals(agreement.publicCalculation), durationPrices };
+
 }
 export async function roomHistory(
   uid: string,

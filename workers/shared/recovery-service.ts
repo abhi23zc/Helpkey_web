@@ -1,3 +1,4 @@
+import { recoverFinance } from "../../lib/finance/recovery";
 import Redis from "ioredis";
 import { randomUUID } from "node:crypto";
 import { db } from "../media/firebase";
@@ -34,6 +35,7 @@ void poll({ name: "background-recovery", redis, minimum: recoveryInterval(), max
       await controlWrite(progressKey, JSON.stringify(progress));
     } : undefined });
   await assertLeader();
+  await recoverFinance(db, assertLeader);
   if (rebuild && !result.failures.length) {
     await controlWrite(marker, generation ?? randomUUID());
     if (requested) await redis.eval("if redis.call('get',KEYS[1]) == ARGV[1] and redis.call('get',KEYS[2]) == ARGV[2] then return redis.call('del',KEYS[2]) else return 0 end", 2, lease.key, backgroundKey("rebuild-requested"), lease.owner, requested);

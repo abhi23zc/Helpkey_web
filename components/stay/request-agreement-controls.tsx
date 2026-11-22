@@ -38,6 +38,10 @@ export function RequestAgreementControls({
     [conditions, setConditions] = useState(""),
     [expiry, setExpiry] = useState(""),
     [quoting, setQuoting] = useState(false);
+  const [priceEntryBasis, setPriceEntryBasis] = useState("tax_exclusive");
+  const [taxCategory, setTaxCategory] = useState("");
+  const [serviceAt, setServiceAt] = useState("");
+  const [cancellationTerms, setCancellationTerms] = useState("");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -77,9 +81,12 @@ export function RequestAgreementControls({
             action,
             response,
             quoteVersion: q?.version,
+            ...(action === "accept" ? { quoteFingerprint: q?.fingerprint, expectedTotalPaise: q?.amountPaise } : {}),
             ...(action === "quote"
               ? {
                   amountPaise: Math.round(Number(amount) * 100),
+                  priceEntryBasis, taxCategory, cancellationTerms: JSON.parse(cancellationTerms),
+                  ...(serviceAt ? { serviceAt: hotelTimeIso(serviceAt, timezone) } : {}),
                   scope,
                   conditions,
                   ...(expiry
@@ -222,6 +229,7 @@ export function RequestAgreementControls({
             </p>
             <p>{q.scope}</p>
             <p>{q.conditions}</p>
+            {q.calculation && <p>Before tax {formatMoney(q.calculation.taxablePaise, currency)} · Tax {formatMoney(q.calculation.taxPaise, currency)} · Pay now {formatMoney(q.calculation.payableNowPaise, currency)} · At hotel {formatMoney(q.calculation.hotelBalancePaise, currency)} · Free cancellation until {q.calculation.cancellation.freeUntil}</p>}
             {!q.conditions
               .toLowerCase()
               .includes(
@@ -374,7 +382,7 @@ export function RequestAgreementControls({
                   {quoting && (
                     <div className="space-y-3 rounded-xl border border-[#c89b3c]/30 bg-white p-3.5 shadow-2xs">
                       <label className="block text-xs font-semibold text-[#061224]">
-                        Final price ({currency})
+                        Entered price ({currency}, {priceEntryBasis === "tax_inclusive" ? "including tax" : "before tax"})
                         <div className="relative mt-1">
                           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                             ₹
@@ -390,6 +398,10 @@ export function RequestAgreementControls({
                           />
                         </div>
                       </label>
+                      <label className="block text-xs">Reviewed price basis<select value={priceEntryBasis} onChange={e => setPriceEntryBasis(e.target.value)} className="block w-full rounded border p-2"><option value="tax_exclusive">Before tax</option><option value="tax_inclusive">Including tax</option></select></label>
+                      <label className="block text-xs">Admin service category<input value={taxCategory} onChange={e => setTaxCategory(e.target.value)} className="block w-full rounded border p-2" /></label>
+                      <label className="block text-xs">Fulfilment time ({timezone})<input type="datetime-local" value={serviceAt} onChange={e => setServiceAt(e.target.value)} className="block w-full rounded border p-2" /></label>
+                      <label className="block text-xs">Explicit cancellation terms (reviewed JSON)<textarea value={cancellationTerms} onChange={e => setCancellationTerms(e.target.value)} className="block w-full rounded border p-2" placeholder='{"freeUntil":"…","lateCharge":{"kind":"fixed","amountPaise":0},"noShow":{"kind":"fixed","amountPaise":0},"taxTreatmentReference":"…"}' /></label>
                       <label className="block text-xs font-semibold text-[#061224]">
                         Exact scope
                         <textarea

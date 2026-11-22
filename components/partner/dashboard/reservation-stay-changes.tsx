@@ -40,6 +40,7 @@ type Summary = {
   token: string;
 };
 type Options = {
+  reductionLines?: { sourceId: string; lineId: string; date: string; remainingPaise: number }[];
   reductionSources?: { id: string; description: string; amountPaise: number }[];
   capabilities: Record<string, boolean>;
   currentRoomTypeId?: string;
@@ -107,6 +108,7 @@ export function ReservationStayChanges({
     [reason, setReason] = useState(""),
     [departureNow, setDepartureNow] = useState(true),
     [negotiated, setNegotiated] = useState(false);
+  const [originalChargeLineId, setOriginalChargeLineId] = useState("");
   const [reductionSourceId, setReductionSourceId] = useState("booking");
   const [review, setReview] = useState<Summary | null>(null),
     [pending, setPending] = useState<Pending | null>(null),
@@ -176,6 +178,7 @@ export function ReservationStayChanges({
           unitId,
           settlement: settlement as "complimentary" | "charge" | "credit",
           reductionSourceId,
+          originalChargeLineId,
           adjustmentPaise:
             settlement === "complimentary"
               ? 0
@@ -209,6 +212,7 @@ export function ReservationStayChanges({
           departure,
           settlement: settlement as "retain" | "reduce",
           reductionSourceId,
+          originalChargeLineId,
           adjustmentPaise: settlement === "reduce" ? -paise : 0,
         };
       }
@@ -601,6 +605,8 @@ export function ReservationStayChanges({
             {((action === "category" && settlement === "credit") ||
               (action === "early_departure" && settlement === "reduce")) && (
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Saved charge line to reduce
+                <select className={selectClass} value={originalChargeLineId ? `${reductionSourceId}:${originalChargeLineId}` : ""} onChange={e => { const line = options.reductionLines?.find(l => `${l.sourceId}:${l.lineId}` === e.target.value); if (line) { setReductionSourceId(line.sourceId); setOriginalChargeLineId(line.lineId); } }}><option value="">Choose a saved charge line</option>{options.reductionLines?.map(l => <option key={`${l.sourceId}:${l.lineId}`} value={`${l.sourceId}:${l.lineId}`}>{l.date} · {formatPaise(l.remainingPaise)} remaining</option>)}</select>
                 Accommodation source to reduce
                 <div className="relative mt-1">
                   <select

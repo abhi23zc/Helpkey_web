@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { basisSchema, priceReviewSchema } from "@/lib/finance/calculation";
 
 export const offeringCategories = [
   "comfort",
@@ -152,6 +153,9 @@ export const selectionsSchema = z
   );
 export const offeringSchema = z
   .object({
+    priceEntryBasis: basisSchema.optional(),
+    taxCategory: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional(),
+    priceReview: priceReviewSchema.optional(),
     name: z.string().trim().min(2).max(120),
     description: z.string().trim().min(3).max(1500),
     kind: z.enum(["item", "service", "preference"]),
@@ -270,6 +274,10 @@ export type RequestStatus =
   | "declined"
   | "cancelled";
 export type RequestQuote = {
+  refundAmountPaise?: number;
+  calculation?: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"];
+  financeCharge?: import("@/lib/finance/service-calculation").ServiceCharge;
+  fingerprint?: string;
   version: number;
   amountPaise: number;
   scope: string;
@@ -299,6 +307,7 @@ export type StayRequest = {
     | "pending_hotel"
     | "awaiting_customer"
     | "awaiting_payment"
+    | "hotel_collection"
     | "paid";
 
   id: string;
@@ -337,6 +346,7 @@ export type PreCheckin = {
   submittedAt: string | null;
 };
 export type StayPaymentReceipt = {
+  refundAmountPaise?: number;
   requestId: string;
   quoteVersion: number;
   paymentId: string;

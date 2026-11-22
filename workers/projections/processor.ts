@@ -40,6 +40,8 @@ async function propertySearch(propertyId: string, requested: ProjectionComponent
     const rates = await all(db.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active"));
     const prices = rates.map(rate => startingPrice(rate.data())).filter((price): price is number => price !== null && Number.isSafeInteger(price) && price >= 0);
     update.minimumPricePaise = prices.length ? Math.min(...prices) : null;
+    const basis = rates.find(r => startingPrice(r.data()) === update.minimumPricePaise)?.get("priceReview")?.basis;
+    update.minimumPriceBasis = ["tax_exclusive", "tax_inclusive"].includes(basis) ? basis : null;
   }
   if (requested.includes("amenities")) {
     const rooms = await all(db.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active"));

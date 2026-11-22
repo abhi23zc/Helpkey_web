@@ -17,7 +17,7 @@ vi.mock("@/lib/api/request", () => ({
 }));
 vi.mock("@/lib/booking/domain", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/booking/domain")>(),
-  evaluateStay: () => ({
+  evaluateStayRules: () => ({
     startAt: "2026-10-25T11:00:00+05:30",
     timezone: "Asia/Kolkata",
     bookingMode: "hourly",

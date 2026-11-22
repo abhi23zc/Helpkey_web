@@ -992,6 +992,8 @@ function OfferingEditor({
   const [error, setError] = useState("");
   const [started, setStarted] = useState(Boolean(offering || draft));
   const formId = useId();
+  const priceContext = useQuery({ queryKey: ["price-context", propertyId], queryFn: () => apiFetch<{ basis: "tax_exclusive" | "tax_inclusive" }>(`/api/partner/properties/${propertyId}/price-context`) });
+  const [reviewedPriceBasis, setReviewedPriceBasis] = useState<"tax_exclusive" | "tax_inclusive" | null>(null);
   const [paid, setPaid] = useState(() => value.unitPricePaise > 0 || value.variants.some(v => (v.unitPricePaise ?? 0) > 0));
   const savedPrices = useRef({ unitPricePaise: value.unitPricePaise, variants: value.variants, pricingUnit: value.pricingUnit });
   const [reviewed, setReviewed] = useState(true);
@@ -1074,7 +1076,8 @@ function OfferingEditor({
             setError("Wait for the image upload to complete.");
             return;
           }
-          let candidate = value;
+          if (paid && (!priceContext.data || reviewedPriceBasis !== priceContext.data.basis)) { setError("Review and re-enter all prices in the current basis before saving."); return; }
+          let candidate = { ...value, ...(paid ? { priceEntryBasis: priceContext.data!.basis } : {}) };
           if (value.responseConfig && !["single", "multiple"].includes(value.responseConfig.responseType) && value.variants.length) {
             if (!window.confirm("Saving this response type will remove the configured options and their prices. Continue?")) return;
             candidate = { ...value, variants: [] };
@@ -1095,6 +1098,7 @@ function OfferingEditor({
         }}
         className={!started ? "flex flex-1 flex-col min-h-0" : "space-y-4"}
       >
+        {started && paid && <section className="space-y-2 rounded-xl border p-4"><p>Price entry: {priceContext.data?.basis === "tax_inclusive" ? "including tax" : "before tax"}. Existing amounts need review after a basis change.</p><label className="block">Tax service category<input className="block w-full rounded border p-2" value={value.taxCategory ?? ""} onChange={e => patch({ taxCategory: e.target.value })} placeholder="Admin category identifier" /></label><label className="flex gap-2"><input type="checkbox" checked={!!priceContext.data && reviewedPriceBasis === priceContext.data.basis} onChange={e => setReviewedPriceBasis(e.target.checked ? priceContext.data?.basis ?? null : null)} />I reviewed and re-entered every default and variant price in this basis.</label></section>}
         {!started && (
           <div className="flex flex-1 flex-col min-h-0 pb-1">
             <TemplateLibrary

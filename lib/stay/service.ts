@@ -1,3 +1,5 @@
+import { reverseCommission, reverseLine, type ChargeLine } from "@/lib/finance/calculation";
+import { priceReview } from "@/lib/finance/tax-configuration";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
@@ -110,8 +112,12 @@ export async function saveOffering(
         previous,
       ),
     );
+    const hasPrice = saved.unitPricePaise > 0 || saved.variants.some(v => (v.unitPricePaise ?? 0) > 0);
+    const reviewedPrice = hasPrice ? await priceReview(uid, propertyId, saved.priceEntryBasis, tx) : null;
+    if (hasPrice && !saved.taxCategory) throw new Error("MISSING_SERVICE_CATEGORY");
     tx.set(ref, {
       ...saved,
+      ...(reviewedPrice ? { priceReview: reviewedPrice } : {}),
       category:
         saved.category ??
         previous?.category ??
@@ -476,14 +482,15 @@ export async function updateStayRequest(
       throw new Error("Explain why this request is declined.");
     if (
       target.agreementVersion === 2 &&
-      !["included", "paid"].includes(target.settlement ?? "")
+      !["included", "paid", "hotel_collection"].includes(target.settlement ?? "")
     )
       throw new Error(
         "Use the request decision controls to approve or quote this request.",
       );
     const supplementalRefund = input.status === "declined" && target.settlement === "paid" && target.quote?.paymentStatus === "paid" && target.quote.paymentId;
     if (supplementalRefund) queueQuoteRefund(tx, bookingId, b.propertyId, target.id, target.quote!.paymentId!, target.quote!.amountPaise, target.offerId ? target.id : undefined);
-    const credit = input.status === "declined" && !supplementalRefund ? target.totalPaise : 0;
+    const acceptedLine = b.calculation?.lines.find((l: ChargeLine) => l.id === `extra:${target.id}`) as ChargeLine | undefined;
+    const credit = input.status === "declined" && !supplementalRefund && target.settlement !== "hotel_collection" ? acceptedLine?.totalPaise ?? target.totalPaise : 0;
     if ((b.totalPaise ?? 0) - (b.customizationCreditPaise ?? 0) + (b.billingNetPaise ?? 0) - credit < 0) throw new Error("Billing review required: ask an owner or manager to review hotel credits before declining this booked extra.");
     const refund = credit > 0 && b.paymentMethod === "online" ? credit : 0;
     if (
@@ -496,6 +503,12 @@ export async function updateStayRequest(
         "Payment reconciliation is required before declining this paid request.",
       );
     const revision = input.revision + 1;
+    if (credit > 0 && acceptedLine) {
+      const original = await tx.get(ref.collection("financialAgreements").doc("original"));
+      const commission = original.get("internal.commission")?.find((c: { lineId: string }) => c.lineId === acceptedLine.id)?.amountPaise ?? 0;
+      const reduced = reverseLine(acceptedLine, credit);
+      tx.create(ref.collection("financialAdjustments").doc(`extra_${encodeURIComponent(target.id).slice(0, 1000)}`), { ...reduced, internalCommissionReversalPaise: reverseCommission(acceptedLine, commission, reduced), originalAgreementId: "original", acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), reason: "Booked extra declined" });
+    }
     if (refund)
       tx.create(
         adminDb

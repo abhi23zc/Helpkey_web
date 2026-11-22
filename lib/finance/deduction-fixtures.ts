@@ -1,0 +1,5 @@
+import type { DeductionRule } from "./assessments";
+/** Deliberately synthetic zero-deduction examples, never a source of production law. */
+export function syntheticDeductionRules(): DeductionRule[] {
+  return ([ ["room", "checkout"], ["room", "retention"], ["extra", "fulfilment"], ["extra", "retention"], ["service", "fulfilment"], ["service", "retention"] ] as const).map(([category, recognitionEvent]) => ({ id: `synthetic_${category}_${recognitionEvent}`, version: 1, title: `Synthetic ${category} ${recognitionEvent}`, legalReference: "SYNTHETIC ONLY: reviewed no-deduction development example; no legal authority", synthetic: true, category, recognitionEvent, base: "taxable", outcome: "not_applicable", calculation: { kind: "fixed", amountPaise: 0 }, rounding: "half_up_paise", effectiveFrom: "2026-01-01", effectiveThrough: "2030-12-31", applicability: { jurisdictions: ["example"], registrations: ["registered", "unregistered", "composition", "exempt"], propertyIds: [], legalParticipant: "hotel_pan" }, threshold: null, correction: "reverse_saved" }));
+}
