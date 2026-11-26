@@ -37,8 +37,12 @@
     "**/*.mts",
     ".next-pms/types/**/*.ts",
     ".next-pms/dev/types/**/*.ts",
-    ".next-finance-phase3/types/**/*.ts",
-    ".next-finance-phase3/dev/types/**/*.ts"
+    ".next-finance-settings-dev/types/**/*.ts",
+    ".next-finance-settings-dev/dev/types/**/*.ts",
+    ".next-finance-settings-build/types/**/*.ts",
+    ".next-finance-settings-build/dev/types/**/*.ts",
+    ".next-accounting-build/types/**/*.ts",
+    ".next-accounting-build/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -1,4 +1,3 @@
-import { bookingCalculation, calculationTotals } from "@/lib/finance/booking-calculation";
 import { datePriceId, priceDates } from "./date-prices";
 import "server-only";
 import type { Firestore, QueryDocumentSnapshot, DocumentReference } from "firebase-admin/firestore";
@@ -15,7 +14,7 @@ export type OfferOptions = {
   preloaded?: { rates: FirebaseFirestore.QueryDocumentSnapshot[]; rooms: Documents; policies: Documents };
 };
 
-const unavailable = new Set(["UNSUPPORTED_CANCELLATION_TAX_TREATMENT", "SUPPLIER_TAX_PROFILE_REQUIRED", "PRICE_REVIEW_REQUIRED", "MISSING_TAX_COVERAGE", "AMBIGUOUS_TAX_COVERAGE", "PROFILE_REVIEW_REQUIRED", "CANCELLATION_TERMS_REQUIRED", "MISSING_SERVICE_DATE", "NO_PAYMENT_OPTIONS", "INVALID_DOCUMENT","CHILDREN_NOT_ALLOWED", "STAY_LENGTH_NOT_ALLOWED", "ROOM_CAPACITY_EXCEEDED", "RATE_NOT_AVAILABLE", "BOOKING_MODE_NOT_AVAILABLE", "CHECK_IN_IN_PAST", "ARRIVAL_TOO_FAR_AHEAD", "ARRIVAL_WEEKDAY_NOT_ALLOWED", "OUTSIDE_ARRIVAL_WINDOW", "OUTSIDE_OPERATING_WINDOW", "MIDNIGHT_CROSSING_NOT_ALLOWED", "RATE_DURATION_MISMATCH", "DURATION_NOT_PRICED", "WHOLE_HOUR_DURATION_REQUIRED", "INVALID_DURATION_PRICES", "INVALID_RATE_CONFIGURATION", "INVALID_MONEY", "INVALID_LOCAL_TIME", "AMBIGUOUS_LOCAL_TIME", "NONEXISTENT_LOCAL_TIME"]);
+const unavailable = new Set(["CHILDREN_NOT_ALLOWED", "STAY_LENGTH_NOT_ALLOWED", "ROOM_CAPACITY_EXCEEDED", "RATE_NOT_AVAILABLE", "BOOKING_MODE_NOT_AVAILABLE", "CHECK_IN_IN_PAST", "ARRIVAL_TOO_FAR_AHEAD", "ARRIVAL_WEEKDAY_NOT_ALLOWED", "OUTSIDE_ARRIVAL_WINDOW", "OUTSIDE_OPERATING_WINDOW", "MIDNIGHT_CROSSING_NOT_ALLOWED", "RATE_DURATION_MISMATCH", "DURATION_NOT_PRICED", "WHOLE_HOUR_DURATION_REQUIRED", "INVALID_DURATION_PRICES", "INVALID_RATE_CONFIGURATION", "INVALID_MONEY", "INVALID_LOCAL_TIME", "AMBIGUOUS_LOCAL_TIME", "NONEXISTENT_LOCAL_TIME"]);
 
 export function isUnavailableOfferError(error: unknown) {
   return error instanceof Error && (unavailable.has(error.message) || ["SOLD_OUT_FOR_DATES", "PROPERTY_NOT_AVAILABLE", "ROOM_NOT_AVAILABLE", "INVENTORY_CUTOVER_REQUIRED"].includes(error.message));
@@ -53,8 +52,7 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
     const roomData = room?.data();
     if (!room?.exists || !roomData || roomData.propertyId !== property.id || roomData.status !== "active") return [];
     try {
-      const pricedRate = { ...rate.data(), taxBasisPoints: 0, datePrices: Object.fromEntries(overrideDates.flatMap(date => { const doc = datePrices.get(`rateDatePrices/${datePriceId(property.id, rate.id, date)}`); return doc?.exists ? [[date, doc.data()!]] : []; })) };
-      const stay = evaluateStay(input, settings, roomData, pricedRate, now);
+      const stay = evaluateStay(input, settings, roomData, { ...rate.data(), datePrices: Object.fromEntries(overrideDates.flatMap(date => { const doc = datePrices.get(`rateDatePrices/${datePriceId(property.id, rate.id, date)}`); return doc?.exists ? [[date, doc.data()!]] : []; })) }, now);
       const policy = policies.get(`cancellationPolicies/${rate.get("cancellationPolicyId")}`)?.data();
       if (rate.get("cancellationPolicyId") && (!policy || policy.status !== "active" || policy.propertyId !== property.id)) return [];
       const terms = cancellationTerms(policy?.status === "active" && policy.propertyId === property.id ? policy : null, stay.startAt, now);
@@ -66,7 +64,7 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
       const offer: SearchOffer = {
         roomTypeId: room.id, ratePlanId: rate.id, roomName: typeof roomData.name === "string" ? roomData.name : null,
         beds: Array.isArray(roomData.bedConfigurations) ? roomData.bedConfigurations.filter((bed: { bedType?: unknown; count?: unknown }) => typeof bed.bedType === "string" && Number.isInteger(bed.count) && Number(bed.count) > 0).map((bed: { bedType: string; count: number }) => ({ bedType: bed.bedType, count: bed.count })) : [],
-        amenityCodes, payableNowPaise: 0, balanceDuePaise: stay.subtotalPaise, totalPaise: stay.subtotalPaise, subtotalPaise: stay.subtotalPaise, taxPaise: 0, customerFeePaise: 0,
+        amenityCodes, payableNowPaise: stay.payableNowPaise, balanceDuePaise: stay.balanceDuePaise, totalPaise: stay.totalPaise, subtotalPaise: stay.subtotalPaise, taxPaise: stay.taxPaise, customerFeePaise: stay.customerFeePaise,
         breakfastIncluded: rate.get("breakfastIncluded") === true, cancellation: terms,
         startAt: stay.startAt, endAt: stay.endAt, timezone: stay.timezone, nights: stay.nights, durationMinutes: stay.durationMinutes, bookingMode: stay.bookingMode, validUntil,
       };
@@ -77,7 +75,7 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
       for (let date = Date.parse(`${stay.checkIn}T00:00Z`), end = Date.parse(`${stay.checkOut}T00:00Z`); date < end; date += 86400_000) dates.push(new Date(date).toISOString().slice(0, 10));
       const refs = (settings.inventoryEngine === "interval_v1" ? allocations.map(item => item.date) : dates)
         .map(date => db.collection(settings.inventoryEngine === "interval_v1" ? "inventoryCalendars" : "roomNightInventory").doc(`${property.id}_${room.id}_${date}`));
-      return [{ stay, capacity, allocations, refs, offer, pricedRate: { ...pricedRate, taxBasisPoints: rate.get("taxBasisPoints") }, policy }];
+      return [{ stay, capacity, allocations, refs, offer }];
     } catch (error) {
       if (error instanceof Error && unavailable.has(error.message)) return [];
       throw error;
@@ -91,14 +89,7 @@ export async function availableOffers(db: Firestore, property: QueryDocumentSnap
     const available = settings.inventoryEngine === "interval_v1"
       ? hasCapacity(candidate.allocations, calendars, candidate.capacity)
       : calendars.every(calendar => (typeof calendar.reserved === "number" && Number.isFinite(calendar.reserved) ? calendar.reserved : 0) < candidate.capacity);
-    if (available && candidate.offer.validUntil > Date.now()) {
-      try {
-        const agreement = await bookingCalculation({ propertyId: property.id, rate: candidate.pricedRate, stay: candidate.stay, requests: [], offerings: [], policy: candidate.policy });
-        offers.push({ ...candidate.offer, ...calculationTotals(agreement.publicCalculation) });
-      } catch (error) {
-        if (!(error instanceof Error) || !unavailable.has(error.message)) throw error;
-      }
-    }
+    if (available && candidate.offer.validUntil > Date.now()) offers.push(candidate.offer);
   }
   console.info(JSON.stringify({ event: "offers.evaluate", durationMs: Date.now() - started, candidateRates: candidates.length, availableRates: offers.length, inventoryDocumentsRead: inventory.size }));
   return offers.sort((a, b) => a.totalPaise - b.totalPaise || `${a.roomTypeId}:${a.ratePlanId}`.localeCompare(`${b.roomTypeId}:${b.ratePlanId}`));

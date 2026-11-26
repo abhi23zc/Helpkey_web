@@ -1,5 +1,3 @@
-import { bookingCalculation, calculationTotals } from "@/lib/finance/booking-calculation";
-import { reverseCommission, reverseLine, type ChargeLine, type LineReversal } from "@/lib/finance/calculation";
 import { amendmentRestriction } from "./action-rules";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess } from "@/lib/partner/pms/access";
@@ -13,7 +11,7 @@ import { ApiException } from "@/lib/api/errors";
 import { invalidatePublic } from "@/lib/api/cache";
 import {
   allocateIntervals,
-  evaluateStayRules as evaluateStay,
+  evaluateStay,
   validDate,
   type Allocation,
 } from "@/lib/booking/domain";
@@ -117,8 +115,7 @@ async function readAmendment(
     throw new ApiException("RATE_NOT_AVAILABLE", 409);
   if (!hold || hold.status !== "committed" || !Array.isArray(hold.allocations))
     throw new ApiException("INVENTORY_ALLOCATION_MISSING", 409);
-  const pricedRate = await withDatePrices(b.propertyId, input.ratePlanId, rate, { ...input, bookingMode: b.bookingMode || "overnight" }, tx);
-  const schedule = evaluateStay(
+  const current = evaluateStay(
     {
       ...input,
       bookingMode: b.bookingMode || "overnight",
@@ -128,7 +125,7 @@ async function readAmendment(
     },
     p,
     room,
-    { ...pricedRate, taxBasisPoints: 0 },
+    await withDatePrices(b.propertyId, input.ratePlanId, rate, { ...input, bookingMode: b.bookingMode || "overnight" }, tx),
   );
   const policy = rate.cancellationPolicyId
     ? (
@@ -146,19 +143,6 @@ async function readAmendment(
       policy.status !== "active")
   )
     throw new ApiException("RATE_NOT_AVAILABLE", 409);
-  const agreement = await bookingCalculation({ propertyId: b.propertyId, rate: pricedRate, stay: schedule, requests: [], offerings: [], policy, source: b.source === "manual_partner" ? "hotel_direct" : "marketplace", collection: "hotel", tx });
-  const current = { ...schedule, ...calculationTotals(agreement.publicCalculation) };
-  const originalAgreementId = b.currentFinancialAgreementId ?? "original";
-  const [originalAgreement, priorAdjustments] = await Promise.all([tx.get(ref.collection("financialAgreements").doc(originalAgreementId)), tx.get(ref.collection("financialAdjustments"))]);
-  const lines = originalAgreement.get("publicCalculation.lines") as ChargeLine[] | undefined;
-  if (!lines) throw new ApiException("FINANCIAL_SOURCE_REQUIRED", 409, "This booking has no saved charge components for a safe amendment.");
-  const reversals = lines.map(line => {
-    const prior = priorAdjustments.docs.map(d => d.data()).filter(d => d.originalAgreementId === originalAgreementId && d.originalLineId === line.id) as LineReversal[];
-    const remaining = line.totalPaise - prior.reduce((n, r) => n + r.totalPaise, 0);
-    const reduced = reverseLine(line, remaining, prior);
-    const commission = originalAgreement.get("internal.commission")?.find((c: { lineId: string }) => c.lineId === line.id)?.amountPaise ?? 0;
-    return { ...reduced, originalAgreementId, internalCommissionReversalPaise: reverseCommission(line, commission, reduced, prior) };
-  });
   const amenities = await amenitySnapshotFor(p, room, rate, (ref) =>
     tx.get(ref),
   );
@@ -218,7 +202,7 @@ async function readAmendment(
       id: input.ratePlanId,
       name: rate.name,
       paymentMode: current.paymentMode,
-      depositBasisPoints: agreement.publicCalculation.advanceBasis.kind === "percentage" ? agreement.publicCalculation.advanceBasis.basisPoints : 0,
+      depositBasisPoints: current.depositBasisPoints,
     },
     cancellationPolicyId: rate.cancellationPolicyId ?? null,
     cancellationPolicy,
@@ -252,8 +236,6 @@ async function readAmendment(
     oldAllocations,
     newAllocations,
     hold,
-    agreement,
-    reversals,
     amountToCollectPaise: patch.balanceDuePaise,
     refundableExcessPaise: Math.max(
       0,
@@ -363,15 +345,13 @@ export async function confirmAmendment(
       allocations: r.newAllocations,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    const agreementId = `amendment_${eventId}`;
-    tx.create(ref.collection("financialAgreements").doc(agreementId), { ...r.agreement, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), linkedAmendmentId: eventId });
-    r.reversals.forEach((reversal, i) => tx.create(ref.collection("financialAdjustments").doc(`${eventId}_${i}`), { ...reversal, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), linkedAmendmentId: eventId }));
+    const quoteSnapshot = { ...r.b.quoteSnapshot, ...r.patch };
     tx.update(ref, {
       ...r.patch,
       ...unitPatch,
       originalQuoteSnapshot:
         r.b.originalQuoteSnapshot ?? r.b.quoteSnapshot ?? null,
-      currentFinancialAgreementId: agreementId,
+      quoteSnapshot,
       reservationRevision: (r.b.reservationRevision ?? 0) + 1,
       stayRevision: (r.b.stayRevision ?? 0) + 1,
       updatedAt: FieldValue.serverTimestamp(),

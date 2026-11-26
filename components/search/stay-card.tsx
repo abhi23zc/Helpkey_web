@@ -68,7 +68,7 @@ export function StayCard({ property, query = "", saved, onSave, saving = false, 
       <div className="flex flex-col justify-between border-t border-[var(--hk-border)] p-4 text-right md:border-l md:border-t-0">
         <div><span className="rounded bg-[var(--hk-surface-soft)] px-2 py-1 text-[10px] font-bold text-[var(--hk-success)]">{offer ? "Total stay price" : "Starting from"}</span><p className="mt-4 text-[26px] font-extrabold leading-tight text-[var(--hk-ink)]">{formatMoney(property.minimumPricePaise, property.currency)}</p>
           <p className="text-xs text-[var(--hk-muted)]">{offer ? offer.bookingMode === "hourly" ? `${offer.durationMinutes / 60} hours` : `${offer.nights} ${offer.nights === 1 ? "night" : "nights"}` : "Choose dates to check availability"}</p>
-          <p className="mt-1 text-[10px] text-[var(--hk-muted)]">{offer ? "Includes taxes and fees" : property.minimumPriceBasis === "tax_inclusive" ? "Starting price includes tax" : property.minimumPriceBasis === "tax_exclusive" ? "Starting price before tax" : "Starting price needs basis review"}</p>
+          {offer && <p className="mt-1 text-[10px] text-[var(--hk-muted)]">Includes taxes and fees</p>}
         </div>
         <div className="mt-4 grid gap-2"><Link href={hotelHref(property, query)} className="rounded-lg border border-[var(--hk-navy)] px-3 py-2 text-center text-xs font-bold text-[var(--hk-navy)] transition hover:bg-[var(--hk-surface-soft)]">View details</Link><Link href={hotelHref(property, query, true)} className="rounded-lg bg-[var(--hk-navy-strong)] px-3 py-2 text-center text-xs font-bold text-white">Choose room</Link></div>
       </div>

@@ -11,6 +11,7 @@ import { withFencedLease } from "../shared/lease";
 import { executeOutbox, LeaseBusy } from "../shared/outbox";
 import { invalidate } from "../shared/invalidate";
 import { updateReviews } from "./reviews";
+import { processAccounting } from "../../lib/accounting/posting";
 
 const cacheRedis = new Redis(process.env.REDIS_URL ?? "redis://127.0.0.1:6379", { maxRetriesPerRequest: 1, commandTimeout: 5000 });
 export async function closeProjectionProcessor() { await cacheRedis.quit(); }
@@ -40,8 +41,6 @@ async function propertySearch(propertyId: string, requested: ProjectionComponent
     const rates = await all(db.collection("ratePlans").where("propertyId", "==", propertyId).where("status", "==", "active"));
     const prices = rates.map(rate => startingPrice(rate.data())).filter((price): price is number => price !== null && Number.isSafeInteger(price) && price >= 0);
     update.minimumPricePaise = prices.length ? Math.min(...prices) : null;
-    const basis = rates.find(r => startingPrice(r.data()) === update.minimumPricePaise)?.get("priceReview")?.basis;
-    update.minimumPriceBasis = ["tax_exclusive", "tax_inclusive"].includes(basis) ? basis : null;
   }
   if (requested.includes("amenities")) {
     const rooms = await all(db.collection("roomTypes").where("propertyId", "==", propertyId).where("status", "==", "active"));
@@ -70,6 +69,17 @@ async function propertySearch(propertyId: string, requested: ProjectionComponent
 }
 export async function processProjection(job: Job<ProjectionJob>) {
   const data = projectionSchema.parse(job.data), { kind, entityId } = data;
+  if (kind === "booking_accounting") {
+    await executeOutbox(db, job, "projectionOutbox", "projectionJobs", async () => {
+      try { await processAccounting(db, entityId); }
+      catch (error) {
+        // The source commit is already successful; keep accounting separately recoverable.
+        await db.collection("hotelAccountingStateV1").doc(entityId).set({ dirty: true, lastError: error instanceof Error ? error.message.slice(0, 300) : "ACCOUNTING_FAILED" }, { merge: true });
+        throw error;
+      }
+    });
+    return;
+  }
   await executeOutbox(db, job, "projectionOutbox", "projectionJobs", () => withFencedLease(db, `projection:${entityId}:${kind === "review_summary" ? "reviews" : kind}`, async assert => {
     if (kind === "property_search") {
       const ref = db.collection("projectionState").doc(projectionStateId(entityId, kind));

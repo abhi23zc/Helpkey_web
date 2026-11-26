@@ -40,6 +40,10 @@ const AdminShellContext = createContext<AdminShellContextValue | null>(null);
 const searchablePaths: string[] = ["/admin", "/admin/partners", "/admin/properties", "/admin/users"];
 
 const adminNav = [
+  { href: "/admin/finance-settings", label: "Finance Settings", icon: WalletCards, exact: false, disabled: false },
+  { href: "/admin/payouts", label: "Hotel Payouts", icon: WalletCards, exact: false, disabled: false },
+  { href: "/admin/dues", label: "Hotel Dues", icon: WalletCards, exact: false, disabled: false },
+  { href: "/admin/accounting", label: "Hotel Accounting", icon: WalletCards, exact: false, disabled: false },
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true, disabled: false },
   { href: "/admin/partners", label: "Partners", icon: ShieldCheck, exact: false, disabled: false },
   { href: "/admin/properties", label: "Properties", icon: Building2, exact: false, disabled: false },
@@ -48,7 +52,6 @@ const adminNav = [
   { href: "/admin/privacy-requests", label: "Privacy Requests", icon: LockKeyhole, exact: false, disabled: false },
   { href: "/admin/aadhaar-lab", label: "Aadhaar Lab", icon: Fingerprint, exact: false, disabled: false },
   { href: "/admin/reviews", label: "Reviews", icon: MessageSquare, exact: false, disabled: false },
-  { href: "/admin/finance", label: "Finance", icon: WalletCards, exact: false, disabled: false },
   { href: "/admin/payments", label: "Payments", icon: WalletCards, exact: false, disabled: true },
   { href: "/admin/support", label: "Support", icon: Headphones, exact: false, disabled: true },
   { href: "/admin/settings", label: "Settings", icon: Settings, exact: false, disabled: true },

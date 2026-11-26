@@ -88,8 +88,8 @@ describe("in-house stay change rules", () => {
       { action: "extend", departureDate: "2030-01-03" },
       Date.parse("2030-01-02T04:00Z"),
     );
-    expect(q.adjustmentPaise).toBe(14000); // Stay evaluation returns entered amounts; shared finance applies tax.
-    expect(q.price).not.toHaveProperty("customerFeePaise");
+    expect(q.adjustmentPaise).toBe(15400);
+    expect(q.price.customerFeePaise).toBe(0);
     expect(q.endAt).toBe("2030-01-03T05:30:00.000Z");
     expect(() =>
       extensionQuote(

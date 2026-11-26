@@ -63,7 +63,6 @@ export async function quotePaymentSession(
     const selected = (b.customizations as StayRequest[]).filter(r => selectedIds.includes(r.id));
     if (offer && selected.length !== selectedIds.length) throw new Error("Offer items changed.");
     for (const item of selected) {
-      if (item.quote?.calculation && item.quote.calculation.selected !== "full_online") throw new Error("HOTEL_COLLECTION_REQUIRED");
       if (item.offerDraft || (item.offerId && item.offerId !== offer?.id)) throw new Error("Pay through the combined offer.");
       if (offer) {
         const allocation = offer.items.find(i => i.requestId === item.id)!;

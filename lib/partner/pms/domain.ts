@@ -9,8 +9,6 @@ export const staffRoles = [
 export const roles = ["owner", ...staffRoles] as const;
 export type HotelRole = (typeof roles)[number];
 export const permissions = [
-  "finance.read",
-  "finance.profile.manage",
   "setup.read",
   "setup.manage",
   "team.manage",
@@ -52,7 +50,7 @@ export const permissions = [
 ] as const;
 export type Permission = (typeof permissions)[number];
 const manager: Permission[] = permissions.filter(
-  (p) => !["team.manage", "setup.manage", "listing.manage", "finance.read", "finance.profile.manage"].includes(p),
+  (p) => !["team.manage", "setup.manage", "listing.manage"].includes(p),
 );
 export const rolePermissions: Record<HotelRole, readonly Permission[]> = {
   owner: permissions,

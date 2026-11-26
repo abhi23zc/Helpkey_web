@@ -1,6 +1,4 @@
 "use client";
-import { SavedCancellation } from "@/components/finance/saved-calculation";
-import type { calculateAgreement, PaymentOption } from "@/lib/finance/calculation";
 
 import {
   CheckoutProgress,
@@ -66,8 +64,6 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 
 type Quote = {
-  calculation: ReturnType<typeof calculateAgreement>["publicCalculation"];
-  paymentOption: PaymentOption;
   availableCustomizations: Offering[];
   customizations: StayRequest[];
   extrasTotalPaise: number;
@@ -207,7 +203,6 @@ export function BookingCheckout({
     children: initialInput?.children ?? 0,
     infants: initialInput?.infants ?? 0,
   }));
-  const [paymentOption, setPaymentOption] = useState<PaymentOption | undefined>(undefined);
   const [selections, setSelections] = useState<Selection[]>([]);
   const [committedSelections, setCommittedSelections] = useState<Selection[]>(
     [],
@@ -224,13 +219,12 @@ export function BookingCheckout({
       initialInput
         ? {
             ...initialInput,
-            paymentOption,
             ...committedGuests,
             customizationSelections: committedSelections,
             unlistedRequests,
           }
         : null,
-    [initialInput, committedGuests, committedSelections, unlistedRequests, paymentOption],
+    [initialInput, committedGuests, committedSelections, unlistedRequests],
   );
   const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
   const [holdSeconds, setHoldSeconds] = useState<number | null>(null);
@@ -296,7 +290,7 @@ export function BookingCheckout({
     null,
   );
 
-  const quoteQuery = useQuery<{ quote: Quote }>({
+  const quoteQuery = useQuery({
     queryKey: queryKeys.checkoutQuote(input ?? {}),
     queryFn: ({ signal }) =>
       apiFetch<{ quote: Quote }>("/api/bookings/quote", {
@@ -304,7 +298,7 @@ export function BookingCheckout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
         signal,
-      }).then(result => { if (result.quote.calculation?.version !== 2) throw new Error("Unsupported price calculation. Refresh checkout before continuing."); return result; }),
+      }),
     enabled: Boolean(input),
     staleTime: (query) =>
       Math.max(
@@ -954,8 +948,6 @@ export function BookingCheckout({
             </p>
           </div>
         </header>
-        {quote && <section className="mb-5 rounded-2xl border bg-white p-4"><fieldset className="mb-4 space-y-2"><legend>Payment choice</legend>{quote.calculation.available.map(option => <label key={option} className="flex gap-2 text-sm"><input type="radio" name="paymentOption" checked={quote.calculation.selected === option} disabled={busy || quoteQuery.isFetching} onChange={() => { setPaymentOption(option); setTermsAccepted(false); setRulesAccepted(false); bookingIdempotencyKey.current = ""; }} />{option === "full_online" ? "Pay in full online" : option === "advance_online" ? "Pay an advance online" : "Pay at property"}</label>)}</fieldset>{step !== "review" && <div className="mt-3 lg:hidden"><PriceBreakdown quote={quote} /></div>}{(selections.length > 0 || unlistedRequests.length > 0) && <button type="button" disabled={busy} className="text-sm underline" onClick={() => { setSelections([]); setCommittedSelections([]); setUnlistedRequests([]); setTermsAccepted(false); }}>Clear checkout extras</button>}</section>}
-
         {quoteQuery.isError && (
           <div
             role="alert"
@@ -1813,9 +1805,7 @@ export function BookingCheckout({
                     <h2 className="mb-4 font-bold text-[var(--hk-navy)]">
                       Price breakdown
                     </h2>
-
-                      <PriceBreakdown quote={quote} />
-                      <SavedCancellation calculation={quote.calculation} timezone={quote.timezone} />
+                    <PriceBreakdown quote={quote} />
                   </div>
                 )}
                 {/* Confirmation Agreement Card */}
@@ -2008,7 +1998,62 @@ export function BookingCheckout({
 }
 
 function PriceBreakdown({ quote }: { quote: Quote }) {
-  return <div className="space-y-3 text-sm">{quote.calculation.lines.map(line => <div key={line.id} className="flex justify-between gap-3"><span>{line.kind === "room" ? `Room · ${line.serviceDate}` : line.kind === "customer_fee" ? "Service fee" : line.category} ({line.quantity})</span><span>{money(line.taxablePaise, quote.currency)}</span></div>)}<div className="flex justify-between"><span>Taxes</span><span>{money(quote.calculation.taxPaise, quote.currency)}</span></div><div className="flex justify-between font-bold"><span>Final total</span><span>{money(quote.calculation.totalPaise, quote.currency)}</span></div><div className="flex justify-between"><span>Pay now</span><span>{money(quote.calculation.payableNowPaise, quote.currency)}</span></div><div className="flex justify-between"><span>Pay at property</span><span>{money(quote.calculation.hotelBalancePaise, quote.currency)}</span></div></div>;
+  return (
+    <div className="space-y-3 text-sm text-[var(--hk-muted)]">
+      <div className="flex justify-between gap-3">
+        <span>Room charges</span>
+        <span className="font-medium text-[var(--hk-navy)]">
+          {money(quote.subtotalPaise, quote.currency)}
+        </span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span>Taxes & fees</span>
+        <span>{money(quote.taxPaise, quote.currency)}</span>
+      </div>
+      {quote.customerFeePaise > 0 && (
+        <div className="flex justify-between gap-3">
+          <span>Helpkey service fee</span>
+          <span>{money(quote.customerFeePaise, quote.currency)}</span>
+        </div>
+      )}
+      <div className="flex justify-between gap-3">
+        <span>Stay additions</span>
+        <span>
+          {quote.extrasTotalPaise
+            ? money(quote.extrasTotalPaise, quote.currency)
+            : quote.customizations.some((r) => r.settlement === "pending_hotel")
+              ? "Pending requests"
+              : "Free"}
+        </span>
+      </div>
+      {quote.customizations.some((r) => r.settlement === "pending_hotel") && (
+        <p className="text-xs">
+          Pending extras are not charged at checkout. After hotel approval,
+          review and accept any final price, then pay separately from your
+          booking. Free extras require no payment.
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--hk-border)] pt-4 font-bold text-[var(--hk-navy)]">
+        <span>Booking total</span>
+        <span className="text-xl">
+          {money(quote.totalPaise, quote.currency)}
+        </span>
+      </div>
+      <p className="text-xs">Includes all applicable taxes and charges.</p>
+      <div className="flex justify-between rounded-xl bg-[var(--hk-surface-soft)] px-3 py-3 font-semibold text-[var(--hk-navy)]">
+        <span>Pay now</span>
+        <span>{money(quote.payableNowPaise, quote.currency)}</span>
+      </div>
+      {quote.balanceDuePaise > 0 && (
+        <div className="flex justify-between gap-3 text-xs">
+          <span>Pay at property</span>
+          <span className="font-semibold text-[var(--hk-navy)]">
+            {money(quote.balanceDuePaise, quote.currency)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BookingSummary({
@@ -2171,7 +2216,48 @@ function BookingSummary({
             )}
 
             {quote ? (
-              <PriceBreakdown quote={quote} />
+              <div className="space-y-2.5 text-xs sm:text-sm text-slate-600">
+                <div className="flex justify-between gap-3">
+                  <span>Room &amp; taxes</span>
+                  <span className="font-semibold text-[#000615]">
+                    {money(
+                      quote.subtotalPaise + quote.taxPaise,
+                      quote.currency,
+                    )}
+                  </span>
+                </div>
+                {Boolean(quote.extrasTotalPaise) && (
+                  <div className="flex justify-between gap-3">
+                    <span>Confirmed extras</span>
+                    <span className="font-semibold text-[#000615]">
+                      {money(quote.extrasTotalPaise, quote.currency)}
+                    </span>
+                  </div>
+                )}
+                {quote.customerFeePaise > 0 && (
+                  <div className="flex justify-between gap-3">
+                    <span>Helpkey service fee</span>
+                    <span>{money(quote.customerFeePaise, quote.currency)}</span>
+                  </div>
+                )}
+
+                {/* Highlighted Pay Now Bar */}
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-[#fbf7ee] px-4 py-3 font-bold text-[#000615]">
+                  <span className="text-sm">Pay now</span>
+                  <span className="text-lg">
+                    {money(quote.payableNowPaise, quote.currency)}
+                  </span>
+                </div>
+
+                {quote.balanceDuePaise > 0 && (
+                  <div className="flex justify-between text-xs text-slate-500 pt-1">
+                    <span>Pay at property</span>
+                    <span className="font-semibold text-[#000615]">
+                      {money(quote.balanceDuePaise, quote.currency)}
+                    </span>
+                  </div>
+                )}
+              </div>
             ) : (
               <p role="status" className="text-sm text-slate-500">
                 Preparing your price…

@@ -1,7 +1,9 @@
 "use client";
-import { SavedCalculation, SavedCancellation, SavedFinancialHistory } from "@/components/finance/saved-calculation";
 
-import { supplementalFinancials } from "@/lib/stay/agreements";
+import { BookingPaymentSummary } from "@/components/booking/payment-summary";
+import { paymentSummary } from "@/lib/stay/payment-summary";
+
+
 import { PreCheckinPanel } from "@/components/stay/pre-checkin";
 import type { StayBookingData } from "@/lib/stay/contracts";
 import Link from "next/link";
@@ -154,7 +156,7 @@ const statusDetails = (booking: CustomerBooking) => {
     return {
       title: "Stay completed",
       badge: "Completed Stay",
-      detail: `Thank you for staying at ${booking.propertyName}. We hope you had a restful stay!`,
+      detail: `Thank you for staying at ${booking.propertyName || "the hotel"}. We hope you had a restful stay!`,
       tone: "slate",
     } as const;
   }
@@ -328,9 +330,9 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
   const booking = bookingQuery.data ?? initialBooking;
   const status = statusDetails(booking);
   const timing = getStayTiming(booking);
-  const supplemental = supplementalFinancials(booking.customizations,booking.stayPaymentReceipts);
   const balance = booking.balanceDuePaise ?? Math.max(0, booking.totalPaise - (booking.customizationCreditPaise ?? 0) + (booking.billingNetPaise ?? 0) - booking.paidPaise);
-  const isPaidInFull = (booking.netPaidPaise ?? booking.paidPaise) >= (booking.effectiveTotalPaise ?? booking.totalPaise);
+  const combinedPayments = booking.paymentSummary ?? paymentSummary(booking);
+  const isPaidInFull = combinedPayments.reliable && combinedPayments.outstandingPaise === 0 && combinedPayments.pendingRefundPaise === 0;
   const bookedAmenities = booking.amenitySnapshot
     ? [
         ...booking.amenitySnapshot.roomAmenities.map((amenity) => ({ ...amenity, group: "In your room" })),
@@ -1068,14 +1070,13 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                       : "bg-stone-100 text-stone-800 border border-stone-200"
                   }`}
                 >
-                  {isPaidInFull ? "Paid in Full" : "Balance Due"}
+                  {!combinedPayments.reliable ? "Payment details need review" : (combinedPayments.pendingRefundPaise ?? 0) > 0 ? "Refund pending" : (combinedPayments.outstandingPaise ?? 0) > 0 ? "Balance Due" : (combinedPayments.refundedPaise ?? 0) > 0 ? "Refund recorded" : (combinedPayments.grossPaidPaise ?? 0) === 0 ? "No payment due" : "Paid in Full"}
                 </span>
               </div>
 
               {/* Itemized Price Breakdown */}
               <dl className="mt-4 space-y-2.5 text-xs">
-                {booking.financialHistory ? <SavedFinancialHistory history={booking.financialHistory} currency={booking.currency} /> : booking.calculation && <SavedCalculation calculation={booking.calculation} currency={booking.currency} />}
-                {!booking.calculation && booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
+                {booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
                   <AmountRow
                     label={`Room charges (${
                       booking.bookingMode === "hourly"
@@ -1085,52 +1086,25 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
                     value={formatMoney(booking.subtotalPaise, booking.currency)}
                   />
                 )}
-                {!booking.calculation && booking.taxPaise !== undefined && booking.taxPaise > 0 && (
+                {booking.taxPaise !== undefined && booking.taxPaise > 0 && (
                   <AmountRow
                     label="Taxes & GST"
                     value={formatMoney(booking.taxPaise, booking.currency)}
                   />
                 )}
-                {!booking.calculation && booking.customerFeePaise !== undefined && booking.customerFeePaise > 0 && (
+                {booking.customerFeePaise !== undefined && booking.customerFeePaise > 0 && (
                   <AmountRow
                     label="Platform fee"
                     value={formatMoney(booking.customerFeePaise, booking.currency)}
                   />
                 )}
 
-                {!booking.calculation && !!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
+                {!!booking.extrasTotalPaise && <AmountRow label="Stay extras (all charges included)" value={formatMoney(booking.extrasTotalPaise, booking.currency)} />}
                 {!!booking.billingNetPaise && <AmountRow label="Hotel charges / adjustments" value={formatMoney(booking.billingNetPaise, booking.currency)} />}
                 {!!booking.customizationCreditPaise && <AmountRow label="Declined extras credit" value={formatMoney(booking.customizationCreditPaise, booking.currency)} />}
-                {supplemental.paidPaise>0 && <><AmountRow label="Original booking total" value={formatMoney(booking.effectiveTotalPaise ?? booking.totalPaise,booking.currency)}/><AmountRow label="Separately agreed extras" value={formatMoney(supplemental.totalPaise,booking.currency)}/>{supplemental.refundDuePaise>0 && <AmountRow label="Quoted extras refund pending" value={formatMoney(supplemental.refundDuePaise,booking.currency)}/>} {supplemental.refundedPaise>0 && <AmountRow label="Quoted extras refunded" value={formatMoney(supplemental.refundedPaise,booking.currency)}/>}</>}
-                <div className="border-t border-stone-100 pt-2.5">
-                  <AmountRow
-                    label="Grand Total"
-                    value={formatMoney((booking.effectiveTotalPaise ?? booking.totalPaise)+supplemental.totalPaise, booking.currency)}
-                    isTotal
-                  />
-                </div>
+                <div className="mt-4"><BookingPaymentSummary summary={combinedPayments} currency={booking.currency} /></div>
+                {balance > 0 && <p className="mt-3 text-xs text-stone-600">Room balance payable at the hotel: {formatMoney(balance, booking.currency)}. Separately quoted add-ons are paid through their own payment link.</p>}
 
-                <AmountRow
-                  label="Amount Paid"
-                  value={formatMoney(booking.paidPaise+supplemental.paidPaise, booking.currency)}
-                  tone="text-[#0b1f3a]"
-                />
-
-                {balance > 0 ? (
-                  <div className="mt-2 rounded-xl border border-stone-300 bg-stone-100 p-3">
-                    <div className="flex items-center justify-between text-xs font-bold text-stone-900">
-                      <span>Payable at Hotel</span>
-                      <span>{formatMoney(balance, booking.currency)}</span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-stone-600">
-                      Please pay this balance directly at the hotel front desk upon arrival.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-2 rounded-xl border border-[#e8d9b5] bg-[#fbf7ee] p-2.5 text-center text-xs font-bold text-[#785d1c]">
-                    ✓ ₹0 Due at Check-in • Fully Paid
-                  </div>
-                )}
               </dl>
 
               <div className="mt-5 space-y-2 border-t border-stone-100 pt-4">
@@ -1146,7 +1120,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
             </section>
 
             {/* CANCELLATION POLICY & ACTIONS */}
-            {booking.calculation ? <SavedCancellation calculation={booking.calculation} timezone={booking.timezone} /> : booking.cancellationPolicy && (
+            {booking.cancellationPolicy && (
               <section className="rounded-2xl border border-[#e7e4dc] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-[#0f172a]">Cancellation Policy</h3>

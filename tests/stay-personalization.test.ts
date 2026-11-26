@@ -302,14 +302,14 @@ describe("customization cancellation policy", () => {
         now,
         false,
       ),
-    ).toBe(25000);
+    ).toBe(5000);
     expect(
       remainingCancellationRefund(
         { ...base, refundDuePaise: 20000 },
         Date.parse(start) + 1,
         false,
       ),
-    ).toBe(25000);
+    ).toBe(0);
     expect(
       remainingCancellationRefund(
         { ...base, refundDuePaise: 20000 },

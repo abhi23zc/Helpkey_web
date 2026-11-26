@@ -10,6 +10,7 @@ import { safeData } from "../reservations/operations";
 import { reconciliation } from "../billing/domain";
 import {
   settingsSchema,
+  assertInvoiceIdentityUnlocked,
   detailsSchema,
   issueSchema,
   emptyState,
@@ -110,20 +111,7 @@ export async function saveSettings(
       previous = await tx.get(ref);
     if ((previous.get("revision") ?? 0) !== input.expectedRevision)
       fail("Invoice settings changed. Refresh and review your retained draft.");
-    if (previous.get("used"))
-      for (const field of [
-        "invoiceSeries",
-        "creditSeries",
-        "invoiceStart",
-        "creditStart",
-        "gstin",
-        "registration",
-      ] as const) {
-        if (input.settings[field] !== previous.get(`settings.${field}`))
-          fail(
-            "Issued series, starting numbers and registration identity are locked after first use. Contact support for a new legal seller.",
-          );
-      }
+    assertInvoiceIdentityUnlocked(previous.get("settings"), input.settings, !!previous.get("used"));
     const revision = input.expectedRevision + 1;
     const event = {
       revision,

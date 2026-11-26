@@ -1,5 +1,4 @@
 "use client";
-import { SavedCalculation, SavedCancellation, SavedFinancialHistory } from "@/components/finance/saved-calculation";
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -18,8 +17,7 @@ import { supplementalFinancials } from "@/lib/stay/agreements";
 
 type Amenity = { code: string; label: string };
 export type BookingReceiptData = {
-  financialHistory?: import("@/components/finance/saved-calculation").PublicFinancialHistory | null;
-  calculation?: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"] | null;
+  paymentSummary?: ReturnType<typeof import("@/lib/stay/payment-summary").paymentSummary>;
   customizations?: StayRequest[];
   stayPaymentReceipts?: import("@/lib/stay/contracts").StayPaymentReceipt[];
   id: string;
@@ -567,26 +565,25 @@ function Receipt({
                 Payment details
               </h3>
               <dl className="mt-2.5 divide-y divide-stone-100 rounded-2xl border border-[#e7e4dc] bg-stone-50/30 px-4 py-1">
-                {booking.financialHistory ? <SavedFinancialHistory history={booking.financialHistory} currency={booking.currency} /> : booking.calculation && <SavedCalculation calculation={booking.calculation} currency={booking.currency} />}
-                {!booking.calculation && typeof booking.subtotalPaise === "number" && (
+                {typeof booking.subtotalPaise === "number" && (
                   <Amount
                     label={`Room charges · ${duration}`}
                     value={money(booking.subtotalPaise, booking.currency)}
                   />
                 )}
-                {!booking.calculation && (booking.taxPaise ?? 0) > 0 && (
+                {(booking.taxPaise ?? 0) > 0 && (
                   <Amount
                     label="Taxes & GST"
                     value={money(booking.taxPaise, booking.currency)}
                   />
                 )}
-                {!booking.calculation && (booking.customerFeePaise ?? 0) > 0 && (
+                {(booking.customerFeePaise ?? 0) > 0 && (
                   <Amount
                     label="Platform fee"
                     value={money(booking.customerFeePaise, booking.currency)}
                   />
                 )}
-                {!booking.calculation && (booking.extrasTotalPaise ?? 0) > 0 && (
+                {(booking.extrasTotalPaise ?? 0) > 0 && (
                   <Amount
                     label="Extras"
                     description={includedExtras
@@ -739,7 +736,7 @@ function Receipt({
                 </p>
               </section>
             )}
-            {booking.calculation ? <SavedCancellation calculation={booking.calculation} timezone={booking.timezone} /> : booking.cancellationPolicy && (
+            {booking.cancellationPolicy && (
               <section className="mt-5 rounded-2xl border border-[#e7e4dc] bg-stone-50/50 p-4 text-xs">
                 <h3 className="font-bold text-[#0f172a]">
                   Cancellation policy: {booking.cancellationPolicy.name}

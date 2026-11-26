@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FinanceWorkspace } from "@/components/finance-settings/workspace";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import { PartnerShell } from "./partner-shell";
@@ -40,6 +41,8 @@ function resolveQuerySection(value: string | null): SettingsSection {
       return "rooms";
     case "invoices":
       return "invoices";
+    case "finance":
+      return "finance";
     case "activity":
       return "activity";
     default:
@@ -118,6 +121,8 @@ function SettingsWorkspace({
   }
 
   switch (section) {
+    case "finance":
+      return <div className="space-y-5"><SettingsSubpageHeader propertyId={propertyId} section="finance" title="Finance Settings" description="View your hotel’s commercial agreement with HelpKey." data={data} /><FinanceWorkspace propertyId={propertyId} owner /></div>;
     case "hub":
       return (
         <SettingsHub

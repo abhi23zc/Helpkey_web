@@ -1,4 +1,8 @@
 "use client";
+
+import { BookingPaymentSummary } from "@/components/booking/payment-summary";
+import { paymentSummary } from "@/lib/stay/payment-summary";
+
 import { useHotelCapabilities } from "./hotel-capabilities";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -26,7 +30,6 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { localParts } from "@/lib/booking/domain";
-import { formatPaise } from "@/lib/currency";
 import type { serializeBooking } from "@/lib/bookings";
 import { PartnerShell } from "./partner-shell";
 import { ReservationWorkspace } from "./reservation-workspace";
@@ -1083,18 +1086,7 @@ function Reservations({
 
                         {/* Payment Column */}
                         <td className="px-4 py-3.5">
-                          <p className="font-bold text-slate-900">
-                            {formatPaise(b.totalPaise)}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {paymentLabels[b.paymentStatus] ||
-                              label(b.paymentStatus)}
-                          </p>
-                          {b.balanceDuePaise > 0 && (
-                            <p className="mt-0.5 text-[11px] font-bold text-amber-700">
-                              {formatPaise(b.balanceDuePaise)} balance due
-                            </p>
-                          )}
+                          <BookingPaymentSummary summary={b.paymentSummary ?? paymentSummary(b)} currency={b.currency} compact />
                         </td>
 
                         {/* Status Column */}
@@ -1165,14 +1157,7 @@ function Reservations({
 
                     <div className="flex items-center justify-between pt-1">
                       <div>
-                        <span className="text-xs font-bold text-slate-800">
-                          {formatPaise(b.totalPaise)}
-                        </span>
-                        {b.balanceDuePaise > 0 && (
-                          <span className="ml-2 text-[11px] font-bold text-amber-700">
-                            {formatPaise(b.balanceDuePaise)} balance due
-                          </span>
-                        )}
+                        <BookingPaymentSummary summary={b.paymentSummary ?? paymentSummary(b)} currency={b.currency} compact />
                       </div>
                       <button
                         className={reservationButton}

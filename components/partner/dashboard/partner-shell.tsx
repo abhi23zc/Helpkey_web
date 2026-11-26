@@ -214,7 +214,7 @@ export function PartnerShell({
     return () => { window.removeEventListener("operational-data-changed", refresh); window.removeEventListener("stay-request-updated", refresh); };
   }, [operationalClient, data.selectedPropertyId]);
   const selected = data.selectedProperty;
-  const required: Record<string, string> = { "/partner/finance": "finance.read", "/partner/cashier-shifts": "shift.operate", "/partner/daily-closing": "closing.manage", "/partner/today": "reservation.read", "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
+  const required: Record<string, string> = { "/partner/cashier-shifts": "shift.operate", "/partner/daily-closing": "closing.manage", "/partner/today": "reservation.read", "/partner/dashboard": "reports.read", "/partner/reservations": "reservation.read", "/partner/rooms": "rooms.manage", "/partner/listing": "listing.manage", "/partner/reviews": "reviews.manage", "/partner/stay-customizations": "listing.manage" };
   const denied = selected?.permissions && required[pathname] && !selected.permissions.includes(required[pathname]);
   const blockedReason = ["/partner/today", "/partner/dashboard", "/partner/reservations", "/partner/operations"].includes(pathname) ? selected?.operationsReason || null : null;
   // Content cannot report its loading state when an access/setup/error gate
@@ -228,7 +228,7 @@ export function PartnerShell({
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-[264px]"
       }`}
     >
-      <PartnerSidebar permissions={selected?.permissions} propertyId={data.selectedPropertyId} date={data.reportingDate}
+      <PartnerSidebar owner={selected?.role === "owner"} permissions={selected?.permissions} propertyId={data.selectedPropertyId} date={data.reportingDate}
         open={menuOpen}
         collapsed={sidebarCollapsed}
         onClose={() => setMenuOpen(false)}

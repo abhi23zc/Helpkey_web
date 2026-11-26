@@ -23,8 +23,6 @@ export type ListingMedia = {
 };
 
 export type ListingRatePlan = {
-  paymentOptions?: import("@/lib/finance/calculation").PaymentOption[];
-  priceReview?: import("zod").infer<typeof import("@/lib/finance/calculation").priceReviewSchema>;
   minimumDurationMinutes?: number | null;
   maximumDurationMinutes?: number | null;
   minimumAdvanceMinutes?: number | null;

@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { cancellationLabel, cancellationTerms, guestScoreLabel } from "@/lib/customer/offer";
 describe("customer offer claims", () => {
   const start = "2026-11-02T08:30:00Z", now = Date.parse("2026-11-01T08:29:00Z");
-  it("uses the saved free deadline even when an explicit late fee applies", () => {
+  it("requires a zero fee and an unexpired deadline for free cancellation", () => {
     const terms = cancellationTerms({ refundableUntilHours: 24, cancellationFeePercent: 0 }, start, now);
     expect(terms.freeCancellation).toBe(true);
     expect(terms.deadline).toBe("2026-11-01T08:30:00.000Z");
     expect(cancellationLabel(terms, "Asia/Kolkata", now)).toContain("Free cancellation until");
     expect(cancellationLabel(terms, "Asia/Kolkata", now + 61_000)).toBeNull();
-    expect(cancellationTerms({ refundableUntilHours: 24, cancellationFeePercent: 20 }, start, now).freeCancellation).toBe(true);
+    expect(cancellationTerms({ refundableUntilHours: 24, cancellationFeePercent: 20 }, start, now).freeCancellation).toBe(false);
     expect(cancellationTerms({ refundableUntilHours: 24, cancellationFeePercent: 0 }, start, now + 61_000).freeCancellation).toBe(false);
   });
   it("makes no promise for missing, malformed, or incomplete policies", () => {

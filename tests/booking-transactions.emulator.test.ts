@@ -1,4 +1,3 @@
-import { seedTransactionFinance } from "./helpers/finance-emulator";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -16,21 +15,12 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
   let bookings: typeof import("@/lib/bookings");
   const properties: string[] = [];
   beforeAll(async () => {
-    process.env.FIREBASE_ADMIN_PROJECT_ID = `demo-helpkey-bookings-${Date.now().toString(36)}`;
+    process.env.FIREBASE_ADMIN_PROJECT_ID = "demo-helpkey-bookings";
     process.env.RAZORPAY_KEY_ID = "test_key";
     process.env.RAZORPAY_KEY_SECRET = "test_secret";
     db = (await import("@/lib/firebase/admin")).adminDb;
     for (const actor of ["partner", "owner"]) await db.collection("users").doc(actor).set({ roles: ["partner"], accountStatus: "active", isActive: true });
-    const original = await import("@/lib/bookings");
-    const accepted = new Map<string, { expectedTotalPaise: number; quoteFingerprint: string }>();
-    bookings = { ...original, createBooking: async (uid, raw, key) => {
-      const input = raw as Record<string, unknown>, identity = `${uid}:${input.propertySlug}:${key}`;
-      const quote = input.quoteFingerprint ? null : accepted.get(identity) ?? await original.quote(input as never);
-      const review = input.quoteFingerprint ? {} : "fingerprint" in quote! ? { expectedTotalPaise: quote.totalPaise, quoteFingerprint: quote.fingerprint } : quote!;
-      if (!input.quoteFingerprint) accepted.set(identity, review as { expectedTotalPaise: number; quoteFingerprint: string });
-      return original.createBooking(uid, { ...review, ...input, termsAccepted: true }, key);
-    } };
-
+    bookings = await import("@/lib/bookings");
   }, 30000);
   afterAll(async () => { await db?.terminate(); });
   afterEach(async () => {
@@ -38,9 +28,10 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     for (const propertyId of properties.splice(0)) {
       const rows = await db.collection("bookings").where("propertyId", "==", propertyId).get();
       for (const row of rows.docs) {
+        await db.recursiveDelete(db.collection("bookingFinanceAgreementsV1").doc(row.id));
         for (const collection of ["events"]) { const events = await row.ref.collection(collection).get(); for (const event of events.docs) await event.ref.delete(); }
         for (const collection of ["refunds", "paymentAttempts", "propertyPayments"]) { const related = await db.collection(collection).where("bookingId", "==", row.id).get(); for (const doc of related.docs) await doc.ref.delete(); }
-        await db.recursiveDelete(row.ref);
+        await row.ref.delete();
       }
       for (const collection of ["roomTypes", "ratePlans", "inventoryCalendars", "inventoryHolds", "bookingNotificationOutbox", "roomNightInventory", "propertyMemberships", "inventoryBlocks"]) {
         const rows = await db.collection(collection).where("propertyId", "==", propertyId).get();
@@ -59,22 +50,16 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     await db.collection("properties").doc(propertyId).set({ slug: propertyId, name: "Test", status: "active", approvalStatus: "approved", isBookable: true, currency: "INR", timezone: "Asia/Kolkata", bookingModes: ["overnight", "hourly"], inventoryEngine: "interval_v1" });
     await db.collection("roomTypes").doc(roomTypeId).set({ propertyId, status: "active", name: "Test room", totalInventory: 1, maxAdults: 2, maxChildren: 0 });
     await db.collection("ratePlans").doc(ratePlanId).set({ propertyId, roomTypeId, status: "active", bookingMode: "hourly", pricingModel: "duration", durationPrices: [{ hours: 2, pricePaise: 30000 }, { hours: 3, pricePaise: 120000 }], paymentMode: online ? "full" : "pay_at_property" });
-    await seedTransactionFinance(db, propertyId, "owner", false);
-    await db.doc(`propertyFinance/${propertyId}`).update({ overrides: { paymentOptions: online ? ["full_online", "advance_online"] : ["pay_at_property"], advance: { kind: "percentage", basisPoints: 2500 } } });
-    await db.doc(`ratePlans/${ratePlanId}`).update({ priceReview: { basis: "tax_exclusive", reviewedBy: "owner", reviewedAt: "2026-01-01T00:00:00.000Z" }, cancellationPolicyId: `${propertyId}_cancel` });
-    await db.doc(`cancellationPolicies/${propertyId}_cancel`).set({ propertyId, status: "active", refundableUntilHours: 24, lateCharge: { kind: "fixed", amountPaise: 0 }, noShow: { kind: "fixed", amountPaise: 0 }, taxTreatmentReference: "transaction_cancellation_service:1" });
-    await db.doc("financeSupplierProfiles/helpkey").set({ revision: 1, profile: { jurisdiction: "example", registration: "unregistered", profileKind: "transaction_fixture", supplierId: "helpkey", invoiceResponsibility: "helpkey", reviewedBy: "owner", reviewedAt: "2026-01-01T00:00:00.000Z", profileContentRevision: 1 } });
     const input = { propertySlug: propertyId, roomTypeId, ratePlanId, checkIn, arrivalTime: "10:00", durationMinutes: 180, bookingMode: "hourly" as const, adults: 1, children: 0, infants: 0, paymentMethod: online ? "online" : "pay_at_property", leadEmail: "guest@example.com", leadPhone: "+919876543210", adultGuestNames: ["Test Guest"] };
     return { propertyId, input };
   }
   it.each(["full", "deposit", "pay_at_property"])("retains reviewed hourly amount, fingerprint and payment split for %s", async paymentMode => {
     const { input } = await fixture(paymentMode !== "pay_at_property");
     await db.collection("ratePlans").doc(input.ratePlanId).update({ paymentMode, depositBasisPoints: 2500, taxBasisPoints: 1200, customerFeePaise: 99 });
-    const reviewedInput = { ...input, paymentOption: paymentMode === "deposit" ? "advance_online" as const : paymentMode === "full" ? "full_online" as const : "pay_at_property" as const };
-    const quoted = await bookings.quote(reviewedInput);
+    const quoted = await bookings.quote(input);
     expect(quoted.nights).toBe(0);
     const online = paymentMode !== "pay_at_property";
-    const reviewed = { ...reviewedInput, expectedTotalPaise: quoted.totalPaise, quoteFingerprint: quoted.fingerprint };
+    const reviewed = { ...input, expectedTotalPaise: quoted.totalPaise, quoteFingerprint: quoted.fingerprint };
     if (online) providerFetch.mockResolvedValueOnce(Response.json({ id: `order_${paymentMode}` }));
     const created = await bookings.createBooking("guest", reviewed, `reviewed-${paymentMode}`);
     expect(created.requiresPayment).toBe(online);
@@ -192,7 +177,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
   it("shares capacity between hourly and overnight reservations", async () => {
     const { input, propertyId } = await fixture();
     const nightRate = `${propertyId}_night`;
-    await db.collection("ratePlans").doc(nightRate).set({ propertyId, roomTypeId: input.roomTypeId, status: "active", bookingMode: "overnight", pricingModel: "nightly", basePricePaise: 200000, priceReview: { basis: "tax_exclusive", reviewedBy: "owner", reviewedAt: "2026-01-01T00:00:00.000Z" }, cancellationPolicyId: `${propertyId}_cancel`, paymentMode: "pay_at_property" });
+    await db.collection("ratePlans").doc(nightRate).set({ propertyId, roomTypeId: input.roomTypeId, status: "active", bookingMode: "overnight", pricingModel: "nightly", basePricePaise: 200000, paymentMode: "pay_at_property" });
     const checkOut = new Date(Date.parse(`${input.checkIn}T00:00Z`) + 86400000).toISOString().slice(0, 10);
     const night = { ...input, bookingMode: "overnight", ratePlanId: nightRate, checkOut };
     await bookings.createBooking("guest", night, "night");
@@ -319,14 +304,12 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)("booking transactions (Fir
     await shifts.commandShift("partner", propertyId, { action: "open", openingPaise: 500 }, "manual-shift");
     const manual = { ...input, propertyId, guestName: "Manual Guest", negotiatedSubtotalPaise: 80000, negotiatedPriceReason: "Agreed corporate price", paymentMethod: "paid" };
     await expect(bookings.createManualReservation("intruder", manual, "manual")).rejects.toThrow("FORBIDDEN");
-    const preview = await bookings.quoteManualReservation("partner", manual);
-    Object.assign(manual, { quoteFingerprint: preview.fingerprint, expectedTotalPaise: preview.totalPaise });
     const created = await bookings.createManualReservation("partner", manual, "manual");
     expect((await bookings.createManualReservation("partner", manual, "manual")).id).toBe(created.id);
     const data = (await db.collection("bookings").doc(created.id).get()).data()!;
-    expect(data.totalPaise).toBe(80000);
-    expect(data.taxPaise).toBe(0); // Reviewed synthetic exemption supersedes legacy rate.taxBasisPoints.
-    expect(data.paidPaise).toBe(80000);
+    expect(data.totalPaise).toBe(94400);
+    expect(data.taxPaise).toBe(14400);
+    expect(data.paidPaise).toBe(94400);
     expect(data.negotiatedPriceReason).toBe("Agreed corporate price");
     await expect(bookings.createBooking("guest", input, "manual-overlap")).rejects.toThrow("SOLD_OUT_FOR_DATES");
   }, 30000);

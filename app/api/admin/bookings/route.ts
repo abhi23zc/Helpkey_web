@@ -14,8 +14,13 @@ const rawGET = async function GET(request: Request) {
     const status = url.searchParams.get("status");
     const mode = url.searchParams.get("bookingMode");
     const search = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+    const bookingId = url.searchParams.get("bookingId");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 25, 1), 50);
     let query: FirebaseFirestore.Query = adminDb.collection("bookings");
+    if (bookingId) {
+      if (bookingId.includes("/") || bookingId.length > 200) throw new Error("INVALID_BOOKING_ID");
+      query = query.where("__name__", "==", bookingId);
+    }
     if (status && status !== "all") query = status === "checked_out" ? query.where("bookingStatus", "in", ["completed", "checked_out"]) : query.where("bookingStatus", "==", status);
     if (search) query = query.where("searchTokens", "array-contains", search);
     const snap = await query.get();

@@ -1,5 +1,4 @@
-import { serviceCalculation } from "@/lib/finance/service-calculation";
-import { financeFingerprint } from "@/lib/finance/booking-calculation";
+import { prepareServiceAgreements } from "../booking-finance/service-agreements";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { operationalAccess } from "@/lib/partner/pms/access";
@@ -33,13 +32,11 @@ export async function manageOffer(uid: string, bookingId: string, raw: unknown, 
     if (!["confirmed", "checked_in"].includes(b.bookingStatus) || Date.parse(b.endAt) <= Date.now()) throw new Error("This booking is closed for requests.");
     let offers: ExtrasOffer[] = b.extrasOffers ?? [];
     let requests: StayRequest[] = b.customizations ?? [];
-    const financeAgreements: { id: string; agreement: Awaited<ReturnType<typeof serviceCalculation>> }[] = [];
     if (input.action === "publish") {
       if (!offersEnabled()) throw new Error("Combined offers are not enabled.");
       const ids = requests.filter(r => r.offerDraft && !r.offerId && r.status === "requested").map(r => r.id);
       // Every still-pending new request must be reviewed, not just those already priced.
       if (requests.some(r => r.agreementVersion === 2 && !r.offerId && !r.quote && r.settlement === "pending_hotel" && r.status === "requested")) throw new Error("Review every request before sending the offer.");
-      if (requests.some(r => ids.includes(r.id) && r.quote?.calculation?.selected === "pay_at_property")) throw new Error("HOTEL_COLLECTION_SEPARATE_AGREEMENT_REQUIRED");
       const offer = publishOffer(randomUUID(), 1, ids, requests);
       offer.expiresAt = new Date(Math.min(Date.parse(offer.expiresAt), Date.parse(b.endAt))).toISOString();
       offers = [...offers, offer];
@@ -57,12 +54,6 @@ export async function manageOffer(uid: string, bookingId: string, raw: unknown, 
         requests = requests.map(r => Object.fromEntries(Object.entries(r).filter(([,v]) => v !== undefined)) as StayRequest);
       } else {
         const accepted = acceptOffer(offer, input.version!, input.selected);
-        for (const r of requests.filter(r => r.offerId === offer.id && input.selected.includes(r.id))) {
-          if (!r.quote?.financeCharge || !r.quote.calculation) throw new Error("QUOTE_CHANGED");
-          const agreement = await serviceCalculation(b.propertyId, r.id, r.quote.financeCharge, b.timezone, tx, b.source === "manual_partner" ? "hotel_direct" : "marketplace");
-          if (financeFingerprint(agreement.publicCalculation) !== r.quote.fingerprint) throw new Error("QUOTE_CHANGED");
-          financeAgreements.push({ id: `service_${financeFingerprint({ requestId: r.id, version: r.quote.version })}`, agreement });
-        }
         offers = offers.map(o => o.id === offer.id ? accepted.offer : o);
         requests = requests.map(r => {
           if (r.offerId !== offer.id) return r;
@@ -71,8 +62,9 @@ export async function manageOffer(uid: string, bookingId: string, raw: unknown, 
         });
       }
     }
+    const writeFinance = await prepareServiceAgreements(adminDb, tx, bookingId, b, requests, uid);
     const revision = b.stayRevision + 1;
-    for (const item of financeAgreements) tx.create(ref.collection("financialAgreements").doc(item.id), { ...item.agreement, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp() });
+    writeFinance();
     tx.update(ref, { extrasOffers: offers, customizations: requests, stayRevision: revision, updatedAt: FieldValue.serverTimestamp() });
     tx.create(ref.collection("events").doc(), { type: `extras_offer_${input.action}`, actorId: uid, revision, createdAt: FieldValue.serverTimestamp() });
     enqueueStayNotification(tx, bookingId, b.propertyId, b.guestId, revision, `extras_offer_${input.action}`);

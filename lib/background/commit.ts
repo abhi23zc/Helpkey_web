@@ -1,6 +1,6 @@
-import { financeTransaction } from "../finance/transaction";
 import { FieldValue, type Firestore, type DocumentReference, type Transaction, type WriteBatch } from "firebase-admin/firestore";
 import { backgroundMode } from "./config";
+import { enqueueAccounting } from "../accounting/enqueue";
 export type DeliveryRecord = { collection: string; id: string };
 export type Delivery = (db: Firestore, records: DeliveryRecord[]) => Promise<void>;
 const adapters = new WeakMap<Firestore, Firestore>();
@@ -19,6 +19,7 @@ export function withBackgroundDelivery(db: Firestore, delivery?: Delivery): Fire
     }
   }
   function writer<T extends Transaction | WriteBatch>(target: T, records: Map<string, DeliveryRecord>): T {
+    const accountingBookings = new Set<string>();
     const proxy: T = new Proxy(target, { get(object, key) {
       if (key === "commit" && "commit" in object) return async () => { const result = await object.commit(); await deliver(records); return result; };
       if (["set", "create", "update"].includes(String(key))) return (ref: DocumentReference, value: unknown, ...rest: unknown[]) => {
@@ -43,6 +44,17 @@ export function withBackgroundDelivery(db: Firestore, delivery?: Delivery): Fire
           if (kinds.length || (["projectionOutbox", "mediaPublicationOutbox"].includes(collection) && input.status === "pending")) records.set(ref.path, { collection, id });
         }
         const result = Reflect.apply(Reflect.get(object, key) as (...args: unknown[]) => unknown, object, [ref, data, ...rest]);
+        // Track authoritative source writes, including nested lifecycle/billing records.
+        // Use the raw writer to avoid recursively observing our own outbox/state writes.
+        if (process.env.HOTEL_ACCOUNTING_START_AT && value && typeof value === "object") {
+          const input = value as Record<string, unknown>;
+          const bookingId = collection === "bookings" ? id : ["paymentAttempts", "propertyPayments", "refunds"].includes(collection) ? input.bookingId : collection === "bookingFinanceAgreementsV1" ? id : null;
+          if (typeof bookingId === "string" && bookingId && !accountingBookings.has(bookingId)) {
+            accountingBookings.add(bookingId);
+            const outboxId = enqueueAccounting(db, object, bookingId);
+            records.set(`projectionOutbox/${outboxId}`, { collection: "projectionOutbox", id: outboxId });
+          }
+        }
         return result === object ? proxy : result;
       };
       const value = Reflect.get(object, key);
@@ -55,7 +67,7 @@ export function withBackgroundDelivery(db: Firestore, delivery?: Delivery): Fire
       const committed = await target.runTransaction(async tx => {
         // Each SDK retry owns a fresh collection; only the committed callback's records escape.
         const records = new Map<string, DeliveryRecord>();
-        const value = await financeTransaction(target, writer(tx, records), callback);
+        const value = await callback(writer(tx, records));
         return { value, records };
       }, options);
       await deliver(committed.records); return committed.value;

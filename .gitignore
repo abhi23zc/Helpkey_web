@@ -18,7 +18,11 @@
 # next.js
 /.next/
 /.next-pms/
-/.next-finance-phase3/
+/.next-finance-settings-build/
+/.next-finance-settings-dev/
+/.next-booking-finance-build/
+/.next-accounting-build/
+/.next-step8-build/
 /out/
 
 # production
@@ -49,3 +53,6 @@ ui-debug.log*
 next-env.d.ts
 # Local queue backups; use a separate host-mounted backup destination in production.
 /backups/
+
+# Local operational exports
+/artifacts/

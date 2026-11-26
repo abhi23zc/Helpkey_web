@@ -11,7 +11,6 @@ import { ApiException } from "@/lib/api/errors";
 import { features } from "./access";
 import { assignPhysical } from "./physical";
 import { netBalance, operationInput, receiptRemaining } from "./domain";
-import { stayFinancials } from "@/lib/stay/domain";
 import type { RecordData } from "@/lib/partner/dashboard/domain";
 
 export function requireFeature(feature: keyof ReturnType<typeof features>) {
@@ -162,7 +161,10 @@ export async function bookingOperations(
         (b.refundDuePaise ?? 0) -
         (["cancelled", "no_show"].includes(b.bookingStatus)
           ? 0
-          : stayFinancials(b).effectiveTotalPaise),
+          : Math.max(
+              0,
+              (b.totalPaise ?? 0) - (b.customizationCreditPaise ?? 0) + (b.billingNetPaise ?? 0),
+            )),
     ),
   };
 }

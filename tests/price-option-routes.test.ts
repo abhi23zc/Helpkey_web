@@ -1,4 +1,3 @@
-vi.mock("@/lib/finance/tax-configuration", () => ({ priceReview: async () => ({ basis: "tax_exclusive", reviewedBy: "owner", reviewedAt: "2026-01-01T00:00:00.000Z" }) }));
 import { beforeEach, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({ records: new Map<string, Record<string, unknown>>(), writes: vi.fn(), owner: vi.fn() }));
 vi.mock("@/lib/api/handler", () => ({ withApiHandler: (fn: unknown) => fn }));
@@ -9,7 +8,6 @@ vi.mock("@/lib/partner/service", async importOriginal => ({ ...await importOrigi
 vi.mock("@/lib/firebase/admin", () => ({ adminDb: {
   collection: (name: string) => ({ doc: (id = "newDoc123") => ({ id, path: `${name}/${id}`, get: async () => ({ exists: fixture.records.has(`${name}/${id}`), data: () => fixture.records.get(`${name}/${id}`) }) }) }),
   batch: () => ({ set: fixture.writes, update: fixture.writes, commit: async () => {} }),
-  runTransaction: async (fn: (tx: object) => Promise<unknown>) => fn({ set: fixture.writes, update: fixture.writes }),
 }, adminAuth: {} }));
 import { POST } from "@/app/api/partner/properties/[propertyId]/rate-plans/route";
 import { PATCH } from "@/app/api/partner/properties/[propertyId]/rate-plans/[ratePlanId]/route";

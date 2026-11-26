@@ -1,4 +1,9 @@
 "use client";
+
+import { BookingPaymentSummary } from "@/components/booking/payment-summary";
+import { paymentSummary } from "@/lib/stay/payment-summary";
+
+import { BookingFinanceSection } from "@/components/booking-finance/booking-finance-section";
 import { ReservationStayChanges } from "./reservation-stay-changes";
 import { ReservationFolio } from "./reservation-folio";
 import { ReservationGuests } from "./reservation-guests";
@@ -967,6 +972,7 @@ function ReservationDetails({
                 {activeTab === "billing" && (
                   <div className="space-y-4">
                     <div id="workspace-billing" tabIndex={-1} />
+                    <BookingFinanceSection bookingId={booking.id} audience="partner" revision={`${booking.totalPaise}:${booking.paidPaise}:${booking.bookingStatus}:${booking.stayRevision}`} />
                     {sections.billingRead ? (
                       <ReservationFolio
                         bookingId={booking.id}
@@ -1037,10 +1043,11 @@ function ReservationDetails({
                       </div>
 
                       {/* 3 Metric Stat Grid */}
+                      <BookingPaymentSummary summary={booking.paymentSummary ?? paymentSummary(booking)} currency={booking.currency} />
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="rounded-xl border border-[#f0ece4] bg-[#fdfdfc] p-3.5">
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b96aa]">
-                            Total Booking
+                            Room booking
                           </span>
                           <p className="mt-1 text-lg font-bold text-[#061224]">
                             {formatPaise(
@@ -1048,12 +1055,12 @@ function ReservationDetails({
                             )}
                           </p>
                           <p className="mt-0.5 text-[11px] text-[#8b96aa]">
-                            Agreed stay amount
+                            Original room agreement
                           </p>
                         </div>
                         <div className="rounded-xl border border-[#f0ece4] bg-[#fdfdfc] p-3.5">
                           <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b96aa]">
-                            Total Collected
+                            Room payment collected
                           </span>
                           <p className="mt-1 text-lg font-bold text-emerald-700">
                             {formatPaise(booking.paidPaise)}

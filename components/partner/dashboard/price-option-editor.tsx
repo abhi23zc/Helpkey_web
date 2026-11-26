@@ -5,9 +5,7 @@ import { ChevronDown, Plus, Check, Moon, Clock3 } from "lucide-react";
 import Link from "next/link";
 import { DurationPriceEditor } from "@/components/partner/duration-price-editor";
 import { eligiblePricing, validDurationPrices } from "@/lib/booking/duration-pricing";
-import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api/client";
-import type { PriceBasis, PaymentOption } from "@/lib/finance/calculation";
+import { calculateGuestPrice } from "@/lib/booking/domain";
 import { formatPaise } from "@/lib/currency";
 import { requestJson } from "@/lib/partner/upload-client";
 import type { ListingRatePlan, ListingResponse } from "./use-property-listing";
@@ -37,7 +35,6 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
   const busy = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
-  const [exampleDate, setExampleDate] = useState(() => new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10));
   const [exampleHours, setExampleHours] = useState(rate?.durationPrices?.[0]?.hours ?? 0);
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
   useEffect(() => {
@@ -45,41 +42,32 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  function update<K extends keyof typeof form>(key: K, value: typeof form[K]) { setServerPreview(null); setForm(current => ({ ...current, [key]: value })); }
+  function update<K extends keyof typeof form>(key: K, value: typeof form[K]) { setForm(current => ({ ...current, [key]: value })); }
   function switchOption(id: string) {
     if (saving || (id === (rate?.id ?? "new"))) return;
     if (!dirty || window.confirm("Discard unsaved changes to this price option?")) { onDirty(false); selectRate(id); }
   }
   const hourly = form.mode === "hourly";
   const minimum = Number(form.minimum), maximum = form.maximum.trim() ? Number(form.maximum) : null;
-  const fee = amount(form.fee), deposit = amount(form.deposit);
+  const tax = amount(form.tax), fee = amount(form.fee), deposit = amount(form.deposit);
   const selectedDuration = form.durations.find(row => row.hours === exampleHours) ?? form.durations[0];
-  const context = useQuery({ queryKey: ["price-context", propertyId], queryFn: () => apiFetch<{ basis: PriceBasis; paymentOptions: PaymentOption[] }>(`/api/partner/properties/${propertyId}/price-context`, { cache: "no-store" }), staleTime: 0 });
-  const [reviewedBasis, setReviewedBasis] = useState<PriceBasis | null>(null);
-  const [rateOptions, setRateOptions] = useState<PaymentOption[]>(rate?.paymentOptions ?? []);
-  const [serverPreview, setServerPreview] = useState<ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"] | null>(null);
-  const preview = serverPreview ? { ...serverPreview, balanceDuePaise: serverPreview.hotelBalancePaise, subtotalPaise: serverPreview.taxablePaise, customerFeePaise: fee } : null;
+  let preview: ReturnType<typeof calculateGuestPrice> | null = null;
   const validNights = Number.isInteger(minimum) && minimum >= 1 && minimum <= 30 && (maximum === null || maximum >= minimum);
-  void validNights; void selectedDuration;
+  try {
+    if (hourly ? validDurationPrices(form.durations) : validNights && amount(form.price) > 0) {
+      preview = calculateGuestPrice(hourly ? selectedDuration!.pricePaise : amount(form.price) * minimum, { taxBasisPoints: tax, customerFeePaise: fee, depositBasisPoints: form.payment === "deposit" ? deposit : undefined, paymentMode: form.payment });
+    }
+  } catch { /* Invalid fields have no misleading example. */ }
   const error = (key: string) => errors[key] ? <p role="alert" className="mt-1 text-xs text-rose-700">{errors[key]}</p> : null;
   const numberField = (key: "price" | "tax" | "fee" | "deposit" | "minimum" | "maximum", label: string) => <label className="block min-w-0 text-xs font-semibold text-slate-600">{label}<input type="number" step={key === "minimum" || key === "maximum" ? "1" : "0.01"} min={key === "minimum" ? 1 : 0} value={form[key]} onChange={event => update(key, event.target.value)} aria-invalid={!!errors[key]} className={inputClass} />{error(key)}</label>;
-  async function previewPrice() {
-    if (!context.data) return;
-    const checkIn = exampleDate;
-    const checkOut = new Date(Date.parse(checkIn) + minimum * 86400000).toISOString().slice(0, 10);
-    try {
-      const result = await requestJson<{ calculation: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"] }>(`/api/partner/properties/${propertyId}/price-preview`, { checkIn, ...(hourly ? { arrivalTime: form.arrivalStart, durationMinutes: selectedDuration?.hours ? selectedDuration.hours * 60 : 60 } : { checkOut }), rate: { roomTypeId, name: form.name.trim() || "Standard price", cancellationPolicyId: form.policy, priceEntryBasis: context.data.basis, bookingMode: form.mode, pricingModel: hourly ? "duration" : "nightly", basePricePaise: hourly ? selectedDuration?.pricePaise : amount(form.price), ...(hourly ? { durationPrices: form.durations, allowMidnightCrossing: form.midnight } : {}), customerFeePaise: fee } });
-      setServerPreview(result.calculation); setNotice("Server example for " + checkIn);
-    } catch (cause) { setServerPreview(null); setNotice(cause instanceof Error ? cause.message : "Preview unavailable"); }
-  }
   async function submit() {
     if (busy.current || saving) return;
-    if (!context.data || reviewedBasis !== context.data.basis) { setNotice("Review prices in the current basis and confirm before saving."); return; }
     const next: Record<string, string> = {};
     if (form.name.trim() && (form.name.trim().length < 2 || form.name.trim().length > 140)) next.name = "Use 2–140 characters for the price option name.";
     if (!hourly && !(amount(form.price) > 0)) next.price = "Enter a room price greater than ₹0, with up to two decimal places.";
     if (hourly && !validDurationPrices(form.durations)) next.durations = "Add a unique duration and a total price greater than ₹0 for each row.";
     if (!form.policy) next.policy = "Choose a cancellation policy.";
+    if (!(tax >= 0 && tax <= 10000)) next.tax = "Enter a percentage from 0 to 100, with up to two decimal places.";
     if (!(fee >= 0)) next.fee = "Enter ₹0 or more, with up to two decimal places.";
     if (form.payment === "deposit" && !(deposit >= 0 && deposit <= 10000)) next.deposit = "Enter a percentage from 0 to 100, with up to two decimal places.";
     if (!hourly && (!Number.isInteger(minimum) || minimum < 1 || minimum > 365)) next.minimum = "Enter a whole number from 1 to 365.";
@@ -89,12 +77,11 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
     setErrors(next); setNotice("");
     if (Object.keys(next).length) return;
     const payload = {
-      priceEntryBasis: context.data?.basis,
       name: form.name.trim() || "Standard price", bookingMode: form.mode, pricingModel: hourly ? "duration" : "nightly",
       ...(hourly ? { durationPrices: form.durations, arrivalWindow: { start: form.arrivalStart, end: form.arrivalEnd }, operatingWindow: { start: form.opens, end: form.closes }, allowMidnightCrossing: form.midnight } : { minimumNights: minimum, maximumNights: maximum }),
       basePricePaise: hourly ? Math.min(...form.durations.map(row => row.pricePaise)) : amount(form.price),
       breakfastIncluded: form.breakfast, cancellationPolicyId: form.policy, paymentMode: form.payment,
-      ...(rateOptions.length ? { paymentOptions: rateOptions } : {}), customerFeePaise: fee,
+      taxBasisPoints: tax, customerFeePaise: fee,
       ...(form.payment === "deposit" ? { depositBasisPoints: deposit } : {}),
     };
     busy.current = true; setSaving(true);
@@ -109,12 +96,8 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
       setNotice(message && !/^[A-Z_]+$/.test(message) && !/code|\[|\{/.test(message) ? message : "Could not save the price option. Your changes are still here; please try again.");
     } finally { busy.current = false; setSaving(false); }
   }
-  const summary = [fee > 0 && `${money(fee)} per booking`, !hourly && (minimum > 1 || maximum !== null) && `${form.minimum}–${maximum ?? "no maximum"} nights`, hourly && `Check-in ${form.arrivalStart}–${form.arrivalEnd}`, hourly && (form.opens === form.closes ? "Available all day" : `Room use ${form.opens}–${form.closes}${form.closes < form.opens ? " next day" : ""}`), hourly && (form.midnight ? "Stays may continue past midnight" : "Stays must end before midnight"), rate?.eligibleWeekdays?.length && `Check-in days: ${rate.eligibleWeekdays.map(day => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}`, rate?.minimumAdvanceMinutes && `Book at least ${rate.minimumAdvanceMinutes} minutes ahead`, rate?.maximumAdvanceDays != null && `Book up to ${rate.maximumAdvanceDays} days ahead`, rate?.minimumDurationMinutes && rate.minimumDurationMinutes !== 15 && `Minimum ${rate.minimumDurationMinutes} minutes`, rate?.maximumDurationMinutes && rate.maximumDurationMinutes !== 1440 && `Maximum ${rate.maximumDurationMinutes} minutes`].filter(Boolean).join(" · ");
+  const summary = [tax > 0 && `${form.tax}% tax`, fee > 0 && `${money(fee)} per booking`, !hourly && (minimum > 1 || maximum !== null) && `${form.minimum}–${maximum ?? "no maximum"} nights`, hourly && `Check-in ${form.arrivalStart}–${form.arrivalEnd}`, hourly && (form.opens === form.closes ? "Available all day" : `Room use ${form.opens}–${form.closes}${form.closes < form.opens ? " next day" : ""}`), hourly && (form.midnight ? "Stays may continue past midnight" : "Stays must end before midnight"), rate?.eligibleWeekdays?.length && `Check-in days: ${rate.eligibleWeekdays.map(day => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}`, rate?.minimumAdvanceMinutes && `Book at least ${rate.minimumAdvanceMinutes} minutes ahead`, rate?.maximumAdvanceDays != null && `Book up to ${rate.maximumAdvanceDays} days ahead`, rate?.minimumDurationMinutes && rate.minimumDurationMinutes !== 15 && `Minimum ${rate.minimumDurationMinutes} minutes`, rate?.maximumDurationMinutes && rate.maximumDurationMinutes !== 1440 && `Maximum ${rate.maximumDurationMinutes} minutes`].filter(Boolean).join(" · ");
   return <div className="min-w-0 space-y-4">
-    <label className="block text-sm">Example service date<input type="date" value={exampleDate} onChange={e => setExampleDate(e.target.value)} className={inputClass} /></label>
-    <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => void previewPrice()}>Preview with reviewed tax rules</button>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!context.data && reviewedBasis === context.data.basis} onChange={e => setReviewedBasis(e.target.checked ? context.data?.basis ?? null : null)} />I reviewed and re-entered all prices in the displayed basis.</label>
-    <p className="rounded-xl bg-amber-50 p-3 text-sm">Price entry: {context.data?.basis === "tax_inclusive" ? "including tax" : context.data ? "before tax" : "loading…"}. Review and re-enter every price before saving. Final taxes and payment choices are supplied by the server quote.</p>
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Price options</p>
       <div className="flex flex-wrap gap-2">
@@ -133,12 +116,13 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
         <label className="block text-xs font-semibold text-slate-600">Cancellation policy<select className={inputClass} value={form.policy} onChange={e => update("policy", e.target.value)} aria-invalid={!!errors.policy}><option value="">Select a policy</option>{policies.map(p => <option key={p.id} value={p.id}>{p.name ?? "Policy"}</option>)}</select>{error("policy")}</label>
         {policies.find(p => p.id === form.policy)?.description && <p className="text-xs leading-relaxed text-slate-500">{policies.find(p => p.id === form.policy)?.description}</p>}
         {!policies.length && <Link className="text-sm underline" href={`/partner/listing?propertyId=${encodeURIComponent(propertyId)}&section=policies`}>Create a cancellation policy for this property</Link>}
-        <fieldset className="space-y-2"><legend className="text-sm">Optional payment restriction (none selected inherits hotel choices)</legend>{context.data?.paymentOptions.map(option => <label key={option} className="flex gap-2 text-sm"><input type="checkbox" checked={rateOptions.includes(option)} onChange={e => setRateOptions(current => e.target.checked ? [...current, option] : current.filter(v => v !== option))} />{option === "full_online" ? "Full online" : option === "advance_online" ? "Advance online" : "Pay at property"}</label>)}</fieldset>
+        <label className="block text-xs font-semibold text-slate-600">When the guest pays<select className={inputClass} value={form.payment} onChange={e => update("payment", e.target.value)}><option value="full">Pay the full amount when booking</option><option value="deposit">Pay part now, balance at the hotel</option><option value="pay_at_property">Pay at the hotel</option></select></label>
+        {form.payment === "deposit" && numberField("deposit", "Percentage paid when booking (%)")}
         {rate && <label className="block text-xs font-semibold text-slate-600">Booking availability<select className={inputClass} value={form.status} onChange={e => update("status", e.target.value as typeof form.status)}><option value="active">Available for booking</option><option value="paused">Not available for new bookings</option></select></label>}
         <p className="text-xs text-slate-500">The room and property must also allow this stay type before guests can book.</p>
       </section>
       <details className="group space-y-4 rounded-2xl border border-slate-200/70 bg-white p-4 sm:p-5" open={Object.keys(errors).some(key => ["tax", "fee", "minimum", "maximum", "times"].includes(key)) || undefined}><summary className="flex cursor-pointer list-none items-start justify-between gap-3 text-sm font-semibold text-[#092442] [&::-webkit-details-marker]:hidden"><span>Additional charges and stay rules<span className="mt-1.5 block text-xs font-normal leading-relaxed text-slate-500">{summary || "No additional charges or stay length limits"}</span></span><ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" /></summary>
-        <p className="text-xs text-slate-500">Taxes and advance amounts follow reviewed Admin rules and hotel policy.</p>
+        {numberField("tax", "Tax added to the room price (%)")}<p className="text-xs text-slate-500">Tax is added to the room charge. It does not apply to the additional charge below.</p>
         {numberField("fee", "Additional charge per booking (₹)")}<p className="text-xs text-slate-500">Charged once per booking, regardless of nights or hours.</p>
         {!hourly ? <div className="space-y-3"><h4 className="text-sm font-bold">Stay length limits</h4><div className="grid grid-cols-2 gap-3">{numberField("minimum", "Minimum nights")}{numberField("maximum", "Maximum nights (optional)")}</div><p className="text-xs text-slate-500">A blank maximum means no additional limit. Bookings are currently limited to 30 nights.</p></div> : <>
           <h4 className="text-sm font-bold">When guests can check in</h4><div className="grid grid-cols-2 gap-3">{([['arrivalStart', 'Earliest check-in'], ['arrivalEnd', 'Latest check-in']] as const).map(([key, label]) => <label className="min-w-0 text-xs" key={key}>{label}<input type="time" className={inputClass} value={form[key]} onChange={e => update(key, e.target.value)} /></label>)}</div>
@@ -150,7 +134,7 @@ export function PriceOptionEditor({ propertyId, roomTypeId, policies, rates, sel
     </fieldset>
     <section aria-label="Example guest price" className="space-y-3 rounded-2xl border border-slate-200/70 bg-[#f5f8fb] p-4 sm:p-5"><h3 className="text-sm font-bold text-[#092442]">Example guest price</h3><p className="text-xs text-slate-600">For one room, {hourly ? `${selectedDuration?.hours ?? "—"} hours (the total for this duration)` : `${validNights ? minimum : "—"} night(s)`}. Date-specific prices and optional extras can change the final booking total.</p>
       {hourly && form.durations.length > 1 && <label className="block text-xs">Example duration<select value={selectedDuration?.hours ?? ""} onChange={e => setExampleHours(Number(e.target.value))} className={inputClass}>{form.durations.map((row, index) => <option key={index} value={row.hours}>{row.hours} hours — {money(row.pricePaise)}</option>)}</select></label>}
-      {preview ? <dl className="space-y-2 text-sm">{[["All items before tax", preview.subtotalPaise], ["Tax", preview.taxPaise], ["Total", preview.totalPaise], ["Payable when booking", preview.payableNowPaise], ["Payable at the hotel", preview.balanceDuePaise]].map(([label, value]) => <div className="flex justify-between gap-3" key={label}><dt>{label}</dt><dd className="font-bold">{money(Number(value))}</dd></div>)}</dl> : <p className="text-xs">Enter valid prices and stay limits to see an example.</p>}
+      {preview ? <dl className="space-y-2 text-sm">{[["Room charge", preview.subtotalPaise], ["Tax", preview.taxPaise], ["Additional charge per booking", preview.customerFeePaise], ["Total", preview.totalPaise], ["Payable when booking", preview.payableNowPaise], ["Payable at the hotel", preview.balanceDuePaise]].map(([label, value]) => <div className="flex justify-between gap-3" key={label}><dt>{label}</dt><dd className="font-bold">{money(Number(value))}</dd></div>)}</dl> : <p className="text-xs">Enter valid prices and stay limits to see an example.</p>}
     </section>
     <div className="sticky -bottom-5 z-10 -mx-5 space-y-2 border-t border-slate-100 bg-white/95 px-5 pb-4 pt-3 backdrop-blur-sm">
       {notice && <p role="status" className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">{notice}</p>}

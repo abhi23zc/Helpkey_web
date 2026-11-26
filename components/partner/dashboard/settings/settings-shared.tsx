@@ -20,6 +20,7 @@ import type { SetupItem } from "@/lib/partner/pms/domain";
 import type { OperationalPolicies } from "@/lib/partner/reservations/operational-policies";
 
 export type SettingsSection =
+  | "finance"
   | "hub"
   | "pms"
   | "policies"
@@ -178,6 +179,8 @@ export function canAccessSection(
   const has = (perm: string) =>
     owner || Boolean(data.permissions?.includes(perm));
   switch (section) {
+    case "finance":
+      return owner;
     case "hub":
     case "pms":
       return true;
@@ -196,6 +199,7 @@ export function canAccessSection(
 }
 
 export const SETTINGS_NAV_META = [
+  { id: "finance" as const, label: "Finance Settings", icon: ReceiptText },
   {
     id: "pms" as const,
     label: "PMS Setup",

@@ -1,5 +1,3 @@
-import { bookingCalculation } from "@/lib/finance/booking-calculation";
-import { reverseCommission, reverseLine, type LineReversal } from "@/lib/finance/calculation";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
@@ -252,8 +250,6 @@ async function evaluate(
       "ROOM_OCCUPIED",
       "The destination is occupied. Check out or move its current guest first.",
     );
-  let additionalAgreement: Awaited<ReturnType<typeof bookingCalculation>> | null = null;
-  let reversal: (LineReversal & { originalAgreementId: string; internalCommissionReversalPaise: number }) | null = null;
   let endAt = b.endAt as string,
     amount = explicitAdjustment(input),
     price: RecordData | null = null,
@@ -295,9 +291,6 @@ async function evaluate(
     endAt = extension.endAt;
     amount = extension.adjustmentPaise;
     price = extension.price;
-    const cancellation = rate.cancellationPolicyId ? (await tx.get(adminDb.collection("cancellationPolicies").doc(rate.cancellationPolicyId))).data() : null;
-    additionalAgreement = await bookingCalculation({ propertyId: b.propertyId, rate: { ...rate, customerFeePaise: 0 }, stay: price, requests: [], offerings: [], policy: cancellation, source: b.source === "manual_partner" ? "hotel_direct" : "marketplace", collection: "hotel", negotiatedPaise: input.negotiatedPaise, tx });
-    amount = additionalAgreement.publicCalculation.totalPaise;
   } else if (input.action === "early_departure") {
     endAt =
       input.departure === "now"
@@ -357,17 +350,6 @@ async function evaluate(
       403,
       "The financial adjustment requires the corresponding billing permission.",
     );
-  if (input.action === "category" && amount > 0) {
-    const rateId = b.operationalRatePlanId || b.ratePlan?.id;
-    const priced = rateId ? (await tx.get(adminDb.collection("ratePlans").doc(rateId))).data() : null;
-    if (!priced || priced.status !== "active" || priced.propertyId !== b.propertyId) throw new Error("RATE_NOT_AVAILABLE");
-    const policy = priced.cancellationPolicyId ? (await tx.get(adminDb.collection("cancellationPolicies").doc(priced.cancellationPolicyId))).data() : null;
-    const date = localParts(now, b.timezone).date;
-    const endDate = localParts(Date.parse(b.endAt), b.timezone).date;
-    const nights = Math.max(1, Math.ceil((Date.parse(endDate) - Date.parse(date)) / 86400000));
-    additionalAgreement = await bookingCalculation({ propertyId: b.propertyId, rate: { ...priced, customerFeePaise: 0 }, stay: { ...b, checkIn: date, startAt: effectiveAt, nights }, requests: [], offerings: [], policy, source: b.source === "manual_partner" ? "hotel_direct" : "marketplace", collection: "hotel", negotiatedPaise: amount, tx });
-    amount = additionalAgreement.publicCalculation.totalPaise;
-  }
   const sources = await readBillingSources(tx, bookingId);
   try {
     requireReconciled(b, sources);
@@ -404,18 +386,6 @@ async function evaluate(
         "REDUCTION_SOURCE_REQUIRED",
         "Choose an eligible accommodation source with enough unreduced charges.",
       );
-  }
-  if (amount < 0) {
-    if (!("originalChargeLineId" in input) || !input.originalChargeLineId) throw new Error("ORIGINAL_CHARGE_LINE_REQUIRED");
-    const originalAgreementId = reductionSourceId === "booking" ? b.currentFinancialAgreementId ?? "original" : reductionSourceId.startsWith("entry:") ? `change_${reductionSourceId.slice(6)}` : "";
-    if (!originalAgreementId || originalAgreementId.includes("/")) throw new Error("INVALID_REDUCTION_REFERENCE");
-    const [saved, prior] = await Promise.all([tx.get(ref.collection("financialAgreements").doc(originalAgreementId)), tx.get(ref.collection("financialAdjustments"))]);
-    const line = saved.get("publicCalculation.lines")?.find((l: { id: string }) => l.id === input.originalChargeLineId);
-    if (!line || line.kind !== "room") throw new Error("INVALID_REDUCTION_REFERENCE");
-    const previous = prior.docs.map(d => d.data()).filter(d => d.originalAgreementId === originalAgreementId && d.originalLineId === line.id) as LineReversal[];
-    const reduced = reverseLine(line, -amount, previous);
-    const commission = saved.get("internal.commission")?.find((c: { lineId: string }) => c.lineId === line.id)?.amountPaise ?? 0;
-    reversal = { ...reduced, originalAgreementId, internalCommissionReversalPaise: reverseCommission(line, commission, reduced, previous) };
   }
   const additions: BillingEntry[] = amount
     ? [
@@ -664,8 +634,6 @@ async function evaluate(
       blocks: blocks.docs.map((d) => ({ id: d.id, ...d.data() })),
       calendars: Object.fromEntries(calendars),
       amount,
-      additionalAgreement,
-      reversal,
     }),
   );
   return {
@@ -681,8 +649,6 @@ async function evaluate(
     segments: next,
     patch,
     additions,
-    additionalAgreement,
-    reversal,
     fingerprint,
     oldCounts,
     newCounts,
@@ -808,8 +774,6 @@ export async function confirmStayChange(
         "STAY_REVIEW_CHANGED",
         "The reservation, price, financial records or room availability changed. Review again before confirming.",
       );
-    if (r.additionalAgreement) tx.create(r.ref.collection("financialAgreements").doc(`change_${id}`), { ...r.additionalAgreement, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), linkedChangeId: id });
-    if (r.reversal) tx.create(r.ref.collection("financialAdjustments").doc(id), { ...r.reversal, acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), linkedChangeId: id });
     // All reads have completed. Inventory, folio, history, projections and receipt commit together.
     const inventoryWrites = new Map<
       string,
@@ -985,9 +949,6 @@ export async function stayChangeChoices(uid: string, bookingId: string) {
     const sources = access.permissions.includes("billing.adjust")
       ? await readBillingSources(tx, bookingId)
       : null;
-    const financialHistory = sources ? await tx.get(adminDb.collection("bookings").doc(bookingId).collection("financialAgreements")) : null;
-    const financialAdjustments = sources ? await tx.get(adminDb.collection("bookings").doc(bookingId).collection("financialAdjustments")) : null;
-    const reductionLines = financialHistory?.docs.flatMap(d => (d.get("publicCalculation.lines") ?? []).filter((l: { kind: string }) => l.kind === "room").map((l: { id: string; serviceDate: string; totalPaise: number }) => ({ sourceId: d.id === (b.currentFinancialAgreementId ?? "original") ? "booking" : d.id.startsWith("change_") ? `entry:${d.id.slice(7)}` : "", lineId: l.id, date: l.serviceDate, remainingPaise: l.totalPaise - (financialAdjustments?.docs.filter(a => a.get("originalAgreementId") === d.id && a.get("originalLineId") === l.id).reduce((n, a) => n + a.get("totalPaise"), 0) ?? 0) }))).filter(l => l.sourceId && l.remainingPaise > 0) ?? [];
     const choices = await Promise.all(
       units.docs
         .filter((d) => d.id !== b.physicalUnitId)
@@ -1034,7 +995,6 @@ export async function stayChangeChoices(uid: string, bookingId: string) {
         }),
     );
     return {
-      reductionLines,
       reductionSources: sources
         ? documentSources(b, sources.entries).filter(
             (s) =>

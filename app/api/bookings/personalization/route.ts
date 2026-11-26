@@ -1,7 +1,7 @@
 import { withDatePrices } from "@/lib/booking/date-prices";
 import { withApiHandler } from "@/lib/api/handler";
 import { bookingInput } from "@/lib/booking/contracts";
-import { evaluateStayRules as evaluateStay } from "@/lib/booking/domain";
+import { evaluateStay } from "@/lib/booking/domain";
 import { adminDb } from "@/lib/firebase/admin";
 import { offeringsFor } from "@/lib/stay/catalog";
 import { propertyAllowsPets } from "@/lib/stay/recommendations";

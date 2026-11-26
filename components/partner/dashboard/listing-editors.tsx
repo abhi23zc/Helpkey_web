@@ -663,8 +663,6 @@ export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusy
   const [policyDesc, setPolicyDesc] = useState("Free cancellation up to 24 hours before check-in. 100% fee thereafter.");
   const [hours, setHours] = useState("24");
   const [fee, setFee] = useState("100");
-  const [noShowFee, setNoShowFee] = useState("");
-  const [taxTreatmentReference, setTaxTreatmentReference] = useState("");
   const [policyAdded, setPolicyAdded] = useState(false);
 
   const applyPreset = (type: "flexible" | "moderate" | "non_refundable" | "custom") => {
@@ -708,9 +706,6 @@ export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusy
           description: policyDesc,
           refundableUntilHours: Number(hours),
           cancellationFeePercent: Number(fee),
-          lateCharge: { kind: "percentage", basisPoints: Math.round(Number(fee) * 100), basis: "final_total" },
-          noShow: { kind: "percentage", basisPoints: Math.round(Number(noShowFee) * 100), basis: "final_total" },
-          taxTreatmentReference,
         },
       );
       if (res.policy) mutations.addPolicy({ id: res.policy.id, name: res.policy.name });
@@ -881,8 +876,6 @@ export function PoliciesEditor({ propertyId, listing, onSaved, mutations, onBusy
                 </div>
 
                 <div className="space-y-3.5">
-                  <label className="block text-sm font-bold">No-show charge (% of final total)<input type="number" min="0" max="100" required value={noShowFee} onChange={e => setNoShowFee(e.target.value)} className={inputClass} /></label>
-                  <label className="block text-sm font-bold">Reviewed cancellation tax reference<input required value={taxTreatmentReference} onChange={e => setTaxTreatmentReference(e.target.value)} className={inputClass} placeholder="Admin-reviewed rule:version" /></label>
                   <label className="block text-xs sm:text-sm font-bold text-slate-700">
                     Policy name
                     <input

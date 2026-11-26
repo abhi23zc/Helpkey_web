@@ -29,7 +29,6 @@ export type CatalogProperty = {
   ratingAverage: number;
   ratingCount: number;
   minimumPricePaise: number | null;
-  minimumPriceBasis?: "tax_exclusive" | "tax_inclusive" | null;
   currency: string;
   coverImageUrl: string | null;
   coverImageSrcSet: string;
@@ -134,7 +133,6 @@ async function propertyCard(
     ratingAverage: typeof data.reviewSummary?.count === "number" && data.reviewSummary.count > 0 && typeof data.reviewSummary.average === "number" ? data.reviewSummary.average : typeof data.ratingAverage === "number" ? data.ratingAverage : 0,
     ratingCount: typeof data.reviewSummary?.count === "number" && data.reviewSummary.count > 0 ? data.reviewSummary.count : typeof data.ratingCount === "number" ? data.ratingCount : 0,
     minimumPricePaise: activePrices.length ? Math.min(...activePrices) : storedPrice,
-    minimumPriceBasis: loaded.rates.find(r => startingPrice(r.data()) === (activePrices.length ? Math.min(...activePrices) : null))?.get("priceReview")?.basis ?? null,
     currency: typeof data.currency === "string" ? data.currency : "INR",
     coverImageUrl: coverImage?.imageUrl ?? null,
     coverImageSrcSet: coverImage?.imageSrcSet ?? "",
@@ -165,7 +163,6 @@ function projectedProperty(doc: FirebaseFirestore.QueryDocumentSnapshot): Catalo
     ratingAverage: Number(data.ratingAverage) || 0,
     ratingCount: Number(data.ratingCount) || 0,
     minimumPricePaise: Number.isSafeInteger(data.minimumPricePaise) ? data.minimumPricePaise : null,
-    minimumPriceBasis: ["tax_exclusive", "tax_inclusive"].includes(data.minimumPriceBasis) ? data.minimumPriceBasis : null,
     currency: typeof data.currency === "string" ? data.currency : "INR",
     coverImageUrl: typeof cover?.imageUrl === "string" ? cover.imageUrl : null,
     coverImageSrcSet: typeof cover?.srcSet === "string" ? cover.srcSet : "",
@@ -227,7 +224,6 @@ function publicCatalogProperty(property: CatalogProperty): CatalogProperty {
     ratingAverage: property.ratingAverage,
     ratingCount: property.ratingCount,
     minimumPricePaise: property.minimumPricePaise,
-    minimumPriceBasis: property.minimumPriceBasis ?? null,
     currency: property.currency,
     coverImageUrl: property.coverImageUrl,
     coverImageSrcSet: property.coverImageSrcSet,

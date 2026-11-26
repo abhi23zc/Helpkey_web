@@ -1,4 +1,3 @@
-import { priceReview } from "@/lib/finance/tax-configuration";
 import { rateOwnerError } from "@/lib/partner/rate-owner-error";
 import { eligiblePricing, startingPrice } from "@/lib/booking/duration-pricing";
 import { withApiHandler } from "@/lib/api/handler";
@@ -46,11 +45,10 @@ const rawPATCH = async function PATCH(
     if (minimumDuration > maximumDuration) throw new Error("MAXIMUM_DURATION_TOO_LOW");
     if (merged.arrivalWindow && merged.arrivalWindow.start > merged.arrivalWindow.end) throw new Error("INVALID_ARRIVAL_WINDOW");
     const patch = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "code" && key !== "minimumNights" && key !== "maximumNights"));
-    await adminDb.runTransaction(async batch => {
-    const reviewedPrice = await priceReview(user.uid, propertyId, input.priceEntryBasis, batch, input.paymentOptions);
-    batch.update(ref, { ...patch, priceReview: reviewedPrice, basePricePaise: startingPrice(merged), stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
+    const batch = adminDb.batch();
+    batch.update(ref, { ...patch, basePricePaise: startingPrice(merged), stayRules, updatedAt: FieldValue.serverTimestamp(), updatedBy: user.uid });
     enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing"] });
-    });
+    await batch.commit();
     await invalidatePublic("home", "search:*", "property:*", "bookable:*");
 
     return Response.json({

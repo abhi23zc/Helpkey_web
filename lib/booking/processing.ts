@@ -43,7 +43,7 @@ export async function processRefund(refundId: string) {
     if (committed > captured) throw new Error("REFUND_EXCEEDS_CAPTURED_FUNDS");
     if (data.requestAmountPaise !== undefined && (data.requestAmountPaise !== data.amountPaise || data.requestPaymentId !== data.paymentId)) throw new Error("REFUND_REQUEST_CHANGED");
     const leaseExpiresAt = Timestamp.fromMillis(Date.now() + 90_000);
-    tx.update(ref, { status: "processing", leaseOwner: owner, leaseExpiresAt, nextAttemptAt: leaseExpiresAt, requestAmountPaise: data.amountPaise, requestPaymentId: data.paymentId, attempts: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() });
+    tx.update(ref, { bookingId: data.bookingId, status: "processing", leaseOwner: owner, leaseExpiresAt, nextAttemptAt: leaseExpiresAt, requestAmountPaise: data.amountPaise, requestPaymentId: data.paymentId, attempts: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() });
     return { bookingId: String(data.bookingId), paymentId: String(data.paymentId), amountPaise: Number(data.amountPaise), providerRefundId: typeof data.providerRefundId === "string" ? data.providerRefundId : null, currency: String(booking.currency) };
   });
   if (!claim) return;
@@ -64,7 +64,7 @@ export async function processRefund(refundId: string) {
       const booking = (await tx.get(bookingRef)).data();
       markTodayChanged(booking?.propertyId);
       if (!current || current.leaseOwner !== owner || current.leaseExpiresAt?.toMillis() <= Date.now() || ["processed", "failed"].includes(current.status) || !booking) return;
-      tx.update(ref, { providerRefundId: result.id, status: result.status, ...(result.status === "processed" ? { processedAt: FieldValue.serverTimestamp() } : {}), leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + 60_000), updatedAt: FieldValue.serverTimestamp() });
+      tx.update(ref, { bookingId: claim.bookingId, providerRefundId: result.id, status: result.status, ...(result.status === "processed" ? { processedAt: FieldValue.serverTimestamp() } : {}), leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + 60_000), updatedAt: FieldValue.serverTimestamp() });
       if (result.status === "processed") {
         if (current.stayQuote) {
           tx.update(bookingRef, { stayPaymentReceipts: (booking.stayPaymentReceipts ?? []).map((r: import("@/lib/stay/contracts").StayPaymentReceipt) => r.paymentId===claim.paymentId && (!current.allocationId || r.requestId === current.allocationId)?{...r,status:"refunded"}:r), customizations: (booking.customizations ?? []).map((r: import("@/lib/stay/contracts").StayRequest) => r.quote?.paymentId === claim.paymentId && (!current.allocationId || r.id === current.allocationId) ? { ...r, quote: { ...r.quote, paymentStatus: "refunded" } } : r), stayRevision: (booking.stayRevision ?? 0) + 1, updatedAt: FieldValue.serverTimestamp() });
@@ -79,7 +79,7 @@ export async function processRefund(refundId: string) {
   } catch (error) {
     await adminDb.runTransaction(async (tx) => {
       const current = (await tx.get(ref)).data();
-      if (current && current.leaseOwner === owner && !["processed", "failed"].includes(current.status)) tx.update(ref, { status: error instanceof Error && /MISMATCH|INVALID_REFUND|REQUEST_CHANGED|RAZORPAY_(400|401|403|404|422)/.test(error.message) ? "attention" : "retry", leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + retryDelay(Number(current.attempts ?? 1), 60_000)), lastError: error instanceof Error ? error.message : "UNKNOWN", updatedAt: FieldValue.serverTimestamp() });
+      if (current && current.leaseOwner === owner && !["processed", "failed"].includes(current.status)) tx.update(ref, { ...(typeof current.bookingId === "string" ? { bookingId: current.bookingId } : {}), status: error instanceof Error && /MISMATCH|INVALID_REFUND|REQUEST_CHANGED|RAZORPAY_(400|401|403|404|422)/.test(error.message) ? "attention" : "retry", leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + retryDelay(Number(current.attempts ?? 1), 60_000)), lastError: error instanceof Error ? error.message : "UNKNOWN", updatedAt: FieldValue.serverTimestamp() });
     });
     throw error;
   } finally { await stopRenewing(); }
@@ -94,7 +94,7 @@ export async function processRefundBatch() {
       failures.push(doc.id);
       if (error instanceof Error && /INVALID_REFUND|MISMATCH|EXCEEDS_CAPTURED|REQUEST_CHANGED/.test(error.message)) await adminDb.runTransaction(async tx => {
         const current = (await tx.get(doc.ref)).data();
-        if (current && !["processed", "failed"].includes(current.status) && !(current.leaseExpiresAt?.toMillis() > Date.now())) tx.update(doc.ref, { status: "attention", lastError: error.message, updatedAt: FieldValue.serverTimestamp() });
+        if (current && !["processed", "failed"].includes(current.status) && !(current.leaseExpiresAt?.toMillis() > Date.now())) tx.update(doc.ref, { ...(typeof current.bookingId === "string" ? { bookingId: current.bookingId } : {}), status: "attention", lastError: error.message, updatedAt: FieldValue.serverTimestamp() });
       });
     }
   }

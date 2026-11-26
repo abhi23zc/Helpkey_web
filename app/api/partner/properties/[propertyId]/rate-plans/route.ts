@@ -1,4 +1,3 @@
-import { priceReview } from "@/lib/finance/tax-configuration";
 import { eligiblePricing, startingPrice } from "@/lib/booking/duration-pricing";
 import { withApiHandler } from "@/lib/api/handler";
 import { FieldValue } from "firebase-admin/firestore";
@@ -26,12 +25,10 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
     const ref = adminDb.collection("ratePlans").doc();
     const { minimumNights, maximumNights, minimumDurationMinutes, maximumDurationMinutes, minimumAdvanceMinutes, maximumAdvanceDays, ...fields } = input;
     const rate = { ...fields, code: fields.code ?? `RATE_${ref.id.toUpperCase()}` };
-    await adminDb.runTransaction(async batch => {
-    const reviewedPrice = await priceReview(user.uid, propertyId, input.priceEntryBasis, batch, input.paymentOptions);
+    const batch = adminDb.batch();
     batch.set(ref, {
       propertyId,
       ...rate,
-      priceReview: reviewedPrice,
       basePricePaise: startingPrice(rate),
       bookingMode: rate.bookingMode ?? "overnight",
       pricingModel: rate.pricingModel ?? "nightly",
@@ -52,7 +49,7 @@ const rawPOST = async function POST(request: Request, { params }: RouteContext<"
       deletedAt: null,
     });
     enqueueProjection(batch, "property_search", propertyId, 1, { components: ["pricing"] });
-    });
+    await batch.commit();
     await invalidatePublic("home", "search:*", "property:*", "bookable:*");
     return Response.json({ ratePlanId: ref.id, ratePlan: { id: ref.id, propertyId, ...rate, basePricePaise: startingPrice(rate), roomTypeId: input.roomTypeId, cancellationPolicyId: input.cancellationPolicyId, minimumNights, maximumNights, status: "active" } }, { status: 201 });
   } catch (error) {

@@ -21,7 +21,6 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 
 type Booking = {
-  calculation?: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"] | null;
   bookingMode?: "overnight" | "hourly";
   startAt?: string | null;
   endAt?: string | null;
@@ -57,6 +56,7 @@ type Booking = {
   subtotalPaise?: number;
   taxPaise?: number;
   customerFeePaise?: number;
+  paymentSummary?: ReturnType<typeof import("@/lib/stay/payment-summary").paymentSummary>;
   totalPaise: number;
   payableNowPaise: number;
   paidPaise: number;
@@ -467,7 +467,7 @@ export function MyBookingsPage() {
 
                         <div className="text-right shrink-0">
                           <div className="font-bold text-2xl text-[#141b2b]">
-                            {money(booking.totalPaise, booking.currency)}
+                            {booking.paymentSummary && !booking.paymentSummary.reliable ? "Payment details need review" : money(booking.paymentSummary?.totalChargesPaise ?? booking.totalPaise, booking.currency)}
                           </div>
                           <div className="text-xs text-[#44474d] mt-0.5">
                             Total for {booking.bookingMode === "hourly" ? `${(booking.durationMinutes ?? 0) / 60} hours` : `${booking.nights} ${booking.nights === 1 ? "night" : "nights"}`}

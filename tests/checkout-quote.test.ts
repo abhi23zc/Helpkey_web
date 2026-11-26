@@ -1,4 +1,3 @@
-vi.mock("@/lib/finance/booking-calculation", async importOriginal => ({ ...await importOriginal<object>(), bookingCalculation: (await import("./helpers/finance-calculation")).testBookingCalculation }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bookingInput, createBookingInput } from "@/lib/booking/contracts";
 
@@ -105,7 +104,7 @@ describe("checkout quote and booking comparison", () => {
     });
     const input = bookingInput.parse({ ...stay, checkOut: undefined, bookingMode: "hourly", arrivalTime: "10:00", durationMinutes: 180 });
     const initial = await quote(input);
-    const submission = createBookingInput.parse({ ...input, ...guest, quoteFingerprint: initial.fingerprint, expectedTotalPaise: initial.totalPaise });
+    const submission = createBookingInput.parse({ ...input, ...guest, quoteFingerprint: initial.fingerprint });
     expect((await quote(submission)).fingerprint).toBe(initial.fingerprint);
     await expect(createBooking("guest", submission)).rejects.toThrow("TEST_TRANSACTION_BOUNDARY");
   });
@@ -128,11 +127,11 @@ describe("checkout quote and booking comparison", () => {
     fixture.records.set("properties/hotel/stayCustomizations/decoration", { propertyId: "hotel", version: 1, name: "Decoration", description: "A prepared celebration", kind: "service", travelerCategories: ["Couple"], roomTypeIds: [], bookingModes: ["overnight"], unitPricePaise: 20000, maxQuantity: 2, advanceNoticeMinutes: 60, confirmation: "immediate", variants: [], status: "active" });
     const input = { ...stay, customizationSelections: [{ offeringId: "decoration", variantId: null, quantity: 1 }] };
     const initial = await quote(input);
-    expect(initial).toMatchObject({ roomTotalPaise: 140000, extrasTotalPaise: 20000, totalPaise: 160000, payableNowPaise: 40000, balanceDuePaise: 120000 });
+    expect(initial).toMatchObject({ roomTotalPaise: 140000, extrasTotalPaise: 20000, totalPaise: 160000, payableNowPaise: 55000, balanceDuePaise: 105000 });
     vi.setSystemTime(Date.now() + 60000);
     expect((await quote({ ...input, travelerPreferences: ["Couple", "Business"] })).fingerprint).toBe(initial.fingerprint);
     fixture.records.get("properties/hotel/stayCustomizations/decoration")!.unitPricePaise = 25000;
-    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint, expectedTotalPaise: initial.totalPaise })).rejects.toThrow("QUOTE_CHANGED");
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
     fixture.records.get("properties/hotel/stayCustomizations/decoration")!.status = "paused";
     await expect(quote(input)).rejects.toThrow("no longer available");
   });
@@ -144,10 +143,10 @@ describe("checkout quote and booking comparison", () => {
     const initial = await quote(input);
     expect(initial.extrasTotalPaise).toBe(30000);
     offering.version++;
-    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint, expectedTotalPaise: initial.totalPaise })).rejects.toThrow("QUOTE_CHANGED");
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
     offering.version--;
     offering.variants[1].unitPricePaise = 16000;
-    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint, expectedTotalPaise: initial.totalPaise })).rejects.toThrow("QUOTE_CHANGED");
+    await expect(createBooking("guest", { ...input, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("QUOTE_CHANGED");
   });
 
   it("returns a stable selection code while retaining the legacy message", () => {
@@ -164,7 +163,7 @@ describe("checkout quote and booking comparison", () => {
     const priced = await quote(input);
     expect(priced.extrasTotalPaise).toBe(20000);
     expect(priced.totalPaise).toBe(160000);
-    expect(priced.payableNowPaise).toBe(paymentMode === "full" ? 160000 : paymentMode === "deposit" ? 40000 : 0);
+    expect(priced.payableNowPaise).toBe(paymentMode === "full" ? 160000 : paymentMode === "deposit" ? 55000 : 0);
     expect(priced.customizations.map(r => r.settlement)).toEqual(["included", "pending_hotel", "pending_hotel"]);
     await expect(createBooking("guest", { ...input, ...guest, paymentMethod: paymentMode === "pay_at_property" ? "pay_at_property" : "online", expectedTotalPaise: priced.totalPaise, quoteFingerprint: priced.fingerprint })).rejects.toThrow("TEST_TRANSACTION_BOUNDARY");
     expect(fixture.provider).not.toHaveBeenCalled();
@@ -173,7 +172,7 @@ describe("checkout quote and booking comparison", () => {
   it("rejects sold-out inventory even with the original valid fingerprint", async () => {
     const initial = await quote(bookingInput.parse(stay));
     fixture.available = false;
-    await expect(createBooking("guest", { ...stay, ...guest, quoteFingerprint: initial.fingerprint, expectedTotalPaise: initial.totalPaise })).rejects.toThrow("SOLD_OUT_FOR_DATES");
+    await expect(createBooking("guest", { ...stay, ...guest, quoteFingerprint: initial.fingerprint })).rejects.toThrow("SOLD_OUT_FOR_DATES");
     expect(fixture.transaction).not.toHaveBeenCalled();
     expect(fixture.provider).not.toHaveBeenCalled();
   });

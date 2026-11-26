@@ -67,8 +67,6 @@ type Choices = {
   ratePlans: Rate[];
 };
 type Quote = {
-  fingerprint: string;
-  calculation: ReturnType<typeof import("@/lib/finance/calculation").calculateAgreement>["publicCalculation"];
   subtotalPaise: number;
   totalPaise: number;
   taxBasisPoints: number;
@@ -468,8 +466,6 @@ function CreationDialog({
     adults: form.adults,
     children: form.children,
     infants: form.infants,
-    negotiatedSubtotalPaise: form.priceOverride ? parseCollectionPaise(form.priceOverride) ?? undefined : undefined,
-    negotiatedPriceReason: form.priceOverride ? form.negotiatedPriceReason || undefined : undefined,
   };
   const scope = JSON.stringify(priceRequest);
   const hasArrivalTime =
@@ -481,7 +477,6 @@ function CreationDialog({
       !!propertyId &&
       !!form.ratePlanId &&
       !!form.checkIn &&
-      (!form.priceOverride || parseCollectionPaise(form.priceOverride) !== null) &&
       hasArrivalTime &&
       (form.bookingMode === "hourly"
         ? !!form.durationMinutes
@@ -500,9 +495,23 @@ function CreationDialog({
   });
 
   const rate = choices.data?.ratePlans.find((r) => r.id === form.ratePlanId);
-  const subtotal = quote.data?.calculation?.taxablePaise;
-  const tax = quote.data?.calculation?.taxPaise ?? 0;
-  const total = quote.data?.calculation?.totalPaise ?? 0;
+  const subtotal = form.priceOverride
+    ? parseCollectionPaise(form.priceOverride)
+    : quote.data?.subtotalPaise;
+  const tax = Number.isSafeInteger(subtotal)
+    ? Number(
+        (BigInt(subtotal!) *
+          BigInt(quote.data?.taxBasisPoints ?? rate?.taxBasisPoints ?? 0) +
+          BigInt(5000)) /
+          BigInt(10000),
+      )
+    : 0;
+  const total =
+    subtotal == null
+      ? 0
+      : subtotal +
+        tax +
+        (quote.data?.customerFeePaise ?? rate?.customerFeePaise ?? 0);
   const collected =
     form.payment === "paid"
       ? total
@@ -659,12 +668,11 @@ function CreationDialog({
         collectionMethod: form.collectionMethod,
         collectionReference: form.collectionReference,
         physicalUnitId: form.physicalUnitId || null,
-        negotiatedSubtotalPaise: priceRequest.negotiatedSubtotalPaise,
+        negotiatedSubtotalPaise: form.priceOverride ? subtotal : undefined,
         negotiatedPriceReason: form.priceOverride
           ? form.negotiatedPriceReason
           : undefined,
         expectedTotalPaise: total,
-        quoteFingerprint: quote.data.fingerprint,
         expectedStartAt: quote.data.startAt,
         expectedEndAt: quote.data.endAt,
         expectedTimezone: quote.data.timezone,
@@ -1536,7 +1544,7 @@ function CreationDialog({
                         />
                       </summary>
                       <div className="pt-3 space-y-3">
-                        <Field label={`Entered room amount (₹, ${quote.data?.calculation?.lines[0]?.basis === "tax_inclusive" ? "including tax" : "before tax"})`}>
+                        <Field label="Agreed room subtotal (₹)">
                           <div className="relative">
                             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8b96aa]">
                               ₹
@@ -1589,7 +1597,7 @@ function CreationDialog({
                   {/* Clean Live Price Breakdown Card */}
                   <div className="rounded-xl border border-[#ede7dc] bg-[#fbfaf8] p-3.5 space-y-2 text-xs">
                     <div className="flex items-center justify-between text-[#68758c]">
-                      <span>All items before tax</span>
+                      <span>Room Subtotal</span>
                       <span className="font-semibold text-[#061224]">
                         {money(subtotal ?? 0)}
                       </span>
@@ -1600,7 +1608,7 @@ function CreationDialog({
                         {money(tax)}
                       </span>
                     </div>
-                    {!quote.data?.calculation && (quote.data?.customerFeePaise ??
+                    {(quote.data?.customerFeePaise ??
                       rate?.customerFeePaise ??
                       0) > 0 && (
                       <div className="flex items-center justify-between text-[#68758c]">

@@ -69,7 +69,7 @@ export function calculateGuestPrice(subtotalPaise: number, rate: Pick<Settings, 
   const payableNowPaise = paymentMode === "pay_at_property" ? 0 : paymentMode === "deposit" ? Number((BigInt(totalPaise) * BigInt(depositBasisPoints) + BigInt(5000)) / BigInt(10000)) : totalPaise;
   return { subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, paymentMode, depositBasisPoints, payableNowPaise, balanceDuePaise: totalPaise - payableNowPaise };
 }
-export function evaluateStayRules(input: StayRequest, property: Settings, room: Settings, rate: Settings, now = Date.now(), walkIn?: { arrivalTime: string }, inHouse = false) {
+export function evaluateStay(input: StayRequest, property: Settings, room: Settings, rate: Settings, now = Date.now(), walkIn?: { arrivalTime: string }, inHouse = false) {
   if (property.childrenPolicy?.allowed === false && (input.children > 0 || input.infants > 0)) throw new Error("CHILDREN_NOT_ALLOWED");
   const bookingMode = input.bookingMode ?? "overnight";
   if (bookingMode === "hourly" && rate.datePrices?.[input.checkIn]?.durationPrices) rate = { ...rate, durationPrices: rate.datePrices[input.checkIn].durationPrices };
@@ -128,14 +128,9 @@ export function evaluateStayRules(input: StayRequest, property: Settings, room: 
   const billedHours = bookingMode === "hourly" ? durationMinutes / 60 : 0;
   const unitPricePaise = money(pricingModel === "duration" ? rate.durationPrices?.find(row => row.hours * 60 === durationMinutes)?.pricePaise : rate.datePrices?.[input.checkIn]?.basePricePaise ?? rate.basePricePaise);
   const subtotalPaise = money(pricingModel === "nightly" ? Array.from({ length: nights }, (_, i) => new Date(Date.parse(`${input.checkIn}T00:00Z`) + i * 86400000).toISOString().slice(0, 10)).reduce((sum, date) => sum + money(rate.datePrices?.[date]?.basePricePaise ?? rate.basePricePaise), 0) : unitPricePaise);
-  return { bookingMode, pricingModel, timezone, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), inventoryEndAt: new Date(end + cleaningBufferMinutes * 60_000).toISOString(), checkIn: input.checkIn, checkOut: localParts(end, timezone).date, arrivalTime: localParts(start, timezone).time, departureTime: localParts(end, timezone).time, durationMinutes, cleaningBufferMinutes, nights, billedHours, unitPricePaise, subtotalPaise };
+  const { taxBasisPoints, taxPaise, customerFeePaise, totalPaise, paymentMode, depositBasisPoints, payableNowPaise } = calculateGuestPrice(subtotalPaise, rate);
+  return { bookingMode, pricingModel, timezone, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), inventoryEndAt: new Date(end + cleaningBufferMinutes * 60_000).toISOString(), checkIn: input.checkIn, checkOut: localParts(end, timezone).date, arrivalTime: localParts(start, timezone).time, departureTime: localParts(end, timezone).time, durationMinutes, cleaningBufferMinutes, nights, billedHours, unitPricePaise, subtotalPaise, taxBasisPoints, taxPaise, customerFeePaise, totalPaise, payableNowPaise, balanceDuePaise: totalPaise - payableNowPaise, paymentMode, depositBasisPoints };
 }
-/** Legacy fixture/consumer compatibility. New agreements use evaluateStayRules plus lib/finance. */
-export function evaluateStay(...args: Parameters<typeof evaluateStayRules>) {
-  const stay = evaluateStayRules(...args);
-  return { ...stay, ...calculateGuestPrice(stay.subtotalPaise, args[3]) };
-}
-
 export type Allocation = { date: string; intervals: string[] };
 export function allocateIntervals(startAt: string, inventoryEndAt: string, timezone: string): Allocation[] {
   const start = Date.parse(startAt), end = Date.parse(inventoryEndAt);
@@ -157,10 +152,9 @@ export function assertTransition(current: string, next: string) {
 export function cancellationRefund(paidPaise: number, refundedPaise: number, startAt: string, policy: Settings | null, now: number, partnerCaused = false, bookingTotalPaise = paidPaise) {
   const remaining = Math.max(0, money(paidPaise) - money(refundedPaise));
   if (partnerCaused) return remaining;
-  if (!policy || !Number.isSafeInteger(policy.refundableUntilHours) || !Number.isSafeInteger(policy.cancellationFeePercent)) return 0;
-  if (now <= Date.parse(startAt) - policy.refundableUntilHours! * 3600_000) return remaining;
-  const feePercent = policy.cancellationFeePercent!;
-  if (feePercent < 0 || feePercent > 100) throw new Error("INVALID_CANCELLATION_TERMS");
+  if (!policy || now > Date.parse(startAt) - Math.max(0, policy.refundableUntilHours ?? 0) * 3600_000) return 0;
+  const feePercent = Math.max(0, Math.min(100, Number(policy.cancellationFeePercent ?? 100)));
+  if (!Number.isInteger(feePercent)) return 0;
   const feePaise = Number((BigInt(money(bookingTotalPaise)) * BigInt(feePercent) + BigInt(50)) / BigInt(100));
   return Math.min(remaining, Math.max(0, paidPaise - refundedPaise - feePaise));
 }

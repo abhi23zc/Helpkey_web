@@ -116,6 +116,12 @@ export function SettingsHub({
 
   const allCards: DirectoryCard[] = [
     {
+      id: "finance", title: "Finance Settings",
+      description: "View your commercial agreement, commission, guest payment options, payout policy, and dues policy. Managed by HelpKey administrators.",
+      icon: ReceiptText, iconBg: "bg-slate-100 text-slate-700 border-slate-200/80",
+      badge: { text: "Read only", tone: "slate" },
+    },
+    {
       id: "pms",
       title: "PMS Setup & Readiness",
       description:
@@ -200,6 +206,7 @@ export function SettingsHub({
         </p>
       </header>
 
+      {owner && <Link href={`/partner/settings/bank?propertyId=${encodeURIComponent(propertyId)}`} className={pmsButton}>Manage payout bank details</Link>}
       {/* Top inline notice / error */}
       <SettingsNoticeBanner
         notice={notice}

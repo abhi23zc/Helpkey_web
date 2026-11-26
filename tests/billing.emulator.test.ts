@@ -47,6 +47,8 @@ describe.skipIf(!safe)(
         isBookable: true,
         timezone: "Asia/Kolkata",
       });
+      const { commandShift } = await import("@/lib/partner/closing/shifts");
+      await commandShift(owner, hotel, { action: "open", openingPaise: 0 }, "billing-fixture-owner");
     });
     afterAll(async () => {
       for (const collection of [
@@ -55,6 +57,9 @@ describe.skipIf(!safe)(
         "paymentAttempts",
         "refunds",
         "propertyMemberships",
+        "cashierShifts",
+        "cashierActiveShifts",
+        "cashierShiftRequests",
       ]) {
         const docs = await db
           .collection(collection)
@@ -69,6 +74,7 @@ describe.skipIf(!safe)(
       for (const id of [owner, cashier, outsider])
         await db.collection("users").doc(id).delete();
       await db.recursiveDelete(db.collection("properties").doc(hotel));
+      await db.collection("hotelClosingState").doc(hotel).delete();
       await db.terminate();
     });
     async function booking(extra = {}) {

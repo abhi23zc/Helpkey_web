@@ -1,4 +1,5 @@
 "use client";
+import { FinanceWorkspace } from "@/components/finance-settings/workspace";
 import { PropertyPmsControl } from "./property-pms-control";
 
 import Link from "next/link";
@@ -189,6 +190,8 @@ export function AdminPropertyReviewPage({ propertyId }: { propertyId: string }) 
       </div>
 
       <PropertyPmsControl propertyId={propertyId} />
+      <Link href={`/admin/properties/${propertyId}/payout-readiness`} className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold">Business and payout readiness</Link>
+      <details className="rounded-2xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer font-semibold">Finance Settings</summary><div className="mt-4"><FinanceWorkspace propertyId={propertyId} /></div></details>
       <header className="rounded-[18px] border border-line bg-white p-5 shadow-card">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label(String(property.propertyType ?? "Property"))}</span>

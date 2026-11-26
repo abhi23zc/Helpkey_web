@@ -300,7 +300,7 @@ export function reconciliation(
       serviceRefunds.filter((r) => !["processed", "failed"].includes(r.status)),
     ) + sum(missingRefundHistory.filter((a) => a.status === "refund_pending"));
   if (
-    !b.calculation && ["subtotalPaise", "taxPaise", "customerFeePaise"].every((field) =>
+    ["subtotalPaise", "taxPaise", "customerFeePaise"].every((field) =>
       Number.isSafeInteger(b[field]),
     ) &&
     b.subtotalPaise +
@@ -329,7 +329,7 @@ export function reconciliation(
         `Provider receipt ${c.id} has refunds exceeding its captured amount.`,
       );
   const serviceTotal = agreed.reduce(
-    (n: number, r: RecordData) => n + (r.settlement === "hotel_collection" ? 0 : r.quote?.amountPaise ?? 0),
+    (n: number, r: RecordData) => n + (r.quote?.amountPaise ?? 0),
     0,
   );
   for (const a of allocations.values()) {
@@ -413,10 +413,10 @@ export function reconciliation(
         .reduce((n: number, r: RecordData) => n + r.quote.amountPaise, 0),
     },
     components: {
-      accommodationPaise: b.calculation?.version === 2 ? b.calculation.lines.filter((l: { kind: string }) => l.kind === "room").reduce((n: number, l: { taxablePaise: number }) => n + l.taxablePaise, 0) : b.subtotalPaise ?? null,
+      accommodationPaise: b.subtotalPaise ?? null,
       taxPaise: b.taxPaise ?? null,
-      feesPaise: b.calculation?.version === 2 ? b.calculation.lines.filter((l: { kind: string }) => l.kind === "customer_fee").reduce((n: number, l: { taxablePaise: number }) => n + l.taxablePaise, 0) : b.customerFeePaise ?? null,
-      bookedExtrasPaise: b.calculation?.version === 2 ? b.calculation.lines.filter((l: { kind: string }) => l.kind === "extra").reduce((n: number, l: { taxablePaise: number }) => n + l.taxablePaise, 0) : b.extrasTotalPaise ?? 0,
+      feesPaise: b.customerFeePaise ?? null,
+      bookedExtrasPaise: b.extrasTotalPaise ?? 0,
       bookedExtras: (b.customizations ?? [])
         .filter(
           (r: RecordData) =>
