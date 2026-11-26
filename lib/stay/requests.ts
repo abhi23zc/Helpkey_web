@@ -315,7 +315,8 @@ export async function addUnlistedRequest(
     markTodayChanged(b?.propertyId);
     if (!b || !customerOwnsBooking(b, uid)) throw new Error("NOT_FOUND");
     if ((b.stayRevision ?? 0) !== input.revision) throw new Error("CONFLICT");
-    if (!["confirmed", "checked_in"].includes(b.bookingStatus))
+    const pendingRequest = b.editPolicy?.version === 1 && b.bookingStatus === "pending_payment" && b.expiresAt?.toMillis() > Date.now() && !b.activeAmendmentId && !b.checkoutReplacement;
+    if (!pendingRequest && !["confirmed", "checked_in"].includes(b.bookingStatus))
       throw new Error("This booking is closed for requests.");
     const previous = (b.customizations ?? []) as StayRequest[];
     if (

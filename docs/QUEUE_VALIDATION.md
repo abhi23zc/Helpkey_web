@@ -17,4 +17,6 @@ Verified locally:
 
 The healthy idle recovery model is six empty queries every five minutes: about 1,728 minimum document reads/day, compared with the previous modeled 17,856/day. Returned records, processing, startup/rebuild, cleanup and diagnostics add reads. Production savings, CPU/RSS, queue growth and latency under a representative production workload remain to be measured during rollout.
 
+Customer booking editing adds an independent amendment-expiry query to this model: seven empty queries per sweep, approximately 2,016 minimum reads/day at five-minute intervals. See [CUSTOMER_BOOKING_EDITING.md](CUSTOMER_BOOKING_EDITING.md) for its worker/index rollout.
+
 Operational completion requires the production backup destination/daily host schedule, metadata migration, queue reconstruction, staging/provider sandbox smoke tests and the 24-hour hybrid observation gate before queue-only cutover. A single host remains a shared failure domain; Firestore permits work reconstruction after recovery but does not keep a failed server processing jobs.

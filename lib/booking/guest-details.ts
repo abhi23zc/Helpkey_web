@@ -234,6 +234,7 @@ export function guestReservationDetails(
       adults: amount(saved.adults),
       children: amount(saved.children),
       infants: amount(saved.infants),
+      occupants: Array.isArray(saved.occupants) ? saved.occupants.flatMap(value => { const o = record(value); return text(o.name) && ["adult", "child", "infant"].includes(String(o.ageGroup)) ? [{ name: text(o.name), ageGroup: text(o.ageGroup) }] : []; }) : [],
       leadGuest: contact(lead),
       bookingContact: contact(saved.bookingContact),
       guestNames: strings(

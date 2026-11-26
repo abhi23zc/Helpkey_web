@@ -21,10 +21,13 @@ const rawPOST = async function POST(_request: Request, { params }: RouteContext<
     const snap = await adminDb.collection("bookings").doc(bookingId).get();
     const data = snap.data();
     if (!snap.exists || !data || !customerOwnsBooking(data, user.uid)) throw new Error("BOOKING_NOT_FOUND");
+    if (data.editPolicy?.version === 1) return Response.json(await claimCheckoutAttempt(user.uid, bookingId));
     if (!(await reconcilePaymentForGuest(user.uid, bookingId)).paymentEligible) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     if (data.bookingStatus !== "pending_payment" || !data.razorpayOrderId) throw new Error("PAYMENT_NOT_EXPECTED");
     if (data.expiresAt instanceof Timestamp && data.expiresAt.toMillis() <= Date.now()) throw new Error("PAYMENT_NOT_EXPECTED");
     if (!process.env.RAZORPAY_KEY_ID) throw new Error("ONLINE_PAYMENT_NOT_CONFIGURED");
+    const refreshed = (await snap.ref.get()).data();
+    if (refreshed?.razorpayOrderId !== data.razorpayOrderId || refreshed?.checkoutReplacement || refreshed?.paymentReplacementUnresolved) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     return Response.json({
       bookingId,
       confirmationCode: data.confirmationCode,

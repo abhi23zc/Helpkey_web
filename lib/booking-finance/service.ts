@@ -59,7 +59,8 @@ export async function prepareCheckoutProof(
     tx.get(checkoutProofRef(bookingId)),
   ]);
   if (!snapshot.exists || previous.exists) return () => {};
-  const a = snapshot.data() as Agreement;
+  const root = snapshot.data() as Agreement;
+  const a = root.activeAccommodationAgreement && root.activeAccommodationRevision === b.accommodationRevision ? root.activeAccommodationAgreement : root;
   const proof: CheckoutProof = {
     bookingId,
     propertyId: b.propertyId,

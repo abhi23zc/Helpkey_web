@@ -1,3 +1,4 @@
+import { reconcileAmendments, orderRef, registerOrder } from "./amendments/payments";
 import { stayFinancials } from "@/lib/stay/domain";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import "server-only";
@@ -64,6 +65,7 @@ export async function processRefund(refundId: string) {
       const booking = (await tx.get(bookingRef)).data();
       markTodayChanged(booking?.propertyId);
       if (!current || current.leaseOwner !== owner || current.leaseExpiresAt?.toMillis() <= Date.now() || ["processed", "failed"].includes(current.status) || !booking) return;
+      const remainingUnusable = current.unusableCapture ? await tx.get(adminDb.collection("refunds").where("bookingId", "==", claim.bookingId)) : null;
       tx.update(ref, { bookingId: claim.bookingId, providerRefundId: result.id, status: result.status, ...(result.status === "processed" ? { processedAt: FieldValue.serverTimestamp() } : {}), leaseOwner: null, leaseExpiresAt: null, nextAttemptAt: Timestamp.fromMillis(Date.now() + 60_000), updatedAt: FieldValue.serverTimestamp() });
       if (result.status === "processed") {
         if (current.stayQuote) {
@@ -71,7 +73,7 @@ export async function processRefund(refundId: string) {
         } else {
         const refundedPaise = (booking.refundedPaise ?? 0) + claim.amountPaise;
         const refundDuePaise = Math.max(0, (booking.refundDuePaise ?? 0) - claim.amountPaise);
-        tx.update(bookingRef, { balanceDuePaise: stayFinancials({ ...booking, refundedPaise, refundDuePaise }).balanceDuePaise, refundedAt: FieldValue.serverTimestamp(), refundedPaise, refundDuePaise, paymentStatus: refundDuePaise > 0 ? "refund_pending" : refundedPaise >= booking.paidPaise ? "refunded" : "partially_refunded", updatedAt: FieldValue.serverTimestamp() });
+        tx.update(bookingRef, { ...(current.unusableCapture ? { paymentReplacementUnresolved: remainingUnusable!.docs.some(d => d.id !== refundId && d.get("unusableCapture") && d.get("status") !== "processed") } : {}), balanceDuePaise: current.unusableCapture ? booking.balanceDuePaise : stayFinancials({ ...booking, refundedPaise, refundDuePaise }).balanceDuePaise, refundedAt: FieldValue.serverTimestamp(), refundedPaise, refundDuePaise, paymentStatus: current.unusableCapture ? booking.paymentStatus : refundDuePaise > 0 ? "refund_pending" : refundedPaise >= booking.paidPaise ? "refunded" : "partially_refunded", updatedAt: FieldValue.serverTimestamp() });
         }
         tx.create(bookingRef.collection("events").doc(), { type: "refund_processed", refundId, amountPaise: claim.amountPaise, actorId: "system:refunds", createdAt: FieldValue.serverTimestamp() });
       }
@@ -106,14 +108,23 @@ export async function reconcileBookingPayment(bookingId: string) {
   const ref = adminDb.collection("bookings").doc(bookingId);
   const data = (await ref.get()).data();
   if (data?.stayQuoteReconciliationPending) { await reconcileStayQuotePayments(bookingId); if(data.bookingStatus!=="pending_payment") return; }
-  if (!data || data.paymentMethod !== "online") return;
+  if (data?.editPolicy && (data.activeAmendmentId || data.amendmentRecoveryPending || data.checkoutRevision > 0)) await reconcileAmendments(bookingId);
+  if (!data || data.paymentMethod !== "online" || (data.editPolicy && data.bookingStatus !== "pending_payment")) return;
   let orderId = data.razorpayOrderId;
   if (!orderId) {
     const result = await razorpay(`orders?receipt=${encodeURIComponent(data.confirmationCode)}&count=100`);
     const matches = result.items?.filter((order: { receipt: string; amount: number; currency: string; notes?: { bookingId?: string } }) => order.receipt === data.confirmationCode && order.notes?.bookingId === bookingId && order.amount === data.payableNowPaise && order.currency === data.currency) ?? [];
     if (matches.length !== 1) throw new Error("PAYMENT_ORDER_RECONCILIATION_REQUIRED");
     orderId = matches[0].id;
-    await ref.update({ razorpayOrderId: orderId, orderReconciliationRequired: false, updatedAt: FieldValue.serverTimestamp() });
+    await adminDb.runTransaction(async tx => {
+      const current = (await tx.get(ref)).data()!; const mapping = await tx.get(orderRef(orderId));
+      if (current.editPolicy && !mapping.exists) registerOrder(tx, orderId, current, bookingId);
+      tx.update(ref, { razorpayOrderId: orderId, orderReconciliationRequired: false, updatedAt: FieldValue.serverTimestamp() });
+    });
+  }
+  if (data.editPolicy) {
+    const fresh = (await ref.get()).data()!;
+    if (fresh.checkoutReplacement || fresh.razorpayOrderId !== orderId) return;
   }
   const result = await razorpay(`orders/${encodeURIComponent(orderId)}/payments`);
   for (const payment of result.items ?? []) {
@@ -142,7 +153,7 @@ export async function reconcilePaymentBatch(bookingId?: string) {
       const data = (await tx.get(doc.ref)).data();
       if (data?.leaseOwner !== owner || data.leaseExpiresAt?.toMillis() <= Date.now()) return;
       const attempts = failure ? Number(data.reconcileFailures ?? 0) + 1 : 0;
-      tx.update(doc.ref, { leaseOwner: null, leaseExpiresAt: null, reconcileFailures: attempts, nextReconcileAt: Timestamp.fromMillis(Date.now() + (failure ? retryDelay(attempts, 60_000) : 300_000)), lastReconcileAt: FieldValue.serverTimestamp(), lastReconcileError: failure instanceof Error ? failure.message : null });
+      tx.update(doc.ref, { leaseOwner: null, leaseExpiresAt: null, reconcileFailures: attempts, nextReconcileAt: Timestamp.fromMillis(Date.now() + (failure ? retryDelay(attempts, 60_000) : data.activeAmendmentId ? 15_000 : 300_000)), lastReconcileAt: FieldValue.serverTimestamp(), lastReconcileError: failure instanceof Error ? failure.message : null });
     });
   }
   return { examined: eligible.length, failures, hasMore: !bookingId && eligible.length === 3 && failures.length === 0 };

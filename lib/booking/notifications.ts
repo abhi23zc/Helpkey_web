@@ -1,3 +1,4 @@
+import { processBookingWhatsapp } from "./amendments/whatsapp";
 import { customerOwnsBooking } from "@/lib/booking/customer-access";
 import { can } from "@/lib/partner/pms/domain";
 import { propertyAccess } from "@/lib/partner/pms/access";
@@ -14,6 +15,7 @@ export async function processBookingNotifications(recordId?: string) {
   const eligible = pending.docs.filter(doc => !doc.get("backgroundAttention.notifications"));
   for (const document of eligible) {
     try {
+      if (document.get("channel") === "whatsapp") { await processBookingWhatsapp(document.id); continue; }
       await adminDb.runTransaction(async tx => {
         const event = (await tx.get(document.ref)).data();
         if (!event || event.backgroundAttention?.notifications || !["pending", "retry"].includes(event.status) || event.nextAttemptAt?.toMillis() > Date.now()) return;
@@ -26,13 +28,19 @@ export async function processBookingNotifications(recordId?: string) {
         }));
         const guest = customerOwnsBooking(booking, booking?.guestId) ? booking?.guestId : null;
         const recipients = [...new Set<string>([guest, ...permitted].filter((uid): uid is string => !!uid))];
+        const property = event.message && process.env.BOOKING_WHATSAPP === "true" ? (await tx.get(adminDb.collection("properties").doc(event.propertyId))).data() : null;
+        const phones = [...new Set([event.customerPhone, event.hotelPhone ?? property?.customerEditing?.reservationsPhone].filter((v): v is string => typeof v === "string" && /^\+\d{6,15}$/.test(v)))];
+        const whatsappRefs = phones.map((_, i) => adminDb.collection("bookingNotificationOutbox").doc(`${document.id}_whatsapp_${i}`));
+        const whatsappExisting = whatsappRefs.length ? await tx.getAll(...whatsappRefs) : [];
         const refs = recipients.map(uid => adminDb.collection("notifications").doc(`${document.id}_${uid}`));
         const existing = refs.length ? await tx.getAll(...refs) : [];
         for (const [index, uid] of recipients.entries()) if (!existing[index].exists) tx.create(refs[index], { userId: uid, eventType: `booking.${event.bookingStatus}`, title: `Booking ${String(event.bookingStatus).replaceAll("_", " ")}`, body: "Your reservation has been updated. Open the booking to see the details.", data: { bookingId: event.bookingId, propertyId: event.propertyId }, status: "created", readAt: null, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), createdBy: "system:bookings", updatedBy: "system:bookings", deletedAt: null });
+        whatsappRefs.forEach((ref, i) => { if (!whatsappExisting[i].exists) tx.create(ref, { bookingId: event.bookingId, propertyId: event.propertyId, channel: "whatsapp", recipientPhone: phones[i], message: event.message, status: "pending", attempts: 0, nextAttemptAt: Timestamp.now(), createdAt: FieldValue.serverTimestamp() }); });
         tx.update(document.ref, { status: "completed", completedAt: FieldValue.serverTimestamp() });
       });
     } catch (error) {
       failures.push(document.id);
+      if (document.get("channel") === "whatsapp") continue;
       await adminDb.runTransaction(async tx => {
         const current = (await tx.get(document.ref)).data();
         if (!current || current.status === "completed") return;

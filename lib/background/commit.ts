@@ -29,6 +29,7 @@ export function withBackgroundDelivery(db: Firestore, delivery?: Delivery): Fire
           const input = value as Record<string, unknown>;
           const kinds: string[] = [];
           if (collection === "bookings" && !input.leaseOwner) {
+            if (input.amendmentExpiresAt !== undefined || input.amendmentRetryAt !== undefined) kinds.push("amendments");
             if (input.expiresAt !== undefined || input.expiryRetryAt !== undefined) kinds.push("expiry");
             if (input.nextReconcileAt !== undefined || input.paymentReconciliationPending === true) kinds.push("payments");
           }

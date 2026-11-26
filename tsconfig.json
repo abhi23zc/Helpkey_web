@@ -42,7 +42,9 @@
     ".next-finance-settings-build/types/**/*.ts",
     ".next-finance-settings-build/dev/types/**/*.ts",
     ".next-accounting-build/types/**/*.ts",
-    ".next-accounting-build/dev/types/**/*.ts"
+    ".next-accounting-build/dev/types/**/*.ts",
+    ".next-booking-edit-build/types/**/*.ts",
+    ".next-booking-edit-build/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -4,6 +4,7 @@ import { BookingPaymentSummary } from "@/components/booking/payment-summary";
 import { paymentSummary } from "@/lib/stay/payment-summary";
 
 import { BookingFinanceSection } from "@/components/booking-finance/booking-finance-section";
+import { ServiceMoveApprovals } from "./service-move-approvals";
 import { ReservationStayChanges } from "./reservation-stay-changes";
 import { ReservationFolio } from "./reservation-folio";
 import { ReservationGuests } from "./reservation-guests";
@@ -850,6 +851,7 @@ function ReservationDetails({
                       </div>
                     </section>
 
+                    {bookingId && <ServiceMoveApprovals bookingId={bookingId} />}
                     {/* 2. Room Assignment (Before check-in) OR In-House Stay Changes (In-house) as its own separate section */}
                     <div id="workspace-assignment" tabIndex={-1} />
                     {status !== "checked_in" ? (

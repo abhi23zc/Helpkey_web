@@ -40,7 +40,7 @@ async function orderPayments(orderId: string, amount: number, currency: string) 
 export function paymentEligibility(data: FirebaseFirestore.DocumentData, now: number, providerSafe: boolean) {
   return data.bookingStatus === "pending_payment" && data.paymentStatus === "pending" && data.inventoryReleased !== true &&
     data.expiresAt instanceof Timestamp && data.expiresAt.toMillis() > now && Boolean(data.razorpayOrderId) &&
-    !data.checkoutAttempt && providerSafe;
+    !data.checkoutAttempt && !data.checkoutReplacement && !data.paymentReplacementUnresolved && !data.checkoutNeedsReplacement && providerSafe;
 }
 
 export async function reconcilePaymentForGuest(uid: string, bookingId: string, report?: { attemptId?: string; nativeResult?: string }) {
@@ -49,7 +49,7 @@ export async function reconcilePaymentForGuest(uid: string, bookingId: string, r
   if (!initial || !customerOwnsBooking(initial, uid)) throw new Error("BOOKING_NOT_FOUND");
   let providerSafe = initial.paymentMethod !== "online";
   let paymentIds: string[] = [];
-  let reconciled = true;
+  let reconciled = true, refundedOrder = false;
   if (initial.paymentMethod === "online") {
     try {
       await reconcileBookingPayment(bookingId);
@@ -58,6 +58,20 @@ export async function reconcilePaymentForGuest(uid: string, bookingId: string, r
         const payments = await orderPayments(current.razorpayOrderId, current.payableNowPaise, current.currency);
         providerSafe = payments.every(p => p.status === "failed");
         paymentIds = payments.map(p => p.id);
+        if (current.editPolicy?.version === 1 && current.bookingStatus === "pending_payment" && payments.length > 0 && payments.every(p => ["failed", "refunded"].includes(p.status)) && payments.some(p => p.status === "refunded") && !current.refundDuePaise && !current.paymentReplacementUnresolved) {
+          refundedOrder = await adminDb.runTransaction(async tx => {
+            const b = (await tx.get(ref)).data()!;
+            if (b.razorpayOrderId !== current.razorpayOrderId || b.checkoutReplacement || b.refundDuePaise || b.paymentReplacementUnresolved) return false;
+            const refunds = await tx.get(adminDb.collection("refunds").where("bookingId", "==", bookingId));
+            for (const p of payments.filter(p => p.status === "refunded")) {
+              const receipt = await tx.get(adminDb.collection("paymentAttempts").doc(p.id));
+              if (!receipt.get("unusable") || receipt.get("amountPaise") !== p.amount || refunds.docs.filter(d => d.get("paymentId") === p.id && d.get("status") === "processed").reduce((n, d) => n + d.get("amountPaise"), 0) !== p.amount) return false;
+            }
+            tx.update(ref, { checkoutAttempt: null, checkoutNeedsReplacement: true, updatedAt: FieldValue.serverTimestamp() });
+            return true;
+          });
+        }
+
         // Absence of a payment is never evidence that an opened sheet cannot still authorize.
         if (providerSafe && report?.attemptId && ["cancelled", "failed"].includes(report.nativeResult ?? "")) {
           await adminDb.runTransaction(async tx => {
@@ -75,13 +89,15 @@ export async function reconcilePaymentForGuest(uid: string, bookingId: string, r
   const terminal = ["paid", "partially_paid", "pay_at_property", "paid_at_property", "refund_pending", "refunded", "partially_refunded"].includes(data.paymentStatus);
   const eligible = reconciled && paymentEligibility(data, now, providerSafe);
   const closed = data.bookingStatus !== "pending_payment" || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() <= now;
+  const replacementEligible = !closed && !terminal && reconciled && refundedOrder && !data.checkoutAttempt && !data.checkoutReplacement && !data.paymentReplacementUnresolved;
   return {
     paymentAction: terminal || closed ? "none" : eligible ? "pay" : "check_status",
-    reasonCode: terminal ? "PAYMENT_SETTLED" : closed ? "BOOKING_CLOSED" : !reconciled ? "PROVIDER_UNAVAILABLE" : data.checkoutAttempt ? "PAYMENT_ATTEMPT_UNRESOLVED" : eligible ? "PAYMENT_ELIGIBLE" : "PAYMENT_PROCESSING",
+    reasonCode: terminal ? "PAYMENT_SETTLED" : closed ? "BOOKING_CLOSED" : !reconciled ? "PROVIDER_UNAVAILABLE" : replacementEligible ? "CHECKOUT_REPLACEMENT_REQUIRED" : data.checkoutAttempt ? "PAYMENT_ATTEMPT_UNRESOLVED" : eligible ? "PAYMENT_ELIGIBLE" : "PAYMENT_PROCESSING",
     nextCheckAfterMs: terminal || closed ? 0 : 5000,
     bookingId, confirmationCode: String(data.confirmationCode), bookingStatus: String(data.bookingStatus), paymentStatus: String(data.paymentStatus),
-    reconciliationState: terminal ? "settled" : reconciled && !data.checkoutAttempt && providerSafe ? "checked" : "awaiting_verification",
+    reconciliationState: terminal ? "settled" : replacementEligible ? "checked" : reconciled && !data.checkoutAttempt && !data.checkoutReplacement && !data.paymentReplacementUnresolved && providerSafe ? "checked" : "awaiting_verification",
     paymentEligible: eligible,
+    replacementEligible,
     holdExpiresAt: data.expiresAt instanceof Timestamp ? data.expiresAt.toDate().toISOString() : null,
     serverTime: new Date(now).toISOString(), attemptId: data.checkoutAttempt?.id ?? null,
     // Internal only; routes strip these fields.

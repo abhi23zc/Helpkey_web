@@ -1,3 +1,4 @@
+import { expireAmendments } from "./amendments/service";
 import "server-only";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
@@ -17,6 +18,9 @@ export async function executeBookingTask(task: BookingTask) {
     if (task.kind === "expiry") {
       const result = await expirePendingBookings("system:booking-expiry", task.recordId);
       if (result.failures.length) throw new Error("BOOKING_EXPIRY_FAILED");
+    } else if (task.kind === "amendments") {
+      const result = await expireAmendments(task.recordId);
+      if (result.failures.length) throw new Error("AMENDMENT_EXPIRY_FAILED");
     } else if (task.kind === "payments") {
       const result = await reconcilePaymentBatch(task.recordId);
       if (result.failures.length) throw new Error("PAYMENT_RECONCILIATION_FAILED");
@@ -29,7 +33,7 @@ export async function executeBookingTask(task: BookingTask) {
   // Business retry timestamps are persisted by the financial/notification handlers.
   // Expiry needs its own durable budget. Validation failures before a refund claim
   // also need a visible terminal state instead of an endless rediscovery loop.
-  if (failure && (task.kind === "expiry" || task.kind === "refunds" || task.kind === "payments")) {
+  if (failure && (task.kind === "expiry" || task.kind === "amendments" || task.kind === "refunds" || task.kind === "payments")) {
     await adminDb.runTransaction(async tx => {
       const current = (await tx.get(ref)).data();
       if (!current || !taskFromRecord(task.kind, task.recordId, current)) return;
@@ -37,6 +41,7 @@ export async function executeBookingTask(task: BookingTask) {
       const permanent = failure instanceof Error && /INVALID_REFUND|MISMATCH|EXCEEDS_CAPTURED|REQUEST_CHANGED/.test(failure.message);
       tx.update(ref, { [`backgroundFailures.${task.kind}`]: failures,
         ...(failures >= 6 || permanent ? { [`backgroundAttention.${task.kind}`]: true } : {}),
+        ...(task.kind === "amendments" ? { amendmentRetryAt: Timestamp.fromMillis(Date.now() + retryDelay(failures)) } : {}),
         ...(task.kind === "expiry" ? { expiryRetryAt: Timestamp.fromMillis(Date.now() + retryDelay(failures)) } : {}),
         lastBackgroundError: failure instanceof Error ? failure.message : "UNKNOWN", updatedAt: FieldValue.serverTimestamp() });
     });

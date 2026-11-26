@@ -9,11 +9,12 @@ export type SearchOffer = {
   bookingMode: "overnight" | "hourly"; validUntil: number;
 };
 
-export function cancellationTerms(policy: Record<string, unknown> | null | undefined, startAt: string, now = Date.now()): CancellationTerms {
+export function cancellationTerms(policy: Record<string, unknown> | null | undefined, startAt: string, now = Date.now(), savedDeadline?: string | null): CancellationTerms {
   const hours = policy?.refundableUntilHours;
   const fee = policy?.cancellationFeePercent;
   const valid = Number.isInteger(hours) && Number(hours) >= 0 && Number.isInteger(fee) && Number(fee) >= 0 && Number(fee) <= 100;
-  const deadlineMs = valid ? Date.parse(startAt) - Number(hours) * 3600_000 : NaN;
+  const calculatedDeadline = valid ? Date.parse(startAt) - Number(hours) * 3600_000 : NaN;
+  const deadlineMs = savedDeadline && Number.isFinite(Date.parse(savedDeadline)) ? Math.min(calculatedDeadline, Date.parse(savedDeadline)) : calculatedDeadline;
   const deadline = Number.isFinite(deadlineMs) ? new Date(deadlineMs).toISOString() : null;
   return { freeCancellation: !!deadline && fee === 0 && now <= deadlineMs, deadline, feePercent: valid ? Number(fee) : null, name: typeof policy?.name === "string" ? policy.name : null };
 }

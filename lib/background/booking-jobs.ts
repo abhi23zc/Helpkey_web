@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { safeJobId } from "./jobs";
-export const bookingKinds = ["expiry", "payments", "refunds", "notifications"] as const;
+export const bookingKinds = ["expiry", "payments", "refunds", "notifications", "amendments"] as const;
 export type BookingKind = typeof bookingKinds[number];
 export const bookingTaskSchema = z.object({
   kind: z.enum(bookingKinds), recordId: z.string().min(1).max(300).refine(id => !id.includes("/")),
@@ -15,11 +15,13 @@ export function timestampMillis(value: unknown): number | undefined {
 export function taskFromRecord(kind: BookingKind, recordId: string, data: Record<string, unknown>): BookingTask | undefined {
   if ((data.backgroundAttention as Record<string, unknown> | undefined)?.[kind]) return;
   const eligible = kind === "expiry" ? data.bookingStatus === "pending_payment"
+    : kind === "amendments" ? data.amendmentPending === true
     : kind === "payments" ? data.paymentReconciliationPending === true
     : kind === "refunds" ? ["pending", "retry", "processing"].includes(String(data.status))
     : ["pending", "retry"].includes(String(data.status));
-  let dueAt = timestampMillis(data[kind === "expiry" ? "expiresAt" : kind === "payments" ? "nextReconcileAt" : "nextAttemptAt"]);
+  let dueAt = timestampMillis(data[kind === "expiry" ? "expiresAt" : kind === "payments" ? "nextReconcileAt" : kind === "amendments" ? "amendmentExpiresAt" : "nextAttemptAt"]);
   if (kind === "expiry" && dueAt !== undefined) dueAt = Math.max(dueAt, timestampMillis(data.expiryRetryAt) ?? 0);
+  if (kind === "amendments" && dueAt !== undefined) dueAt = Math.max(dueAt, timestampMillis(data.amendmentRetryAt) ?? 0);
   if (!eligible || dueAt === undefined) return;
   const revision = Number((data.backgroundRevisions as Record<string, unknown> | undefined)?.[kind] ?? 0);
   return bookingTaskSchema.parse({ kind, recordId, revision, dueAt });

@@ -19,6 +19,7 @@ import {
   type PmsStatus,
   type SettingsSection,
 } from "./settings/settings-shared";
+import { BookingEditingSettings } from "./booking-editing-settings";
 import { SettingsHub } from "./settings/settings-hub";
 import { PmsSetupSection } from "./settings/pms-setup-section";
 import { OperationalPoliciesSection } from "./settings/operational-policies-section";
@@ -125,11 +126,11 @@ function SettingsWorkspace({
       return <div className="space-y-5"><SettingsSubpageHeader propertyId={propertyId} section="finance" title="Finance Settings" description="View your hotel’s commercial agreement with HelpKey." data={data} /><FinanceWorkspace propertyId={propertyId} owner /></div>;
     case "hub":
       return (
-        <SettingsHub
+        <div className="space-y-5">{data.role === "owner" && <BookingEditingSettings propertyId={propertyId} />}<SettingsHub
           propertyId={propertyId}
           propertyName={propertyName}
           data={data}
-        />
+        /></div>
       );
     case "pms":
       return (

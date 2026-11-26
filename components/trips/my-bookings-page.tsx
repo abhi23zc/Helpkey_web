@@ -6,7 +6,6 @@ import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/r
 import {
   CheckCircle2,
   Clock,
-  Edit,
   FileText,
   Hotel,
   MapPin,
@@ -14,6 +13,7 @@ import {
   Star,
   XCircle,
 } from "lucide-react";
+import { EditBooking } from "./edit-booking";
 import { SiteHeader } from "@/components/shared/site-header";
 import { BookingReceiptModal, BookingReceiptData } from "./booking-receipt-modal";
 import { BookingReview, BookingReviewModal } from "./booking-review-modal";
@@ -21,6 +21,7 @@ import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 
 type Booking = {
+  customerEditingAvailable?: boolean;
   bookingMode?: "overnight" | "hourly";
   startAt?: string | null;
   endAt?: string | null;
@@ -533,7 +534,8 @@ export function MyBookingsPage() {
                         Booking details
                       </Link>
 
-                      {/* Cancel / Change Booking */}
+                      {booking.customerEditingAvailable && ["pending_payment", "confirmed"].includes(booking.bookingStatus) && <EditBooking bookingId={booking.id} />}
+                      {/* Cancellation stays separate from editing. */}
                       {["pending_payment", "confirmed"].includes(
                         booking.bookingStatus
                       ) && (
@@ -543,10 +545,10 @@ export function MyBookingsPage() {
                           onClick={() => void cancel(booking.id)}
                           className="px-5 py-2.5 rounded-xl border border-[#0b1f3a] text-[#0b1f3a] font-semibold text-sm hover:bg-[#0b1f3a] hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
                         >
-                          <Edit className="h-4 w-4" />
+                          <XCircle className="h-4 w-4" />
                           {busy === booking.id
                             ? "Processing..."
-                            : "Change Booking"}
+                            : "Cancel booking"}
                         </button>
                       )}
 

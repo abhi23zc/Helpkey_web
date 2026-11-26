@@ -1,3 +1,10 @@
+import { prepareCancellationReceipts } from "@/lib/booking/amendments/refunds";
+import { releaseAttempt } from "@/lib/booking/amendments/service";
+import {
+  customerEditingAvailable,
+  snapshotPolicy,
+} from "@/lib/booking/amendments/domain";
+import { registerOrder, routeMappedCapture } from "@/lib/booking/amendments/payments";
 import { paymentSummary } from "@/lib/stay/payment-summary";
 import { prepareCash } from "@/lib/partner/closing/shifts";
 import { holdAllocationGroups, allocationCounts } from "@/lib/booking/assignment-segments";
@@ -437,6 +444,7 @@ async function holdInventoryAndCreateBooking(uid: string, input: CreateBookingIn
     tx.create(adminDb.collection("bookings").doc(id), {
       ...persistedQuote,
       ...assignment,
+      ...(!manual && quoteData.inventoryEngine === "interval_v1" ? { editPolicy: snapshotPolicy(quoteData, property, rate, input.paymentMethod === "online" ? expiresAt.toDate().toISOString() : null), checkoutRevision: 0, reservationRevision: 0, occupants: input.adultGuestNames.map(name => ({ name, ageGroup: "adult" })), bookingContact: input.bookingContact ?? { name: input.adultGuestNames[0], email: input.leadEmail.toLowerCase(), phone: input.leadPhone } } : {}),
       quoteSnapshot: persistedQuote,
       requestFingerprint,
       paymentReconciliationPending: input.paymentMethod === "online",
@@ -528,6 +536,8 @@ export async function releaseBookingHold(bookingId: string, actorId: string, nex
     if (nextStatus === "expired" && (data.backgroundAttention?.expiry || data.expiryRetryAt?.toMillis() > now || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() > now || data.bookingStatus !== "pending_payment")) return false;
     if (reason === "CUSTOMER_CANCELLED" && data.startAt && Date.parse(data.startAt) <= now) throw new Error("BOOKING_NOT_CANCELLABLE");
     if (nextStatus === "no_show" && (!data.startAt || Date.parse(data.startAt) > now)) throw new Error("INVALID_BOOKING_TRANSITION");
+    const applyRefunds = await prepareCancellationReceipts(tx, bookingId, data);
+    const amendment = data.activeAmendmentId ? (await tx.get(ref.collection("amendments").doc(data.activeAmendmentId))).data() : null;
     const releasePhysical = await readPhysicalRelease(tx, bookingId, data);
     const holdRef = adminDb.collection("inventoryHolds").doc(bookingId);
     if (data.inventoryEngine === "interval_v1") {
@@ -547,8 +557,10 @@ export async function releaseBookingHold(bookingId: string, actorId: string, nex
       for (const day of days) tx.set(inventoryRef(String(data.propertyId), String(data.roomType?.id), String(day)), { reserved: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     releasePhysical();
+    if (amendment) releaseAttempt(tx, bookingId, amendment, data, "cancelled", "BOOKING_CLOSED");
     const refundPaise = data.paymentMethod === "online" && ["cancelled", "no_show"].includes(nextStatus) ? remainingCancellationRefund({ ...data, paidPaise: Math.max(0, (data.paidPaise ?? 0) - (data.propertyLedgerPaise ?? 0)), refundedPaise: Math.max(0, (data.refundedPaise ?? 0) - (data.propertyRefundedPaise ?? 0)), checkIn: data.checkIn }, now, ["PARTNER_CANCELLED", "ADMIN_CANCELLED"].includes(reason)) : 0;
-    if (refundPaise > 0) tx.set(adminDb.collection("refunds").doc(`${bookingId}_cancellation`), { bookingId, propertyId: data.propertyId, paymentId: data.razorpayPaymentId, amountPaise: refundPaise, status: "pending", nextAttemptAt: Timestamp.now(), reason, updatedAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp() });
+    if (refundPaise > 0 && applyRefunds) applyRefunds(refundPaise, reason);
+    if (refundPaise > 0 && !applyRefunds) tx.set(adminDb.collection("refunds").doc(`${bookingId}_cancellation`), { bookingId, propertyId: data.propertyId, paymentId: data.razorpayPaymentId, amountPaise: refundPaise, status: "pending", nextAttemptAt: Timestamp.now(), reason, updatedAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp() });
     tx.create(ref.collection("events").doc(receiptRef?.id || randomUUID()), { from: data.bookingStatus, to: nextStatus, reason, actorId, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, bookingId, data.propertyId, data.guestId, nextStatus);
     tx.update(ref, {
@@ -614,7 +626,12 @@ export async function createBooking(uid: string, raw: unknown, idempotencyKey?: 
       });
       const order = await response.json() as { id?: string };
       if (!response.ok || !order.id) throw new Error("PAYMENT_ORDER_CREATION_FAILED");
-      await adminDb.collection("bookings").doc(booking.id).update({ razorpayOrderId: order.id, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+      await adminDb.runTransaction(async tx => {
+        const ref = adminDb.collection("bookings").doc(booking.id);
+        const saved = (await tx.get(ref)).data()!;
+        if (saved.editPolicy) registerOrder(tx, order.id!, saved, booking.id);
+        tx.update(ref, { razorpayOrderId: order.id, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+      });
       const saved = (await adminDb.collection("bookings").doc(booking.id).get()).data()!;
       return { bookingId: booking.id, confirmationCode: booking.confirmationCode, quote: quoteData, requiresPayment: true, expiresAt: asIso(saved.expiresAt), razorpay: { keyId: process.env.RAZORPAY_KEY_ID, orderId: order.id, amount: quoteData.payableNowPaise, currency: quoteData.currency, name: "Helpkey" } };
     } catch (error) {
@@ -630,7 +647,7 @@ export async function createBooking(uid: string, raw: unknown, idempotencyKey?: 
 function existingBookingResponse(id: string, data: FirebaseFirestore.DocumentData) {
   if (!["pending_payment", "confirmed", "checked_in", "checked_out", "completed"].includes(data.bookingStatus)) throw new Error("BOOKING_NOT_ACTIVE");
   const requiresPayment = data.bookingStatus === "pending_payment";
-  if (requiresPayment && data.checkoutAttempt) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
+  if (requiresPayment && (data.checkoutAttempt || data.checkoutReplacement || data.paymentReplacementUnresolved || data.checkoutNeedsReplacement)) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
   if (requiresPayment && (!data.razorpayOrderId || !(data.expiresAt instanceof Timestamp) || data.expiresAt.toMillis() <= Date.now())) throw new Error("PAYMENT_ORDER_RECONCILIATION_REQUIRED");
   return { bookingId: id, confirmationCode: data.confirmationCode as string, quote: data.quoteSnapshot ?? { totalPaise: data.totalPaise, payableNowPaise: data.payableNowPaise, currency: data.currency }, requiresPayment, expiresAt: asIso(data.expiresAt), ...(requiresPayment ? { razorpay: { keyId: process.env.RAZORPAY_KEY_ID, orderId: data.razorpayOrderId as string, amount: data.payableNowPaise as number, currency: data.currency as string, name: "Helpkey" } } : {}) };
 }
@@ -657,6 +674,8 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
   const response = await providerFetch("razorpay", `https://api.razorpay.com/v1/payments/${encodeURIComponent(input.paymentId)}`, { headers: { Authorization: `Basic ${credentials}` }, timeoutMs: 8_000, idempotent: true });
   const payment = await response.json() as { id: string; order_id: string; amount: number; currency: string; status: string; captured: boolean };
   if (!response.ok || payment.id !== input.paymentId || payment.order_id !== input.orderId || payment.status !== "captured" || payment.captured !== true) throw new Error("PAYMENT_NOT_CAPTURED");
+  const mapped = await routeMappedCapture(bookingId, input, payment);
+  if (mapped !== null) { await invalidatePublic("search:*"); return mapped; }
   const result = await todayTransaction(async (tx, markTodayChanged) => {
     const ref = adminDb.collection("bookings").doc(bookingId);
     const snap = await tx.get(ref);
@@ -664,6 +683,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
     markTodayChanged(data?.propertyId);
     if (!snap.exists || !data) throw new Error("BOOKING_NOT_FOUND");
     if (input.source === "customer_verify" && !customerOwnsBooking(data, input.actorId)) throw new Error("BOOKING_NOT_FOUND");
+    if (data.editPolicy && (data.paymentReplacementUnresolved || data.checkoutNeedsReplacement)) throw new Error("PAYMENT_UNRESOLVED");
     if (input.checkoutAttemptId && data.checkoutAttempt?.id !== input.checkoutAttemptId) throw new Error("PAYMENT_ATTEMPT_ACTIVE");
     if (data.razorpayOrderId !== input.orderId || payment.amount !== data.payableNowPaise || payment.currency !== data.currency) throw new Error("PAYMENT_MISMATCH");
     const receiptRef = adminDb.collection("paymentAttempts").doc(input.paymentId);
@@ -686,7 +706,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
       const dates = Array.isArray(data.dates) ? data.dates : dateRange(data.checkIn, data.checkOut);
       await Promise.all(dates.map((day: string) => tx.get(inventoryRef(data.propertyId, data.roomType.id, day))));
     }
-    tx.create(receiptRef, { bookingId, propertyId: data.propertyId, orderId: input.orderId, paymentId: input.paymentId, amountPaise: payment.amount, currency: payment.currency, status: "captured", createdAt: FieldValue.serverTimestamp() });
+    tx.create(receiptRef, { bookingId, propertyId: data.propertyId, orderId: input.orderId, paymentId: input.paymentId, amountPaise: payment.amount, serviceAmountPaise: data.editPolicy ? data.extrasTotalPaise ?? 0 : 0, currency: payment.currency, status: "captured", createdAt: FieldValue.serverTimestamp() });
     if (!active) {
       if (expireNow) {
         if (allocations) { writeAllocation(tx, data.propertyId, data.roomType.id, allocations, -1); tx.update(holdRef, { status: "released", releasedAt: FieldValue.serverTimestamp() }); }
@@ -706,7 +726,7 @@ export async function confirmPaidBooking(bookingId: string, input: { actorId: st
     tx.update(ref, {
       bookingStatus: "confirmed",
       paymentStatus: payment.amount < data.totalPaise ? "partially_paid" : "paid",
-      paidPaise: data.payableNowPaise ?? data.totalPaise ?? 0,
+      paidPaise: data.editPolicy ? (data.paidPaise ?? 0) + payment.amount : data.payableNowPaise ?? data.totalPaise ?? 0,
       razorpayPaymentId: input.paymentId,
       paymentVerifiedAt: FieldValue.serverTimestamp(),
       paidAt: FieldValue.serverTimestamp(),
@@ -777,6 +797,10 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     adults: data.adults ?? 1,
     children: data.children ?? 0,
     infants: data.infants ?? 0,
+    customerEditingVersion: data.editPolicy?.version ?? null,
+    customerEditingAvailable: customerEditingAvailable(data),
+    accommodationPricing: data.accommodationPricing ? { publishedTotalPaise: data.accommodationPricing.published.totalPaise, acceptedTotalPaise: data.accommodationPricing.accepted.totalPaise, retainedDifferencePaise: data.accommodationPricing.retainedDifferencePaise } : null,
+    cancellationDeadline: data.editPolicy?.cancellationDeadline ?? null,
     leadGuest: data.leadGuest ? {
       name: data.leadGuest.name ?? "Guest",
       email: data.leadGuest.email ?? "",
@@ -807,6 +831,7 @@ export function serializeBooking(id: string, data: FirebaseFirestore.DocumentDat
     stayRevision: data.stayRevision ?? 0,
     preCheckin: data.preCheckin ?? emptyPreCheckin(),
     guestNames: data.leadGuest?.adultGuestNames ?? [data.leadGuest?.name ?? "Guest"],
+    occupants: Array.isArray(data.occupants) ? data.occupants.flatMap((o: Record<string, unknown>) => typeof o.name === "string" && ["adult", "child", "infant"].includes(String(o.ageGroup)) ? [{ name: o.name, ageGroup: String(o.ageGroup) }] : []) : [],
     registrationIncomplete: data.registrationIncomplete === true,
     recordedArrivalAt: data.recordedArrivalAt || null,
     actualCheckInAt: data.actualCheckInAt?.toDate?.().toISOString() || null,
@@ -982,7 +1007,7 @@ export async function transitionBooking(bookingId: string, actorId: string, next
     }
     saveCheckoutProof?.();
     if (receiptRef) tx.create(receiptRef, { action: next, actorId, createdAt: FieldValue.serverTimestamp() });
-    tx.update(ref, { reservationRevision: (data.reservationRevision ?? 0) + 1, stayRevision: (data.stayRevision ?? 0) + 1, bookingStatus: next, [next === "checked_in" ? "actualCheckInAt" : "actualCheckOutAt"]: next === "checked_in" && data.reservationPurpose === "walk_in" && data.recordedArrivalAt ? Timestamp.fromDate(new Date(data.recordedArrivalAt)) : FieldValue.serverTimestamp(), ...(next === "checked_in" ? { checkInRecordedAt: FieldValue.serverTimestamp() } : {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: actorId });
+    tx.update(ref, { ...(data.activeAmendmentId ? { amendmentExpiresAt: Timestamp.now() } : {}), reservationRevision: (data.reservationRevision ?? 0) + 1, stayRevision: (data.stayRevision ?? 0) + 1, bookingStatus: next, [next === "checked_in" ? "actualCheckInAt" : "actualCheckOutAt"]: next === "checked_in" && data.reservationPurpose === "walk_in" && data.recordedArrivalAt ? Timestamp.fromDate(new Date(data.recordedArrivalAt)) : FieldValue.serverTimestamp(), ...(next === "checked_in" ? { checkInRecordedAt: FieldValue.serverTimestamp() } : {}), updatedAt: FieldValue.serverTimestamp(), updatedBy: actorId });
     tx.create(ref.collection("events").doc(receiptRef?.id || randomUUID()), { from: canonicalStatus(data.bookingStatus), to: next, actorId, createdAt: FieldValue.serverTimestamp() });
     enqueueBookingNotification(tx, bookingId, data.propertyId, data.guestId, next);
   });

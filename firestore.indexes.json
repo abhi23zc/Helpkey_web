@@ -2595,6 +2595,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "amendmentPending",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amendmentExpiresAt",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

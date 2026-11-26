@@ -16,7 +16,7 @@ async function get() {
   await authorize();
   const heartbeats = await withQueueRedis(async redis => {
     const mode = backgroundMode();
-    const names = [...(mode === "legacy" ? [] : ["background-recovery"]), ...(mode === "queue" ? [] : ["projection-dispatcher", "media-dispatcher", "bookings-expiry", "bookings-payments", "bookings-refunds", "bookings-notifications"])];
+    const names = [...(mode === "legacy" ? [] : ["background-recovery"]), ...(mode === "queue" ? [] : ["projection-dispatcher", "media-dispatcher", "bookings-expiry", "bookings-amendments", "bookings-payments", "bookings-refunds", "bookings-notifications"])];
     const keys = [...names.map(name => backgroundKey("heartbeat", name)), ...await redis.smembers(backgroundKey("worker-heartbeats"))];
     const values = keys.length ? await redis.mget(...keys) : [];
     const expired = keys.filter((key, index) => !values[index] && key.split(":heartbeat:")[1]?.includes(":"));

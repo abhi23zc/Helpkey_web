@@ -12,7 +12,7 @@ import { StayRequestList } from "./stay-request-list";
 import { UnlistedRequestForm } from "./unlisted-request";
 import { supplementalFinancials } from "@/lib/stay/agreements";
 import { formatMoney } from "@/lib/customer/offer";
-type Booking = Partial<StayBookingData> & { id: string; bookingStatus: string; startAt: string | null; endAt: string | null; timezone: string; currency: string; leadGuest?: { name?: string; email?: string; phone?: string } | null; propertyPublicPhone?: string | null };
+type Booking = Partial<StayBookingData> & { customerEditingAvailable?: boolean; id: string; bookingStatus: string; startAt: string | null; endAt: string | null; timezone: string; currency: string; leadGuest?: { name?: string; email?: string; phone?: string } | null; propertyPublicPhone?: string | null };
 const button = "min-h-11 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold transition-colors hover:border-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b58a32] disabled:opacity-50";
 export function PreCheckinPanel({ booking }: { booking: Booking }) {
   const client = useQueryClient(), [editing, setEditing] = useState(false), [success, setSuccess] = useState("");
@@ -67,7 +67,7 @@ export function PreCheckinPanel({ booking }: { booking: Booking }) {
       </div>
       <StayRequestList requests={booking.customizations ?? []} currency={booking.currency} timezone={booking.timezone} guest={{ bookingId: booking.id, revision: booking.stayRevision ?? 0, enabled: ["confirmed", "checked_in"].includes(booking.bookingStatus), refresh }} />
       {supplemental.paidPaise > 0 && <p className="mt-3 text-xs text-slate-500">Extras paid separately: {formatMoney(supplemental.paidPaise, booking.currency)}{supplemental.refundDuePaise > 0 ? ` · Refund pending: ${formatMoney(supplemental.refundDuePaise, booking.currency)}` : ""}{supplemental.refundedPaise > 0 ? ` · Refunded: ${formatMoney(supplemental.refundedPaise, booking.currency)}` : ""}</p>}
-      {["confirmed", "checked_in"].includes(booking.bookingStatus) && <div className="mt-4"><UnlistedRequestForm timezone={booking.timezone} disabled={false} onAdd={async request => { try { await apiFetch(`/api/bookings/${encodeURIComponent(booking.id)}/stay-requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create", revision: booking.stayRevision ?? 0, request }) }); } finally { refresh(); } }} /></div>}
+      {(["confirmed", "checked_in"].includes(booking.bookingStatus) || booking.bookingStatus === "pending_payment" && booking.customerEditingAvailable) && <div className="mt-4"><UnlistedRequestForm timezone={booking.timezone} disabled={false} onAdd={async request => { try { await apiFetch(`/api/bookings/${encodeURIComponent(booking.id)}/stay-requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "create", revision: booking.stayRevision ?? 0, request }) }); } finally { refresh(); } }} /></div>}
     </section>
     {editing && <ArrivalEditor booking={{ ...booking, startAt: booking.startAt ?? q.data?.startAt ?? null }} close={() => setEditing(false)} saved={submitted => { setSuccess(submitted ? "Pre-check-in confirmed. Your arrival plan and guest information have been saved." : "Arrival draft saved. Resume pre-check-in whenever you’re ready."); refresh(); }} />}
   </div>;

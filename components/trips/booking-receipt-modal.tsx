@@ -17,6 +17,8 @@ import { supplementalFinancials } from "@/lib/stay/agreements";
 
 type Amenity = { code: string; label: string };
 export type BookingReceiptData = {
+  accommodationPricing?: { publishedTotalPaise: number; acceptedTotalPaise: number; retainedDifferencePaise: number } | null;
+  cancellationDeadline?: string | null;
   paymentSummary?: ReturnType<typeof import("@/lib/stay/payment-summary").paymentSummary>;
   customizations?: StayRequest[];
   stayPaymentReceipts?: import("@/lib/stay/contracts").StayPaymentReceipt[];
@@ -565,6 +567,7 @@ function Receipt({
                 Payment details
               </h3>
               <dl className="mt-2.5 divide-y divide-stone-100 rounded-2xl border border-[#e7e4dc] bg-stone-50/30 px-4 py-1">
+                {!!booking.accommodationPricing?.retainedDifferencePaise && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">Published accommodation: {money(booking.accommodationPricing.publishedTotalPaise, booking.currency)}. Retained booking minimum: {money(booking.accommodationPricing.acceptedTotalPaise, booking.currency)} (difference {money(booking.accommodationPricing.retainedDifferencePaise, booking.currency)}).</div>}
                 {typeof booking.subtotalPaise === "number" && (
                   <Amount
                     label={`Room charges · ${duration}`}

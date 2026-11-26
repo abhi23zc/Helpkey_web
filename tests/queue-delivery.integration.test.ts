@@ -139,7 +139,7 @@ describe.skipIf(!enabled)("direct queue delivery (real Redis + Firestore emulato
     children.push(child); child.stdout?.resume(); child.stderr?.resume();
     await waitFor(async () => !!await redis.get(backgroundKey("recovery-status")), 15000);
     const status = JSON.parse((await redis.get(backgroundKey("recovery-status")))!);
-    expect(status).toMatchObject({ rebuild: true, queryCalls: 6, failures: [] });
+    expect(status).toMatchObject({ rebuild: true, queryCalls: 7, failures: [] });
     const task = taskFromRecord("expiry", ref.id, (await ref.get()).data()!)!;
     expect(await (await queues.expiry.getJob(bookingTaskId(task)))?.getState()).toBe("delayed");
     await new Promise(resolve => setTimeout(resolve, 300));

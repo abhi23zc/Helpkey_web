@@ -1,7 +1,8 @@
+import { amendmentRateAvailable, priceAmendment } from "@/lib/booking/amendments/pricing";
+import { allocationDifference } from "@/lib/booking/amendments/domain";
 import { amendmentRestriction } from "./action-rules";
 import { todayTransaction } from "@/lib/partner/today/cache";
 import { operationalAccess } from "@/lib/partner/pms/access";
-import { withDatePrices } from "@/lib/booking/date-prices";
 import "server-only";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
@@ -11,7 +12,6 @@ import { ApiException } from "@/lib/api/errors";
 import { invalidatePublic } from "@/lib/api/cache";
 import {
   allocateIntervals,
-  evaluateStay,
   validDate,
   type Allocation,
 } from "@/lib/booking/domain";
@@ -103,19 +103,11 @@ async function readAmendment(
     room = roomDoc.data() ?? {},
     rate = rateDoc.data() ?? {},
     hold = holdDoc.data();
-  if (
-    p.inventoryEngine !== "interval_v1" ||
-    room.propertyId !== b.propertyId ||
-    room.status !== "active" ||
-    rate.propertyId !== b.propertyId ||
-    rate.roomTypeId !== input.roomTypeId ||
-    rate.status !== "active" ||
-    (p.currency || "INR") !== b.currency
-  )
+  if (!amendmentRateAvailable(b, p, room, rate, input.roomTypeId))
     throw new ApiException("RATE_NOT_AVAILABLE", 409);
   if (!hold || hold.status !== "committed" || !Array.isArray(hold.allocations))
     throw new ApiException("INVENTORY_ALLOCATION_MISSING", 409);
-  const current = evaluateStay(
+  const current = await priceAmendment(tx, b.propertyId, input.ratePlanId,
     {
       ...input,
       bookingMode: b.bookingMode || "overnight",
@@ -125,7 +117,7 @@ async function readAmendment(
     },
     p,
     room,
-    await withDatePrices(b.propertyId, input.ratePlanId, rate, { ...input, bookingMode: b.bookingMode || "overnight" }, tx),
+    rate,
   );
   const policy = rate.cancellationPolicyId
     ? (
@@ -173,19 +165,9 @@ async function readAmendment(
     if (a.intervals.some((key) => (calendar.reserved?.[key] ?? 0) < 1))
       throw new ApiException("INVENTORY_DRIFT", 409);
   }
-  const adjusted = newAllocations.map((a) => {
-    const data = map.get(
-      calendarRef(b.propertyId, input.roomTypeId, a.date).path,
-    )!;
-    const reserved = { ...data.reserved };
-    if (hold.roomTypeId === input.roomTypeId)
-      for (const old of oldAllocations)
-        if (old.date === a.date)
-          for (const key of old.intervals)
-            reserved[key] = (reserved[key] ?? 0) - 1;
-    return { ...data, reserved };
-  });
-  if (!hasCapacity(newAllocations, adjusted, room.totalInventory))
+  const additional = allocationDifference(newAllocations, oldAllocations, hold.roomTypeId === input.roomTypeId);
+  const additionalCalendars = additional.map(a => map.get(calendarRef(b.propertyId, input.roomTypeId, a.date).path)!);
+  if (!hasCapacity(additional, additionalCalendars, room.totalInventory))
     throw new ApiException("SOLD_OUT_FOR_DATES", 409);
   const cancellationPolicy = policy
     ? {

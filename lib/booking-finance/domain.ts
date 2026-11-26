@@ -22,6 +22,8 @@ export type Charge = {
   owner: "hotel" | "pass_through" | "unresolved";
 };
 export type Agreement = {
+  activeAccommodationAgreement?: Agreement;
+  activeAccommodationRevision?: string;
   agreementVersion: 1;
   calculationVersion: 1;
   bookingId: string;
@@ -317,6 +319,8 @@ export function resolveBookingFinance(
   proof: CheckoutProof | null,
   sources: Sources,
 ) {
+  const supportedRevision = !!agreement?.activeAccommodationAgreement && agreement.activeAccommodationRevision === b.accommodationRevision;
+  if (supportedRevision) agreement = agreement!.activeAccommodationAgreement!;
   if (!agreement)
     return {
       status: "historical" as const,
@@ -350,6 +354,7 @@ export function resolveBookingFinance(
     sources.events?.some(
       (e) =>
         /amend|stay_change|extend|credit|refund/.test(e.type ?? "") &&
+        !(supportedRevision && e.type === "customer_amendment_applied" && e.agreementRevision) &&
         !/^stay_quote_|^stay_request_/.test(e.type ?? "") &&
         !(
           e.refundId &&

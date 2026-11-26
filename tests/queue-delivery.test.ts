@@ -77,11 +77,11 @@ describe("durable timers and recovery", () => {
     expect(add).toHaveBeenCalledWith("expiry", task, expect.objectContaining({ jobId: bookingTaskId(task), delay: expect.any(Number) }));
     add.mockClear(); getState.mockResolvedValue("failed"); await ensureBookingTask(queue, task); expect(add).not.toHaveBeenCalled();
   });
-  it("performs exactly six empty discovery queries per recovery sweep", async () => {
+  it("performs exactly seven empty discovery queries per recovery sweep", async () => {
     const get = vi.fn().mockResolvedValue({ docs: [], size: 0 });
     const query = { where: () => query, orderBy: () => query, limit: () => query, get };
     const result = await recoverBackground({ collection: () => query } as unknown as Firestore, {} as DeliveryQueues);
-    expect(get).toHaveBeenCalledTimes(6); expect(result).toMatchObject({ examined: 0, queryCalls: 6, failures: [] });
+    expect(get).toHaveBeenCalledTimes(7); expect(result).toMatchObject({ examined: 0, queryCalls: 7, failures: [] });
   });
   it("paginates past a malformed booking without starving subsequent records", async () => {
     const add = vi.fn(), queues = { expiry: { getJob: vi.fn().mockResolvedValue(undefined), add } } as unknown as DeliveryQueues;
@@ -93,7 +93,7 @@ describe("durable timers and recovery", () => {
       return query;
     } } as unknown as Firestore;
     const result = await recoverBackground(db, queues);
-    expect(result).toMatchObject({ examined: 101, queryCalls: 7, failures: ["bad"] }); expect(add).toHaveBeenCalledTimes(100);
+    expect(result).toMatchObject({ examined: 101, queryCalls: 8, failures: ["bad"] }); expect(add).toHaveBeenCalledTimes(100);
   });
   it("stops opening recovery pages after leadership is lost", async () => {
     const get = vi.fn().mockResolvedValue({ docs: [], size: 0 });

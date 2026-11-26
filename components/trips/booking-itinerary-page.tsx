@@ -38,6 +38,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { apiFetch } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query/keys";
 import { formatMoney, cancellationTerms, cancellationLabel } from "@/lib/customer/offer";
+import { EditBooking } from "./edit-booking";
 import { BookingReceiptModal, type BookingReceiptData } from "./booking-receipt-modal";
 import { PublicMediaImage } from "@/components/shared/public-media-image";
 import { SiteHeader } from "@/components/shared/site-header";
@@ -53,6 +54,7 @@ type CancellationPolicy = {
 } | null;
 
 export type CustomerBooking = BookingReceiptData & Partial<StayBookingData> & {
+  customerEditingAvailable?: boolean;
   propertySlug: string | null;
   propertyAddress: string | null;
   propertyPublicPhone: string | null;
@@ -359,7 +361,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
 
   const cancellationTermsData =
     booking.cancellationPolicy && booking.startAt
-      ? cancellationTerms(booking.cancellationPolicy as Record<string, unknown>, booking.startAt)
+      ? cancellationTerms(booking.cancellationPolicy as Record<string, unknown>, booking.startAt, undefined, booking.cancellationDeadline)
       : null;
   const freeCancellationBadge = cancellationTermsData
     ? cancellationLabel(cancellationTermsData, booking.timezone)
@@ -497,6 +499,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
               <span>View receipt</span>
             </button>
 
+            {booking.customerEditingAvailable && ["confirmed", "pending_payment"].includes(booking.bookingStatus) && <EditBooking bookingId={booking.id} />}
             <Link
               href="/help"
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#e7e4dc] bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 shadow-2xs transition hover:bg-stone-50 hover:text-[#0b1f3a]"
@@ -894,7 +897,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
             </article>
 
             {/* PRE-CHECKIN & CUSTOMIZATION REQUESTS */}
-            <PreCheckinPanel booking={booking} />
+            <div id="customizations"><PreCheckinPanel booking={booking} /></div>
 
             {/* Only show amenities promised with this booking, never generic hospitality claims. */}
             {bookedAmenities.length > 0 && <article className="overflow-hidden rounded-2xl border border-[#e7e4dc] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -1076,6 +1079,7 @@ export function BookingItineraryPage({ initialBooking }: { initialBooking: Custo
 
               {/* Itemized Price Breakdown */}
               <dl className="mt-4 space-y-2.5 text-xs">
+                {!!booking.accommodationPricing?.retainedDifferencePaise && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Published accommodation {formatMoney(booking.accommodationPricing.publishedTotalPaise, booking.currency)}. Retained booking minimum {formatMoney(booking.accommodationPricing.acceptedTotalPaise, booking.currency)}.</p>}
                 {booking.subtotalPaise !== undefined && booking.subtotalPaise > 0 && (
                   <AmountRow
                     label={`Room charges (${

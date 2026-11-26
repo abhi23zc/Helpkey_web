@@ -45,7 +45,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
     propertyId = review.get("propertyId");
   }
   const duesRoute = !!propertyMatch && /\/dues(?:\/[^/]+)?$/.test(path);
-  if (path.includes("/bank-details") || duesRoute || path.endsWith("/accounting") || path.endsWith("/finance-settings") || (bookingMatch && path.endsWith("/finance"))) {
+  if (path.includes("/bank-details") || duesRoute || path.endsWith("/accounting") || path.endsWith("/finance-settings") || path.endsWith("/booking-editing") || (bookingMatch && path.endsWith("/finance"))) {
     permission = "property.manage";
   } else if (path.startsWith("/api/partner/cashier-shifts")) {
     permission = "shift.operate";
@@ -90,6 +90,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
             } as Record<string, Permission>
           )[body.action] || "listing.manage";
       else if (path.endsWith("/guest-registration") || path.endsWith("/customer-link")) permission = "reservation.note";
+      else if (path.endsWith("/service-moves")) permission = "requests.manage";
       else if (path.endsWith("/amendment")) permission = "reservation.amend";
       else if (
         ["confirmed", "preparing", "ready", "fulfilled"].includes(body.status)

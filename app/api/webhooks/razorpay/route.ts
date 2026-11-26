@@ -1,3 +1,4 @@
+import { orderRef } from "@/lib/booking/amendments/payments";
 import { captureQuotePayment } from "@/lib/stay/payments";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
@@ -45,11 +46,12 @@ const rawPOST = async function POST(request: Request) {
     const input = webhookSchema.parse(JSON.parse(body));
     const payment = input.payload.payment?.entity;
     if (!payment) return Response.json({ ok: true, ignored: true });
-    if (typeof payment.notes.stayQuoteOrderId === "string") {
+    const mappedBookingId = (await orderRef(payment.order_id).get()).get("bookingId");
+    if (!mappedBookingId && typeof payment.notes.stayQuoteOrderId === "string") {
       if (input.event === "payment.captured") await captureQuotePayment(payment.notes.stayQuoteOrderId, payment.order_id, payment.id);
       return Response.json({ ok: true });
     }
-    const bookingId = await bookingIdForPayment(payment.order_id, payment.notes);
+    const bookingId = typeof mappedBookingId === "string" ? mappedBookingId : await bookingIdForPayment(payment.order_id, payment.notes);
     if (!bookingId) return Response.json({ ok: true, ignored: true });
 
     const eventRef = adminDb.collection("paymentWebhookEvents").doc(createHash("sha256").update(`${input.event}:${payment.id}`).digest("hex"));

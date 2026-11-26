@@ -6,7 +6,7 @@ export function recoveryProgress(value: string | null): Record<string, string> {
     const data = JSON.parse(value ?? "{}");
     if (!data || typeof data !== "object" || Array.isArray(data)) return {};
     const result: Record<string, string> = {};
-    for (const [key, value] of Object.entries(data)) if (["projectionOutbox", "mediaPublicationOutbox", "expiry", "payments", "refunds", "bookingNotificationOutbox"].includes(key) && typeof value === "string") result[key] = value;
+    for (const [key, value] of Object.entries(data)) if (["projectionOutbox", "mediaPublicationOutbox", "expiry", "payments", "amendments", "refunds", "bookingNotificationOutbox"].includes(key) && typeof value === "string") result[key] = value;
     return result;
   } catch { return {}; }
 }
@@ -18,12 +18,13 @@ export function recoveryQueries(db: Firestore, rebuild = false): { collection: s
     ...["projectionOutbox", "mediaPublicationOutbox"].map(collection => ({ collection, query: due(db.collection(collection).where("recoverable", "==", true), "nextRecoveryAt") })),
     { collection: "bookings", kind: "expiry", query: due(db.collection("bookings").where("bookingStatus", "==", "pending_payment"), "expiresAt") },
     { collection: "bookings", kind: "payments", query: due(db.collection("bookings").where("paymentReconciliationPending", "==", true), "nextReconcileAt") },
+    { collection: "bookings", kind: "amendments", query: due(db.collection("bookings").where("amendmentPending", "==", true), "amendmentExpiresAt") },
     { collection: "refunds", query: due(db.collection("refunds").where("status", "in", ["pending", "retry", "processing"]), "nextAttemptAt") },
     { collection: "bookingNotificationOutbox", query: due(db.collection("bookingNotificationOutbox").where("status", "in", ["pending", "retry"]), "nextAttemptAt") },
   ];
 }
 
-/** A complete sweep uses six empty queries. Returned work adds reads and bounded pages. */
+/** A complete sweep uses seven empty queries. Returned work adds reads and bounded pages. */
 export async function recoverBackground(db: Firestore, queues: DeliveryQueues, options: { rebuild?: boolean; signal?: AbortSignal; assertLeader?: () => Promise<void>; checkpoint?: (category: string, lastId: string | null) => Promise<void>; cursors?: Record<string, string> } = {}) {
   let examined = 0, queryCalls = 0;
   const failures: string[] = [];

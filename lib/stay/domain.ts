@@ -299,11 +299,13 @@ export function remainingCancellationRefund(
     totalPaise?: number;
     startAt?: string;
     checkIn: string;
+    editPolicy?: { cancellationDeadline: string | null; cancellationExpired: boolean };
     cancellationPolicy?: Parameters<typeof cancellationRefund>[3];
   },
   now: number,
   partnerCaused: boolean,
 ) {
+  if (!partnerCaused && data.editPolicy && (data.editPolicy.cancellationExpired || (data.editPolicy.cancellationDeadline !== null && now >= Date.parse(data.editPolicy.cancellationDeadline)))) return 0;
   const credit = data.customizationCreditPaise ?? 0;
   return cancellationRefund(
     Math.max(0, (data.paidPaise ?? 0) - credit),

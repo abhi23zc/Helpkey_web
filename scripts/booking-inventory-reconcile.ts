@@ -7,12 +7,14 @@ const propertyId = flag >= 0 ? process.argv[flag + 1] : "";
 if (!propertyId) throw new Error("Usage: --property PROPERTY_ID");
 async function run() {
   const result = await db.runTransaction(async (tx) => {
-    const [calendars, holds, blocks] = await Promise.all([tx.get(db.collection("inventoryCalendars").where("propertyId", "==", propertyId)), tx.get(db.collection("inventoryHolds").where("propertyId", "==", propertyId)), tx.get(db.collection("inventoryBlocks").where("propertyId", "==", propertyId))]);
+    const [calendars, holds, blocks, bookings] = await Promise.all([tx.get(db.collection("inventoryCalendars").where("propertyId", "==", propertyId)), tx.get(db.collection("inventoryHolds").where("propertyId", "==", propertyId)), tx.get(db.collection("inventoryBlocks").where("propertyId", "==", propertyId)), tx.get(db.collection("bookings").where("propertyId", "==", propertyId))]);
     const expected = new Map<string, number>();
     const add = (roomTypeId: string, allocations: Allocation[], quantity: number, field: string) => {
       for (const allocation of allocations) for (const interval of allocation.intervals) { const key = `${propertyId}_${roomTypeId}_${allocation.date}/${field}/${interval}`; expected.set(key, (expected.get(key) ?? 0) + quantity); }
     };
     for (const hold of holds.docs) { const data = hold.data(); if (["held", "committed"].includes(data.status)) for (const g of holdAllocationGroups(data)) add(g.roomTypeId, g.allocations, data.quantity, "reserved"); }
+    const amendmentSets = await Promise.all(bookings.docs.map(b => tx.get(b.ref.collection("amendments"))));
+    for (const rows of amendmentSets) for (const row of rows.docs) { const a = row.data(); if (a.inventoryReserved && !["applied", "cancelled", "expired", "failed"].includes(a.status)) add(a.input.roomTypeId, a.additionalAllocations, 1, "reserved"); }
     for (const block of blocks.docs) { const data = block.data(); if (data.status === "active") add(data.roomTypeId, data.allocations, data.quantity, "blocked"); }
     const drift: { key: string; expected: number; actual: number }[] = [];
     for (const doc of calendars.docs) for (const field of ["reserved", "blocked"]) for (const [interval, raw] of Object.entries(doc.data()[field] ?? {})) {
