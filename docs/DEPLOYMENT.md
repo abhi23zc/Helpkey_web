@@ -24,11 +24,12 @@ not automatically roll back.
   the provider and Firebase configuration required by the application.
 - Firestore indexes must already be deployed and READY. This workflow does not
   publish indexes or rules. See `PMS_PHASE1.md` for the recorded index deployment.
-- PMS operational features (allocation, payments, room calendar, housekeeping,
-  amendments and combined offers) are enabled for every hotel; no deployment
-  environment switches are required and legacy flag values are ignored. Each
-  hotel's owner must still complete setup, run Settings → Verify inventory, and
-  activate PMS. These operational steps are independent of CI success.
+- PMS operational features (allocation, payments, room calendar, housekeeping
+  and amendments) are enabled for every hotel; no deployment environment
+  switches are required and legacy flag values are ignored. Combined stay offers
+  remain opt-in through `STAY_BATCH_OFFERS=1`. Each hotel's owner must still
+  complete setup, run Settings → Verify inventory, and activate PMS. These
+  operational steps are independent of CI success.
 
 The Compose web health check verifies that the application responds. Successful
 CI and container readiness do not verify live payment delivery, Firebase sign-in,
