@@ -91,11 +91,10 @@ this release. A revised amount due is collected at the property.
 
 ## Rollout
 
-Three flags independently gate allocation, financial writes and amendments:
-`PARTNER_RESERVATIONS_ALLOCATION`, `PARTNER_RESERVATIONS_PAYMENTS`,
-`PARTNER_RESERVATIONS_AMENDMENTS`. Each accepts `true`/`false`; development/test
-is enabled by default, production is disabled by default. Existing manual booking
-creation remains compatible and newly recorded paid bookings get immutable receipts.
+Allocation, financial writes and amendments are available to every hotel by
+default; no deployment environment switches are required and legacy flag values
+are ignored. Existing manual booking creation remains compatible and newly
+recorded paid bookings get immutable receipts.
 
 34 additive composite indexes are included for these reservation filters, physical
 assignment lookup and dated property-payment reporting (in addition to the prior

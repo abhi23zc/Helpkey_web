@@ -1413,10 +1413,9 @@ booking/payment statuses and room-type sellable capacity remain authoritative.
 - Existing historical property payments are not fabricated or assigned new capture
   dates. Their amounts remain visible, but receipt-based reversal/refund requires
   reconciliation where no identifiable receipt exists.
-- Collections, allocation and amendments have independent server feature flags:
-  `PARTNER_RESERVATIONS_PAYMENTS`, `PARTNER_RESERVATIONS_ALLOCATION`,
-  `PARTNER_RESERVATIONS_AMENDMENTS`. Local development/test defaults on; production
-  defaults off until indexes are ready. Read-only history remains available.
+- Collections, allocation and amendments are enabled for every hotel by default;
+  no deployment feature flags are required and legacy flag values are ignored.
+  Read-only history remains available.
 
 Reservations list indexes cover the combinations of property, exact search token,
 booking status, room type, payment status and hourly mode, ordered by checkIn and
@@ -1472,7 +1471,7 @@ The partner guest-registration GET also returns a safe `customerInvitation` summ
 
 ## Phase 2B creation, advances and physical assignment (2026-11-14)
 
-- Manual creation accepts optional `initialCollectionPaise` (safe integer, zero through the server-verified final total) and nullable/optional `physicalUnitId`. Legacy paid/unpaid fields still map to full/zero collection when the explicit amount is absent. Existing role presets are unchanged: positive amounts require payment.collect; assignment requires reservation.assign. Existing allocation/payment deployment switches remain effective.
+- Manual creation accepts optional `initialCollectionPaise` (safe integer, zero through the server-verified final total) and nullable/optional `physicalUnitId`. Legacy paid/unpaid fields still map to full/zero collection when the explicit amount is absent. Existing role presets are unchanged: positive amounts require payment.collect; assignment requires reservation.assign. Allocation and payment features are always available.
 - The existing booking transaction creates the reservation, shared capacity allocation, optional physical calendars/assignment, initial propertyPayments collection and activity events atomically. Complete every read/check before executing assignment/calendar/payment writes. Initial receipt ID remains `{bookingId}_initial`; repeated actor/key/input produces exactly one record set. Amounts update paidPaise/propertyLedgerPaise/balanceDuePaise and existing payment statuses; these are hotel-recorded collections, never provider captures.
 - Manual quote can include a first page of safe physical-room options and an opaque cursor scoped to actor, hotel, room type and evaluated interval. Only reservation.assign users with allocation enabled receive room options. Each page is at most 50 matching units. Physical availability includes the complete stay/turnover interval, active maintenance and current occupied/overdue rooms for immediate arrivals. Dirty/unknown cleaning is advisory, not an override or new lifecycle gate. Future cleanliness is not a readiness promise. Selected rooms are revalidated at creation and are never silently substituted.
 - Creation success returns an additive saved financial/assignment summary. Activity history reuses bookings/{id}/events; no folio, invoice, new financial ledger, automatic check-in or historical migration is introduced.

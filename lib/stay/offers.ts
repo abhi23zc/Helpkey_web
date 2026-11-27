@@ -12,7 +12,7 @@ import { acceptOffer, publishOffer, type ExtrasOffer } from "./offer-domain";
 import type { StayRequest } from "./contracts";
 import { enqueueStayNotification } from "./notifications";
 
-export const offersEnabled = () => process.env.STAY_BATCH_OFFERS === "1";
+export const offersEnabled = () => true;
 const command = z.object({ action: z.enum(["publish", "withdraw", "accept"]), revision: z.number().int().nonnegative(), offerId: z.string().optional(), version: z.number().int().positive().optional(), selected: z.array(z.string()).max(100).default([]) }).strict();
 export async function manageOffer(uid: string, bookingId: string, raw: unknown, staff: boolean) {
   const input = command.parse(raw);

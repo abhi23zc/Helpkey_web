@@ -594,32 +594,21 @@ describe.skipIf(!safe)("partner reservations transactions", () => {
       ),
     ).toBe(4000);
   });
-  it("gates financial writes independently of saved notes and read-only history", async () => {
-    const f = await fixture(),
-      b = await f.create();
+  it("ignores legacy environment flags for financial features", async () => {
     process.env.PARTNER_RESERVATIONS_PAYMENTS = "false";
+    process.env.PARTNER_RESERVATIONS_ALLOCATION = "false";
+    process.env.PARTNER_RESERVATIONS_AMENDMENTS = "false";
     try {
-      await expect(
-        ops.performOperation(
-          uid,
-          b.id,
-          { action: "collect", amountPaise: 100, method: "cash" },
-          "off",
-        ),
-      ).rejects.toThrow("not been enabled");
-      await ops.performOperation(
-        uid,
-        b.id,
-        { action: "note", text: "Still available" },
-        "on",
-      );
-      expect(
-        (await ops.bookingOperations(uid, b.id)).events.some(
-          (e) => e.text === "Still available",
-        ),
-      ).toBe(true);
+      const { features } = await import("@/lib/partner/reservations/access");
+      expect(features()).toMatchObject({
+        allocation: true,
+        payments: true,
+        amendments: true,
+      });
     } finally {
       delete process.env.PARTNER_RESERVATIONS_PAYMENTS;
+      delete process.env.PARTNER_RESERVATIONS_ALLOCATION;
+      delete process.env.PARTNER_RESERVATIONS_AMENDMENTS;
     }
   });
   it("counts arrivals across the selected range instead of only the legacy anchor date", async () => {

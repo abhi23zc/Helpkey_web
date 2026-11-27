@@ -997,7 +997,7 @@ export async function transitionBooking(bookingId: string, actorId: string, next
       requireReconciled(data, await readBillingSources(tx, bookingId));
     }
     const saveCheckoutProof = next === "checked_out" ? await prepareCheckoutProof(tx, bookingId, data, actorId) : null;
-    if (next === "checked_out" && data.physicalUnitId && (process.env.PARTNER_ROOMS_HOUSEKEEPING === "true" || (process.env.NODE_ENV !== "production" && process.env.PARTNER_ROOMS_HOUSEKEEPING !== "false"))) {
+    if (next === "checked_out" && data.physicalUnitId) {
       const unitRef = adminDb.collection("physicalUnits").doc(data.physicalUnitId);
       const unit = await tx.get(unitRef);
       if (unit.get("propertyId") === data.propertyId) {

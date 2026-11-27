@@ -16,7 +16,7 @@ Room type archive preserves historical records and refuses pending/confirmed/in-
 
 ## Enablement
 
-`PARTNER_ROOMS_CALENDAR` and `PARTNER_ROOMS_HOUSEKEEPING` default on outside production and off in production. Set each to `true` to enable the respective workflow. Physical room registration/assignment also uses the existing `PARTNER_RESERVATIONS_ALLOCATION` flag. Existing saved date prices remain authoritative when calendar editing is disabled.
+Room calendar, housekeeping and physical room registration/assignment are available to every hotel by default; no deployment environment switches are required and legacy flag values are ignored.
 
 No inventory engine is migrated. Legacy properties retain nightly capacity reads and base/date pricing; interval maintenance, exact capacity checks and stop-sell controls explain the setup requirement. No hosting deployment or live booking edits are part of this implementation.
 

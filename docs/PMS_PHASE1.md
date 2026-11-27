@@ -59,16 +59,7 @@ The existing manual-booking operator UID is not migrated into a new guest identi
 
 No production data migration, index deployment or hosting deployment is performed by this work. Apply the additive indexes in `firestore.indexes.json` and wait for readiness before using new cloud query shapes. New invitation and PMS-event documents are server-only under the existing default-deny rules.
 
-To make the existing operational tools available in production, configure the existing deployment switches:
-
-```text
-PARTNER_RESERVATIONS_ALLOCATION=true
-PARTNER_RESERVATIONS_PAYMENTS=true
-PARTNER_ROOMS_CALENDAR=true
-PARTNER_ROOMS_HOUSEKEEPING=true
-```
-
-`PARTNER_RESERVATIONS_AMENDMENTS` retains its independent behavior. Global switches remain emergency controls; hotel-level activation does not override them. Rebuild/restart booking workers alongside web because notification authorization changed. Configure Firebase Google sign-in if verified-email invitation acceptance is needed. No invitation-email provider is required.
+The operational tools (allocation, payments, room calendar, housekeeping and amendments) are available to every hotel by default; no deployment environment switches are required and legacy flag values are ignored. Rebuild/restart booking workers alongside web because notification authorization changed. Configure Firebase Google sign-in if verified-email invitation acceptance is needed. No invitation-email provider is required.
 
 ## Reproducible checks
 

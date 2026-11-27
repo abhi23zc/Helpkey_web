@@ -123,15 +123,6 @@ export async function setupStatusForAccess(
         p.cleaningBufferMinutes >= 0 &&
         p.cleaningBufferMinutes <= 1440 &&
         p.cleaningBufferMinutes % 15 === 0));
-  const feature = (key: string) =>
-    process.env[key] === "true" ||
-    (process.env.NODE_ENV !== "production" && process.env[key] !== "false");
-  const deployment = [
-    "PARTNER_RESERVATIONS_ALLOCATION",
-    "PARTNER_RESERVATIONS_PAYMENTS",
-    "PARTNER_ROOMS_CALENDAR",
-    "PARTNER_ROOMS_HOUSEKEEPING",
-  ].every(feature);
   const items: SetupItem[] = [
     {
       id: "details",
@@ -203,13 +194,6 @@ export async function setupStatusForAccess(
           : p.pms?.inventoryVerification?.passed === false
             ? "Inventory verification found inconsistent records. Contact support to reconcile them, then verify again."
             : "Verify inventory before using PMS. Legacy hotels require the controlled inventory cutover first.",
-    },
-    {
-      id: "deployment",
-      label: "Operational features available",
-      complete: deployment,
-      detail:
-        "Allocation, payments, room calendar and housekeeping must be enabled by the deployment administrator.",
     },
   ];
   return {

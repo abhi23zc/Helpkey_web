@@ -18,7 +18,7 @@ Failed validation or conflicts retain input and the selected room. Nothing silen
 
 Existing role presets are preserved. Receptionists can create and assign, but cannot collect. Owners/managers can record an initial collection; cashiers use the existing cashier workflow afterward. Collection requires `payment.collect`; assignment requires `reservation.assign`, in addition to creation permission and hotel operational access. The UI explains unavailable capabilities; both the route and transaction independently enforce authorization. Revocation, PMS activation, administrative restrictions and the marketplace/PMS separation remain authoritative.
 
-Existing environment switches apply: `PARTNER_RESERVATIONS_PAYMENTS=true` enables collection and `PARTNER_RESERVATIONS_ALLOCATION=true` enables assignment in production. They do not activate any hotel's PMS or grant a staff permission. Leaving a reservation unassigned/unpaid remains supported when those features are unavailable. No role preset or hotel setting is changed automatically.
+Collection and assignment are available to every hotel by default; no deployment environment switches are required and legacy flag values are ignored. They do not activate any hotel's PMS or grant a staff permission. Leaving a reservation unassigned/unpaid remains supported. No role preset or hotel setting is changed automatically.
 
 ## Atomic data and compatibility
 

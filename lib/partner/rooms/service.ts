@@ -23,14 +23,8 @@ const id = z
   .refine((s) => !s.includes("/"));
 const date = z.string().refine(validDate);
 export const roomsFeatures = () => ({
-  calendar:
-    process.env.PARTNER_ROOMS_CALENDAR === "true" ||
-    (process.env.NODE_ENV !== "production" &&
-      process.env.PARTNER_ROOMS_CALENDAR !== "false"),
-  housekeeping:
-    process.env.PARTNER_ROOMS_HOUSEKEEPING === "true" ||
-    (process.env.NODE_ENV !== "production" &&
-      process.env.PARTNER_ROOMS_HOUSEKEEPING !== "false"),
+  calendar: true,
+  housekeeping: true,
 });
 function enabled(feature: "calendar" | "housekeeping") {
   if (!roomsFeatures()[feature]) throw new Error("FEATURE_NOT_ENABLED");
