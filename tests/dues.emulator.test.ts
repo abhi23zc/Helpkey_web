@@ -591,6 +591,7 @@ describe.skipIf(!safe)(
         payoutId: prepared.id,
         paymentDate: "2026-11-24",
         method: "upi",
+        acknowledgedBankVersion: (await payouts.readPayouts(admin, hotel)).payouts.find((p) => p.id === prepared.id)!.currentBankVersion,
         reference: "LOCAL-DUES-PAYOUT",
         notes: "Local test",
         requestId: crypto.randomUUID(),

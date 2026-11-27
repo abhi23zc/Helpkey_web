@@ -12,6 +12,9 @@ import { executeOutbox, LeaseBusy } from "../shared/outbox";
 import { invalidate } from "../shared/invalidate";
 import { updateReviews } from "./reviews";
 import { processAccounting } from "../../lib/accounting/posting";
+import {
+  ensureFreshOwnerProjections,
+} from "../../lib/finances/projections";
 
 const cacheRedis = new Redis(process.env.REDIS_URL ?? "redis://127.0.0.1:6379", { maxRetriesPerRequest: 1, commandTimeout: 5000 });
 export async function closeProjectionProcessor() { await cacheRedis.quit(); }
@@ -71,12 +74,26 @@ export async function processProjection(job: Job<ProjectionJob>) {
   const data = projectionSchema.parse(job.data), { kind, entityId } = data;
   if (kind === "booking_accounting") {
     await executeOutbox(db, job, "projectionOutbox", "projectionJobs", async () => {
-      try { await processAccounting(db, entityId); }
-      catch (error) {
+      try {
+        await processAccounting(db, entityId);
+      } catch (error) {
         // The source commit is already successful; keep accounting separately recoverable.
         await db.collection("hotelAccountingStateV1").doc(entityId).set({ dirty: true, lastError: error instanceof Error ? error.message.slice(0, 300) : "ACCOUNTING_FAILED" }, { merge: true });
         throw error;
       }
+      // Reporting failures remain retryable without relabelling a committed,
+      // valid accounting journal as failed.
+      const bookingDoc = await db.collection("bookings").doc(entityId).get();
+      const propertyId = bookingDoc.get("propertyId");
+      if (typeof propertyId === "string" && propertyId) {
+        await ensureFreshOwnerProjections(db, propertyId);
+      }
+    });
+    return;
+  }
+  if (kind === "owner_finance") {
+    await executeOutbox(db, job, "projectionOutbox", "projectionJobs", async () => {
+      await ensureFreshOwnerProjections(db, entityId);
     });
     return;
   }

@@ -301,16 +301,17 @@ test("partial payment, correction, linked replacement and owner/mobile history",
   ).toBe(200);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/partner/dues?propertyId=${hotel}`);
+  await expect(page).toHaveURL(new RegExp(`/partner/finances\\?.*propertyId=${hotel}.*status=dues`));
   await expect(
-    page.getByRole("heading", { name: "Hotel Dues", exact: true }),
+    page.getByRole("heading", { name: "Finances", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("₹150.00", { exact: true }).first(),
+    page.getByText("₹150.00").first(),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Record payment received", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("tab", { name: "Payment history", exact: true }).click();
+  await page.getByRole("tab", { name: "Payments", exact: true }).click();
   await expect(page.getByText(/LOCAL-DUES-350/).first()).toBeVisible();
   expect(
     await page.evaluate(

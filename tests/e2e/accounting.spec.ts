@@ -438,11 +438,12 @@ test("admin and owner inspect journal; direct access and commands remain restric
   ).toBe(403);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/partner/accounting?propertyId=${hotel}`);
+  await expect(page).toHaveURL(new RegExp(`/partner/finances\\?.*propertyId=${hotel}.*tab=bookings`));
   await expect(
-    page.getByRole("heading", { name: "Hotel Accounting", exact: true }),
+    page.getByRole("heading", { name: "Finances", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("₹1,900.00", { exact: true }).first(),
+    page.getByText("₹1,900.00").first(),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Retry accounting", exact: true }),
@@ -463,7 +464,7 @@ test("admin and owner inspect journal; direct access and commands remain restric
     if (new URL(request.url()).pathname === "/api/admin/accounting")
       ownerAdminReads.push(request.url());
   });
-  await page.route(`**/api/partner/properties/${hotel}/accounting`, (route) =>
+  await page.route(`**/api/partner/properties/${hotel}/finances`, (route) =>
     route.fulfill({
       status: 503,
       contentType: "application/json",
@@ -477,22 +478,22 @@ test("admin and owner inspect journal; direct access and commands remain restric
   );
   await page.reload();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Unable to load accounting" }),
+    page.getByRole("alert").filter({ hasText: "Unable to load hotel finances" }),
   ).toBeVisible();
-  await page.unroute(`**/api/partner/properties/${hotel}/accounting`);
+  await page.unroute(`**/api/partner/properties/${hotel}/finances`);
   await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(
-    page.getByText("₹1,900.00", { exact: true }).first(),
+    page.getByText("₹1,900.00").first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Unable to load accounting" }),
+    page.getByRole("alert").filter({ hasText: "Unable to load hotel finances" }),
   ).toHaveCount(0);
   expect(ownerAdminReads).toEqual([]);
   await login(context, "staff");
   expect((await page.request.get(ownerApi)).status()).toBe(403);
-  await page.goto(`/partner/accounting?propertyId=${hotel}`);
+  await page.goto(`/partner/finances?propertyId=${hotel}`);
   await expect(
-    page.getByText("Only the hotel owner can view accounting."),
+    page.getByText(/Owner permission required|Property access required/i),
   ).toBeVisible();
   await login(context, "stranger");
   expect((await page.request.get(ownerApi)).status()).toBe(403);

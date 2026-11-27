@@ -69,6 +69,13 @@ function queries(db: Firestore) {
   add("aadhaar.operator-limit", "lib/aadhaar-lab.ts:60", db.collection("aadhaarVerificationLab").where("operatorId", "==", value).where("createdAt", ">=", now));
   add("aadhaar.identity-limit", "lib/aadhaar-lab.ts:60", db.collection("aadhaarVerificationLab").where("aadhaarFingerprint", "==", value).where("createdAt", ">=", now));
   for (const rebuild of [false, true]) for (const { collection, kind, query } of recoveryQueries(db, rebuild)) add(`background.${rebuild ? "rebuild" : "recovery"}.${kind ?? collection}`, "lib/background/recovery.ts", query);
+  add("finances.accounting-dirty", "lib/finances/service.ts", db.collection("hotelAccountingStateV1").where("propertyId", "==", value).where("dirty", "==", true));
+  add("finances.payouts-prepared", "lib/finances/service.ts", db.collection("hotelPayoutsV1").where("propertyId", "==", value).where("status", "==", "Prepared"));
+  add("finances.bookings-dirty", "lib/finances/projections.ts", db.collection("hotelOwnerFinanceBookingsV1").where("propertyId", "==", value).where("dirty", "==", true));
+  add("finances.bookings-waiting-expired", "lib/finances/projections.ts", db.collection("hotelOwnerFinanceBookingsV1").where("propertyId", "==", value).where("waitingPeriodPending", "==", true).where("eligibleAt", "<=", "2026-01-01T00:00:00Z"));
+  add("finances.bookings-list", "lib/finances/service.ts", db.collection("hotelOwnerFinanceBookingsV1").where("propertyId", "==", value).orderBy("sortAt", "desc").orderBy("__name__", "desc"));
+  add("finances.activity-list", "lib/finances/service.ts", db.collection("hotelOwnerFinanceActivityV1").where("propertyId", "==", value).orderBy("sortAt", "desc").orderBy("__name__", "desc"));
+  add("finances.dues-reports-list", "lib/dues/reports.ts", db.collection("hotelDuesReportsV1").where("propertyId", "==", value).orderBy("submittedAt", "desc").orderBy("__name__", "desc"));
   return output;
 }
 async function main() {

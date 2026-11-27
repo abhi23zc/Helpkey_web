@@ -24,7 +24,7 @@ async function main() {
     for (const property of page.docs) {
       if (verify) {
         const data = property.data();
-        const present = kind === "property_search" ? Number(data.searchProjectionVersion ?? 0) >= 3 : kind === "review_summary" ? Boolean(data.reviewProjectionUpdatedAt) : kind === "daily_metrics" || kind === "dashboard_summary" ? !(await adminDb.collection("propertyDailyMetrics").where("propertyId", "==", property.id).limit(1).get()).empty : true;
+        const present = kind === "property_search" ? Number(data.searchProjectionVersion ?? 0) >= 3 : kind === "review_summary" ? Boolean(data.reviewProjectionUpdatedAt) : kind === "daily_metrics" || kind === "dashboard_summary" ? !(await adminDb.collection("propertyDailyMetrics").where("propertyId", "==", property.id).limit(1).get()).empty : kind === "owner_finance" ? (await adminDb.collection("hotelOwnerFinanceOverviewV1").doc(property.id).get()).exists : true;
         if (!present) missing += 1;
       }
       else if (!dryRun) await adminDb.runTransaction(async (tx) => enqueueProjection(tx, kind, property.id));

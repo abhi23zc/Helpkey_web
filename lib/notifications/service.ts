@@ -153,7 +153,15 @@ async function visibleNotification(userId: string, notification: { data?: Record
     if (customerOwnsBooking(b, userId) && b?.propertyId === propertyId) return true;
   }
   const { propertyAccess } = await import("@/lib/partner/pms/access");
-  try { const access = await propertyAccess(userId, propertyId, notification.eventType?.startsWith("booking.") ? "reservation.read" : "listing.manage"); return !access.block; }
+  try {
+    if (notification.eventType?.startsWith("dues_report.")) {
+      const access = await propertyAccess(userId, propertyId, "property.manage");
+      const ownerId = access.property.ownerId || access.property.partnerId;
+      return access.role === "owner" && ownerId === userId;
+    }
+    const access = await propertyAccess(userId, propertyId, notification.eventType?.startsWith("booking.") ? "reservation.read" : "listing.manage");
+    return !access.block;
+  }
   catch (error) { if (error && typeof error === "object" && "status" in error && error.status === 403) return false; throw error; }
 }
 

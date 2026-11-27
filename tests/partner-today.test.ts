@@ -40,8 +40,8 @@ describe("hotel-local Today queues", () => {
     const actions = reservationEligibility({ ...base, startAt: "2026-11-14T00:00:00Z", registrationIncomplete: true }, ["reservation.operate"], { allocation: true, payments: false, amendments: false }, now);
     expect(actions.checked_in.allowed).toBe(true);
     expect(actions.collect.reason).toContain("role");
-    expect(landing("owner")).toBe("/partner/today");
-    expect(landing("receptionist")).toBe("/partner/today");
+    expect(landing("owner")).toBe("/partner/dashboard");
+    expect(landing("receptionist")).toBe("/partner/reservations");
     expect(landing("cashier")).toBe("/partner/operations");
   });
 });

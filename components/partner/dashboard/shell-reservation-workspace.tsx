@@ -8,7 +8,7 @@ import { invalidateOperationalQueries } from "@/lib/partner/operational-queries"
 export function ShellReservationWorkspace({ propertyId }: { propertyId: string }) {
   const path = usePathname(), params = useSearchParams(), client = useQueryClient();
   const refresh = useCallback(() => { void invalidateOperationalQueries(client, propertyId); }, [client, propertyId]);
-  if (["/partner/today", "/partner/dashboard", "/partner/reservations"].includes(path)) return null;
+  if (["/partner/dashboard", "/partner/reservations", "/partner/finances"].includes(path)) return null;
   return <ReservationWorkspace bookingId={params.get("bookingId")} propertyId={propertyId} onChanged={refresh} onClose={() => {
     const next = new URL(window.location.href); next.searchParams.delete("bookingId"); next.searchParams.delete("section"); window.history.replaceState(null, "", next);
   }} />;

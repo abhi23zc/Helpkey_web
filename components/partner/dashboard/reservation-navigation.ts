@@ -41,8 +41,8 @@ export function reservationUrl(
   section: WorkspaceSection | WorkspaceTab = "overview",
 ) {
   const url = new URL(current, "http://helpkey.local");
-  if (!["/partner/today", "/partner/dashboard", "/partner/reservations", "/partner/rooms"].includes(url.pathname)) {
-    url.pathname = "/partner/today"; url.search = "";
+  if (!["/partner/dashboard", "/partner/reservations", "/partner/rooms"].includes(url.pathname)) {
+    url.pathname = "/partner/reservations"; url.search = "";
   }
   url.searchParams.set("propertyId", propertyId);
   url.searchParams.set("bookingId", bookingId);

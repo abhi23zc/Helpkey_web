@@ -292,11 +292,11 @@ export function ReadinessWorkspace({
         className="text-sm underline"
         href={
           owner
-            ? `/partner/payouts?propertyId=${propertyId}`
-            : `/admin/payouts?propertyId=${propertyId}`
+            ? `/partner/finances?propertyId=${encodeURIComponent(propertyId)}`
+            : `/admin/payouts?propertyId=${encodeURIComponent(propertyId)}`
         }
       >
-        Back to Hotel Payouts
+        {owner ? "Back to Hotel Finances" : "Back to Hotel Payouts"}
       </Link>
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">

@@ -13,6 +13,7 @@ import {
   type Effect,
   type Line,
 } from "./domain";
+import { markOwnerFinanceDirty } from "../finances/projections";
 import {
   unassessedItems,
   type Agreement,
@@ -154,6 +155,9 @@ export async function processAccounting(
         },
         { merge: true },
       );
+      markOwnerFinanceDirty(db, tx, b.propertyId, [bookingId], {
+        processing: false,
+      });
       return;
     }
     const result = assess(bookingId, b, agreement, proof, sources);
@@ -403,6 +407,10 @@ export async function processAccounting(
         },
         { merge: true },
       );
+    markOwnerFinanceDirty(db, tx, b.propertyId, [bookingId], {
+      processing: false,
+      activityDirty: additions.length > 0,
+    });
     beforeWrite?.();
   });
 }

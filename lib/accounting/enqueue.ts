@@ -38,5 +38,15 @@ export function enqueueAccounting(
     },
     { merge: true },
   );
+  writer.set(
+    db.collection("hotelOwnerFinanceBookingsV1").doc(bookingId),
+    {
+      bookingId,
+      dirty: true,
+      isProcessing: true,
+      requestedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
   return outbox.id;
 }

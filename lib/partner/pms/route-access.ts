@@ -45,7 +45,20 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
     propertyId = review.get("propertyId");
   }
   const duesRoute = !!propertyMatch && /\/dues(?:\/[^/]+)?$/.test(path);
-  if (path.includes("/bank-details") || duesRoute || path.endsWith("/accounting") || path.endsWith("/finance-settings") || path.endsWith("/booking-editing") || (bookingMatch && path.endsWith("/finance"))) {
+  const financesRoute =
+    !!propertyMatch && /\/finances(?:\/.*)?$/.test(path);
+  const payoutsRoute =
+    !!propertyMatch && /\/payouts(?:\/.*)?$/.test(path);
+  if (
+    path.includes("/bank-details") ||
+    duesRoute ||
+    financesRoute ||
+    payoutsRoute ||
+    path.endsWith("/accounting") ||
+    path.endsWith("/finance-settings") ||
+    path.endsWith("/booking-editing") ||
+    (bookingMatch && path.endsWith("/finance"))
+  ) {
     permission = "property.manage";
   } else if (path.startsWith("/api/partner/cashier-shifts")) {
     permission = "shift.operate";
@@ -56,9 +69,6 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
     operational = write;
   } else if (path === "/api/partner/dashboard/overview") {
     permission = "reports.read";
-    operational = true;
-  } else if (path.startsWith("/api/partner/today/")) {
-    permission = "reservation.read";
     operational = true;
   } else if (path.includes("/invoice-settings")) {
     permission = "invoice.settings";
@@ -154,7 +164,7 @@ export async function authorizePartnerRequest(uid: string, request: Request) {
   const access = operational
     ? await operationalAccess(uid, propertyId, permission)
     : await propertyAccess(uid, propertyId, permission);
-  if ((duesRoute || (bookingMatch && path.endsWith("/finance")) || path.endsWith("/accounting")) && access.role !== "owner")
+  if ((duesRoute || financesRoute || payoutsRoute || (bookingMatch && path.endsWith("/finance")) || path.endsWith("/accounting")) && access.role !== "owner")
     throw new ApiException("FORBIDDEN", 403, "Only the hotel owner can view booking finance.");
   if (write && access.block && !path.includes("/pms"))
     throw new ApiException("PMS_RESTRICTED", 403, access.block);

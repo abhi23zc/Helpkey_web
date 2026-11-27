@@ -81,7 +81,16 @@ export function NotificationBell({ partner = false }: { partner?: boolean }) {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => { if (item.readAt == null) void markRead([item.id]); if (partner && item.data.bookingId && item.data.propertyId) { setOpen(false); router.push(`/partner/today?${new URLSearchParams({ propertyId: item.data.propertyId, bookingId: item.data.bookingId })}`); } }}
+                  onClick={() => {
+                    if (item.readAt == null) void markRead([item.id]);
+                    if (partner && item.data.reportId && item.data.propertyId) {
+                      setOpen(false);
+                      router.push(`/partner/finances?${new URLSearchParams({ propertyId: item.data.propertyId, tab: "reports", reportId: item.data.reportId })}`);
+                    } else if (partner && item.data.bookingId && item.data.propertyId) {
+                      setOpen(false);
+                      router.push(`/partner/reservations?${new URLSearchParams({ propertyId: item.data.propertyId, bookingId: item.data.bookingId })}`);
+                    }
+                  }}
                   className={`block w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 ${item.readAt == null ? "bg-[#fbf5e8]" : ""}`}
                 >
                   <div className="flex items-start gap-2">

@@ -117,9 +117,8 @@ export function publicBookable(p: OperationalProperty) {
   );
 }
 export function landing(role: unknown) {
-  return ["owner", "manager", "receptionist"].includes(String(role))
-    ? "/partner/today"
-    : "/partner/operations";
+  if (["owner", "manager"].includes(String(role))) return "/partner/dashboard";
+  return role === "receptionist" ? "/partner/reservations" : "/partner/operations";
 }
 export type SetupItem = {
   id: string;

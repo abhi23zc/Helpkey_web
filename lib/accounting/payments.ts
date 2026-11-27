@@ -50,23 +50,23 @@ export function paymentHistory(
           ? "Add-on service"
           : "Room booking";
     const key = hash([e.type, e.sourcePath]);
+    const grouped = ["dues_payment", "dues_correction", "payout"].includes(e.type);
+    const existing = rows.get(key);
+    const currentOccurredAt = iso(e.occurredAt) ?? iso(e.recordedAt);
+    const occurredAt =
+      [existing?.occurredAt ?? null, currentOccurredAt]
+        .filter((v): v is string => v !== null)
+        .sort()
+        .at(-1) ?? null;
     rows.set(key, {
-      id: ["dues_payment", "dues_correction"].includes(e.type) ? key : e.id,
-      bookingId: [
-        ...new Set([...(rows.get(key)?.bookingIds ?? []), e.bookingId]),
-      ].sort()[0],
-      bookingIds: [
-        ...new Set([...(rows.get(key)?.bookingIds ?? []), e.bookingId]),
-      ].sort(),
+      id: grouped ? key : e.id,
+      bookingId: [...new Set([...(existing?.bookingIds ?? []), e.bookingId])].sort()[0],
+      bookingIds: [...new Set([...(existing?.bookingIds ?? []), e.bookingId])].sort(),
       type: e.type,
       title: titles[e.type],
       purpose,
-      amountPaise:
-        e.amountPaise! +
-        (["dues_payment", "dues_correction"].includes(e.type)
-          ? (rows.get(key)?.amountPaise ?? 0)
-          : 0),
-      occurredAt: iso(e.occurredAt) ?? iso(e.recordedAt),
+      amountPaise: e.amountPaise! + (grouped ? (existing?.amountPaise ?? 0) : 0),
+      occurredAt,
       direction: ["hotel_reversal", "dues_correction"].includes(e.type)
         ? "record_only"
         : ["capture", "hotel_collection", "dues_payment"].includes(e.type)

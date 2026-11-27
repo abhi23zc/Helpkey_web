@@ -366,7 +366,7 @@ test("keyboard move, lost response across reload, exact retry and current room h
   await login(context, "owner");
   const f = await stayBooking();
   await page.goto(
-    `/partner/today?propertyId=${hotelA}&bookingId=${f.id}&section=assignment`,
+    `/partner/reservations?propertyId=${hotelA}&bookingId=${f.id}&section=assignment`,
   );
   const form = page.getByRole("region", { name: "In-house stay changes" });
   await expect(
@@ -448,7 +448,7 @@ test("early departure retains charge through an explicit review and separate che
   await login(context, "owner");
   const f = await stayBooking();
   await page.goto(
-    `/partner/today?propertyId=${hotelA}&bookingId=${f.id}&section=assignment`,
+    `/partner/reservations?propertyId=${hotelA}&bookingId=${f.id}&section=assignment`,
   );
   const form = page.getByRole("region", { name: "In-house stay changes" });
   await form

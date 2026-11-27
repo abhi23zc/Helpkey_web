@@ -485,9 +485,11 @@ test("admin prepares, cancels and records a local payment; owner and staff permi
   ).toBe(403);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/partner/payouts?propertyId=${hotel}`);
+  await expect(page).toHaveURL(new RegExp(`/partner/finances\\?.*propertyId=${hotel}`));
   await expect(
-    page.getByRole("heading", { name: "Hotel Payouts", exact: true }),
+    page.getByRole("heading", { name: "Finances", exact: true }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Payments", exact: true }).click();
   await expect(page.getByText(/LOCAL-BROWSER-PAYMENT/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Review payout", exact: true }),

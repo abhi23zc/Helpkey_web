@@ -306,7 +306,7 @@ test("posting review, retained draft, lost-response retries and matching printab
   await login(context, "owner");
   const id = await billingBooking();
   await page.goto(
-    `/partner/today?propertyId=${hotelA}&bookingId=${id}&section=billing`,
+    `/partner/reservations?propertyId=${hotelA}&bookingId=${id}&section=billing`,
   );
   const folio = page.getByRole("region", { name: "Folio and billing" });
   await expect(
@@ -460,7 +460,7 @@ test("returns a hotel cash receipt on an online-paid booking without exposing pr
       status: "captured",
     });
   await page.goto(
-    `/partner/today?propertyId=${hotelA}&bookingId=${id}&section=payments`,
+    `/partner/reservations?propertyId=${hotelA}&bookingId=${id}&section=payments`,
   );
   await expect(
     page.getByRole("heading", { name: "Payment records", exact: true }),
@@ -559,7 +559,7 @@ test("invoice settings, explicit review, immutable printing, lost-response recov
   await expect(settings.getByRole("checkbox", { name: "I have confirmed registration status", exact: false })).not.toBeChecked();
   const id = await billingBooking();
   const originalBooking = (await db.collection("bookings").doc(id).get()).data();
-  await page.goto(`/partner/today?propertyId=${hotelA}&bookingId=${id}&section=billing`);
+  await page.goto(`/partner/reservations?propertyId=${hotelA}&bookingId=${id}&section=billing`);
   const invoices = page.getByRole("region", { name: "Invoices", exact: true });
   await invoices.getByText("Customer billing and document details", { exact: true }).click();
   await invoices.getByRole("button", { name: "Edit document details" }).click();

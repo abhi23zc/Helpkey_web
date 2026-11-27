@@ -3,7 +3,7 @@ import { z } from "zod";
 export const components = ["identity", "pricing", "amenities", "cover", "rating"] as const;
 export type ProjectionComponent = typeof components[number];
 export const projectionSchema = z.object({
-  kind: z.enum(["property_search", "review_summary", "daily_metrics", "dashboard_summary", "cache_invalidation", "booking_accounting"]),
+  kind: z.enum(["property_search", "review_summary", "daily_metrics", "dashboard_summary", "cache_invalidation", "booking_accounting", "owner_finance"]),
   entityId: z.string().min(1).max(200).refine(v => !v.includes("/")),
   version: z.number().int().positive().default(1), eventId: z.string().min(1),
   components: z.array(z.enum(components)).optional(), reviewId: z.string().min(1).refine(v => !v.includes("/")).optional(),

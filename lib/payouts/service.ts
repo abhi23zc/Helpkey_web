@@ -19,6 +19,9 @@ import {
   stateCollection,
   summary,
 } from "../accounting/posting";
+import { markOwnerFinanceDirty } from "../finances/projections";
+import { backgroundMode } from "../background/config";
+import { writeProjection } from "../background/enqueue";
 import {
   categories,
   bookingPosition,
@@ -346,7 +349,9 @@ export async function payoutCommand(
     const now = new Date(),
       at = now.toISOString();
     let result: { id: string; status: string };
+    let affectedBookingIds: string[] = [];
     if (input.action === "assess") {
+      affectedBookingIds = [input.bookingId];
       const { position, reservation } = await booking(
         tx,
         input.bookingId,
@@ -385,6 +390,7 @@ export async function payoutCommand(
       });
       result = { id: input.bookingId, status: "Assessed" };
     } else if (input.action === "prepare") {
+      affectedBookingIds = input.bookingIds;
       const {
         config,
         bookings,
@@ -456,6 +462,7 @@ export async function payoutCommand(
         payout = snap.data() as Payout | undefined;
       if (!payout || payout.propertyId !== propertyId)
         throw new ApiException("NOT_FOUND", 404);
+      affectedBookingIds = payout.bookings.map((b) => b.bookingId);
       if (payout.status !== "Prepared")
         blocked(
           "Only Prepared payouts can be cancelled or recorded as paid. Paid records are immutable.",
@@ -620,6 +627,12 @@ export async function payoutCommand(
       propertyId,
       at,
     });
+    markOwnerFinanceDirty(db, tx, propertyId, affectedBookingIds, {
+      activityDirty: input.action === "pay",
+    });
+    if (backgroundMode() !== "legacy") {
+      writeProjection(db, tx, "owner_finance", propertyId);
+    }
     beforeWrite?.();
     return result;
   });

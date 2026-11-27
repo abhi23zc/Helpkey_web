@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { decodeCursor, encodeCursor } from "../api/pagination";
 import { adminDb as db } from "../firebase/admin";
 import { ApiException } from "../api/errors";
 import { authorizeFinanceAdmin } from "../finance-settings/service";
@@ -32,8 +33,33 @@ import {
   correctionJournal,
   journalFindings,
 } from "./journal";
+import {
+  duesReportsCollection,
+  matchesExistingReceipt,
+  type DuesReport,
+} from "./report-domain";
+import {
+  commitReportPaymentInTx,
+  flagReportUnrecordableInTx,
+  linkReportReceiptInTx,
+  rejectReportInTx,
+} from "./reports";
+import { markOwnerFinanceDirty } from "../finances/projections";
+import { backgroundMode } from "../background/config";
+import { writeProjection } from "../background/enqueue";
 export { duesCollections as collections } from "./journal";
 const uuid = z.string().uuid();
+const bookingIdsSchema = z
+  .array(idSchema)
+  .min(1)
+  .max(
+    50,
+    "Select up to 50 bookings; record another payment for the remainder.",
+  )
+  .refine(
+    (a) => new Set(a).size === a.length,
+    "Select each booking only once.",
+  );
 const commandSchema = z.discriminatedUnion("action", [
   z
     .object({
@@ -52,9 +78,45 @@ const commandSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      action: z.enum(["record_payment", "correct_payment"]),
+      action: z.enum([
+        "record_payment",
+        "correct_payment",
+        "record_report_payment",
+      ]),
       requestId: uuid,
       confirmationId: idSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("reject_report"),
+      requestId: uuid,
+      reportId: idSchema,
+      reason: z.string().trim().min(3).max(500),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("flag_report_unrecordable"),
+      requestId: uuid,
+      reportId: idSchema,
+      reason: z.string().trim().min(3).max(500),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("link_report_receipt"),
+      requestId: uuid,
+      reportId: idSchema,
+      paymentId: idSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("preview_report_payment"),
+      requestId: uuid,
+      reportId: idSchema,
+      bookingIds: bookingIdsSchema,
     })
     .strict(),
 ]);
@@ -71,6 +133,14 @@ export type Confirmation = {
 } & (
   | { kind: "payment"; payment: PaymentInput; maximumPaise: number }
   | {
+      kind: "report_payment";
+      reportId: string;
+      reportReference: string;
+      reportFingerprint: string;
+      payment: PaymentInput;
+      maximumPaise: number;
+    }
+  | {
       kind: "correction";
       paymentId: string;
       reason: string;
@@ -80,7 +150,9 @@ export type Confirmation = {
 );
 export type CommandResult =
   | { confirmation: Confirmation }
-  | { paymentId: string; status: "Received" | "Corrected" };
+  | { paymentId: string; status: "Received" | "Corrected"; reportId?: string }
+  | { reportId: string; status: "Rejected" | "Pending" }
+  | { reportId: string; paymentId: string; status: "Recorded" };
 function conflict(message: string, code = "DUES_REQUIRES_REVIEW"): never {
   throw new ApiException(code, 409, message);
 }
@@ -234,8 +306,35 @@ export async function duesCommand(
       now = new Date(),
       at = now.toISOString();
     let result: CommandResult;
-    if (
+    if (input.action === "reject_report") {
+      result = await rejectReportInTx(tx, {
+        uid,
+        propertyId,
+        reportId: input.reportId,
+        reason: input.reason,
+        at,
+      });
+    } else if (input.action === "flag_report_unrecordable") {
+      result = await flagReportUnrecordableInTx(tx, {
+        uid,
+        propertyId,
+        reportId: input.reportId,
+        reason: input.reason,
+        at,
+      });
+    } else if (input.action === "link_report_receipt") {
+      result = await linkReportReceiptInTx(tx, {
+        uid,
+        propertyId,
+        reportId: input.reportId,
+        paymentId: input.paymentId,
+        receipts: ctx.receipts,
+        corrections: ctx.corrections,
+        at,
+      });
+    } else if (
       input.action === "preview_payment" ||
+      input.action === "preview_report_payment" ||
       input.action === "preview_correction"
     ) {
       const base = {
@@ -285,6 +384,67 @@ export async function duesCommand(
             input.payment.amountPaise,
           ),
         };
+      } else if (input.action === "preview_report_payment") {
+        const reportSnap = await tx.get(
+          db.collection(duesReportsCollection).doc(input.reportId),
+        );
+        const report = reportSnap.data() as DuesReport | undefined;
+        if (!report || report.propertyId !== propertyId)
+          throw new ApiException("NOT_FOUND", 404, "Reported payment not found.");
+        if (report.status !== "awaiting_verification")
+          conflict(
+            "Only awaiting-verification reports can be recorded.",
+            "REPORT_STATUS_CONFLICT",
+          );
+        const reportPayment: PaymentInput = {
+          bookingIds: input.bookingIds,
+          amountPaise: report.amountPaise,
+          paymentDate: report.paymentDate,
+          method: report.method,
+          transactionReference: report.transactionReference,
+          notes: report.notes,
+          replacesId: null,
+        };
+        try {
+          validatePaymentDate(
+            reportPayment.paymentDate,
+            ctx.hotel.get("timezone"),
+            now,
+          );
+        } catch (error) {
+          throw new ApiException(
+            "INVALID_PAYMENT_DATE",
+            422,
+            (error as Error).message,
+          );
+        }
+        await referenceGuard(tx, propertyId, reportPayment, ctx);
+        const data = await rows(tx, propertyId, input.bookingIds, ctx);
+        if (data.some((r) => !r.position.collectible))
+          conflict(
+            "A selected booking needs attention. Refresh the outstanding dues and review accounting.",
+          );
+        const maximumPaise = data.reduce((n, r) => n + r.position.duesPaise, 0);
+        if (reportPayment.amountPaise > maximumPaise)
+          throw new ApiException(
+            "DUES_OVERPAYMENT",
+            422,
+            `Reported amount ₹${(reportPayment.amountPaise / 100).toFixed(2)} exceeds selected bookings maximum ₹${(maximumPaise / 100).toFixed(2)}. Select additional collectible bookings or reject/flag the report.`,
+          );
+        confirmation = {
+          ...base,
+          kind: "report_payment",
+          reportId: report.id,
+          reportReference: report.reference,
+          reportFingerprint: hash(report),
+          payment: reportPayment,
+          maximumPaise,
+          snapshots: snapshots(data),
+          allocations: allocate(
+            data.map((r) => r.position),
+            reportPayment.amountPaise,
+          ),
+        };
       } else {
         const receipt = ctx.receipts.find((r) => r.id === input.paymentId);
         if (!receipt) throw new ApiException("NOT_FOUND", 404);
@@ -331,10 +491,13 @@ export async function duesCommand(
         preview.propertyId !== propertyId
       )
         throw new ApiException("NOT_FOUND", 404);
-      if (
-        preview.kind !==
-        (input.action === "record_payment" ? "payment" : "correction")
-      )
+      const expectedKind =
+        input.action === "record_payment"
+          ? "payment"
+          : input.action === "record_report_payment"
+            ? "report_payment"
+            : "correction";
+      if (preview.kind !== expectedKind)
         conflict("The confirmation does not match this action.");
       if (Date.parse(preview.expiresAt) <= now.getTime())
         conflict(
@@ -457,7 +620,63 @@ export async function duesCommand(
             { merge: true },
           );
         }
+        markOwnerFinanceDirty(
+          db,
+          tx,
+          propertyId,
+          payment.allocations.map((a) => a.bookingId),
+          { activityDirty: true },
+        );
+        if (backgroundMode() !== "legacy") {
+          writeProjection(db, tx, "owner_finance", propertyId);
+        }
         result = { paymentId, status: "Received" };
+      } else if (preview.kind === "report_payment") {
+        try {
+          validatePaymentDate(
+            preview.payment.paymentDate,
+            ctx.hotel.get("timezone"),
+            now,
+          );
+        } catch (error) {
+          throw new ApiException(
+            "INVALID_PAYMENT_DATE",
+            422,
+            (error as Error).message,
+          );
+        }
+        const referenceRef = await referenceGuard(
+          tx,
+          propertyId,
+          preview.payment,
+          ctx,
+        );
+        if (
+          data.some((r) => !r.position.collectible) ||
+          hash(
+            allocate(
+              data.map((r) => r.position),
+              preview.payment.amountPaise,
+            ),
+          ) !== hash(preview.allocations)
+        )
+          conflict(
+            "Review an updated allocation before confirming again.",
+            "DUES_CONFIRMATION_STALE",
+          );
+        result = await commitReportPaymentInTx(tx, {
+          uid,
+          propertyId,
+          reportId: preview.reportId,
+          reportFingerprint: preview.reportFingerprint,
+          payment: preview.payment,
+          paymentId: preview.id,
+          hotelName: preview.hotelName,
+          allocations: preview.allocations,
+          referenceRef,
+          data,
+          at,
+        });
       } else {
         const receipt = ctx.receipts.find((r) => r.id === preview.paymentId);
         if (!receipt || hash(receipt) !== preview.receiptFingerprint)
@@ -518,6 +737,16 @@ export async function duesCommand(
             { merge: true },
           );
         }
+        markOwnerFinanceDirty(
+          db,
+          tx,
+          propertyId,
+          receipt.allocations.map((a) => a.bookingId),
+          { activityDirty: true },
+        );
+        if (backgroundMode() !== "legacy") {
+          writeProjection(db, tx, "owner_finance", propertyId);
+        }
         result = { paymentId: receipt.id, status: "Corrected" };
       }
     }
@@ -537,6 +766,7 @@ export async function readDues(
   propertyId: string,
   owner = false,
   paymentId?: string | null,
+  reportsAfter?: string | null,
 ) {
   return db.runTransaction(async (tx) => {
     await authorize(uid, propertyId, tx, owner);
@@ -626,6 +856,79 @@ export async function readDues(
     );
     if (paymentId && !history.some((r) => r.id === idSchema.parse(paymentId)))
       throw new ApiException("NOT_FOUND", 404);
+    let reportsQuery = db.collection(duesReportsCollection)
+      .where("propertyId", "==", propertyId)
+      .orderBy("submittedAt", "desc").orderBy("__name__", "desc");
+    if (reportsAfter) {
+      const cursor = decodeCursor(reportsAfter);
+      if (cursor.values[0] !== propertyId || typeof cursor.values[1] !== "string")
+        throw new ApiException("INVALID_CURSOR", 422);
+      reportsQuery = reportsQuery.startAfter(cursor.values[1], cursor.id);
+    }
+    const [reportsSnap, pendingCount] = owner ? [null, null] : await Promise.all([
+      tx.get(reportsQuery.limit(101)),
+      tx.get(db.collection(duesReportsCollection).where("propertyId", "==", propertyId)
+        .where("status", "==", "awaiting_verification").count()),
+    ]);
+    const rawReports = reportsSnap?.docs.slice(0, 100).map((d) => d.data() as DuesReport) ?? [];
+    const lastReport = rawReports.at(-1);
+    const nextReportsCursor = reportsSnap && reportsSnap.size > 100 && lastReport
+      ? encodeCursor({ values: [propertyId, lastReport.submittedAt], id: lastReport.id }) : null;
+    const linkedReceiptIds = new Set(
+      rawReports.map((r) => r.linkedReceiptId).filter((v): v is string => !!v),
+    );
+    const reports = rawReports.map((r) => {
+      const linked = r.linkedReceiptId
+        ? history.find((h) => h.id === r.linkedReceiptId) ?? null
+        : null;
+      const replacement =
+        linked?.replacedBy
+          ? history.find((h) => h.id === linked.replacedBy) ?? null
+          : null;
+      const matchingReceipts =
+        r.status === "awaiting_verification"
+          ? history.filter(
+              (h) =>
+                !h.correction &&
+                !linkedReceiptIds.has(h.id) &&
+                matchesExistingReceipt(r, h),
+            )
+          : [];
+      return {
+        ...r,
+        linkedReceipt: linked
+          ? {
+              id: linked.id,
+              reference: linked.reference,
+              amountPaise: linked.amountPaise,
+              paymentDate: linked.paymentDate,
+              recordedAt: linked.recordedAt,
+              status: linked.status,
+              correction: linked.correction,
+              replacedBy: linked.replacedBy,
+              replacement: replacement
+                ? {
+                    id: replacement.id,
+                    reference: replacement.reference,
+                    amountPaise: replacement.amountPaise,
+                    paymentDate: replacement.paymentDate,
+                    recordedAt: replacement.recordedAt,
+                  }
+                : null,
+            }
+          : null,
+        matchingReceipts: matchingReceipts.map((m) => ({
+          id: m.id,
+          reference: m.reference,
+          amountPaise: m.amountPaise,
+          paymentDate: m.paymentDate,
+          method: m.method,
+          transactionReference: m.transactionReference,
+          recordedAt: m.recordedAt,
+        })),
+      };
+    });
+    const pendingReportsCount = pendingCount?.data().count ?? 0;
     return {
       hotel: {
         id: propertyId,
@@ -638,10 +941,14 @@ export async function readDues(
           .filter((r) => !ctx.corrections.some((c) => c.paymentId === r.id))
           .reduce((n, r) => n + r.amountPaise, 0),
         bookingsNeedingAttention: attention.length,
+        pendingReportsCount,
       },
       outstanding,
       attention,
       payments: paymentId ? history.filter((r) => r.id === paymentId) : history,
+      reports,
+      nextReportsCursor,
+      pendingReportsCount,
       policy: {
         duesLimit: policy.duesLimit ?? null,
         duesWarningPaise: policy.duesWarningPaise ?? null,
@@ -663,6 +970,30 @@ export async function readDues(
             ]
           : []),
       ],
+    };
+  });
+}
+
+export async function duesHotels(uid: string, after?: string | null) {
+  return db.runTransaction(async (tx) => {
+    await authorizeFinanceAdmin(uid, tx);
+    let query = db.collection("properties").orderBy("__name__").limit(100);
+    if (after) query = query.startAfter(idSchema.parse(after));
+    const hotels = await tx.get(query);
+    const pending = db.collection(duesReportsCollection).where("status", "==", "awaiting_verification");
+    const [totalPending, ...perHotel] = await Promise.all([
+      tx.get(pending.count()),
+      ...hotels.docs.map((d) => tx.get(pending.where("propertyId", "==", d.id).count())),
+    ]);
+    const counts = new Map(hotels.docs.map((d, i) => [d.id, perHotel[i].data().count]));
+    return {
+      hotels: hotels.docs.map((d) => ({
+        id: d.id,
+        name: d.get("name") || d.id,
+        pendingReportsCount: counts.get(d.id) ?? 0,
+      })),
+      totalPendingReportsCount: totalPending.data().count,
+      nextCursor: hotels.size === 100 ? hotels.docs.at(-1)!.id : null,
     };
   });
 }

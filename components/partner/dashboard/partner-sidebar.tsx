@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { label: "Today", href: "/partner/today", icon: CalendarDays },
   { label: "Overview", href: "/partner/dashboard", icon: Grid2X2 },
   { label: "Reservations", href: "/partner/reservations", icon: CalendarDays },
   {
@@ -33,9 +32,7 @@ const navItems = [
   { label: "Rooms", href: "/partner/rooms", icon: BedDouble },
   { label: "Property Listing", href: "/partner/listing", icon: Building2 },
   { label: "Reviews", href: "/partner/reviews", icon: Star },
-  { label: "Hotel Dues", href: "/partner/dues", icon: Wallet },
-  { label: "Payouts", href: "/partner/payouts", icon: Wallet },
-  { label: "Accounting", href: "/partner/accounting", icon: Wallet },
+  { label: "Finances", href: "/partner/finances", icon: Wallet },
   { label: "Settings", href: "/partner/settings", icon: Settings },
 ] as const;
 
@@ -153,20 +150,17 @@ export function PartnerSidebar({
             },
           ]
             .filter((item) => {
-              if (["/partner/accounting", "/partner/payouts", "/partner/dues"].includes(item.href) && !owner) return false;
-              if (!permissions) return item.href !== "/partner/operations" && item.href !== "/partner/accounting" && item.href !== "/partner/payouts" && item.href !== "/partner/dues";
+              if (item.href === "/partner/finances" && !owner) return false;
+              if (!permissions) return item.href !== "/partner/operations" && item.href !== "/partner/finances";
               const required: Record<string, string> = {
                 "/partner/cashier-shifts": "shift.operate",
                 "/partner/daily-closing": "closing.manage",
-                "/partner/today": "reservation.read",
                 "/partner/dashboard": "reports.read",
                 "/partner/reservations": "reservation.read",
                 "/partner/rooms": "rooms.manage",
                 "/partner/listing": "listing.manage",
                 "/partner/reviews": "reviews.manage",
-                "/partner/accounting": "property.manage",
-                "/partner/payouts": "property.manage",
-                "/partner/dues": "property.manage",
+                "/partner/finances": "property.manage",
                 "/partner/stay-customizations": "listing.manage",
               };
               if (item.href === "/partner/operations")

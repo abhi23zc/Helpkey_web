@@ -18,6 +18,7 @@ import {
   type Journal,
 } from "./posting";
 import { enqueueAccounting } from "./enqueue";
+import { markOwnerFinanceDirty } from "../finances/projections";
 
 const id = z
   .string()
@@ -505,6 +506,7 @@ export async function accountingCommand(
       }
       enqueueAccounting(adminDb, tx, input.bookingId);
     }
+    markOwnerFinanceDirty(adminDb, tx, propertyId, [input.bookingId]);
     const result = { accepted: true, action: input.action };
     tx.create(receipt, {
       fingerprint: hash([propertyId, input]),

@@ -12,8 +12,12 @@ import {
   Wallet,
 } from "lucide-react";
 import { apiFetch, ApiClientError } from "@/lib/api/client";
-import type { readDues, CommandResult, Confirmation } from "@/lib/dues/service";
-import type { accountingHotels } from "@/lib/accounting/service";
+import type {
+  readDues,
+  duesHotels,
+  CommandResult,
+  Confirmation,
+} from "@/lib/dues/service";
 import type { Receipt } from "@/lib/dues/domain";
 type View = Awaited<ReturnType<typeof readDues>>;
 const money = (n: number | null) =>
@@ -51,28 +55,31 @@ function ConfirmationSummary({
   confirm: () => void;
   back: () => void;
 }) {
+  const isPaymentLike = c.kind === "payment" || c.kind === "report_payment";
   return (
     <section
       role="region"
       aria-label={
-        c.kind === "payment"
+        isPaymentLike
           ? "Payment confirmation"
           : "Correction confirmation"
       }
       className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-5"
     >
       <h3 className="text-lg font-bold">
-        {c.kind === "payment"
-          ? "Confirm payment received"
-          : "Confirm recording correction"}
+        {c.kind === "report_payment"
+          ? `Confirm reported payment (${c.reportReference})`
+          : c.kind === "payment"
+            ? "Confirm payment received"
+            : "Confirm recording correction"}
       </h3>
       <p>
         {c.hotelName} ·{" "}
         <strong>
-          {money(c.kind === "payment" ? c.payment.amountPaise : c.amountPaise)}
+          {money(isPaymentLike ? c.payment.amountPaise : c.amountPaise)}
         </strong>
       </p>
-      {c.kind === "payment" ? (
+      {isPaymentLike ? (
         <>
           <p>
             {methodLabels[c.payment.method]} · {c.payment.paymentDate} ·
@@ -100,7 +107,7 @@ function ConfirmationSummary({
           >
             <strong>{a.reference}</strong>
             <p>
-              {c.kind === "payment"
+              {isPaymentLike
                 ? `Payment received ${money(a.amountPaise)} · Remaining dues ${money(a.afterPaise)}`
                 : `Restore ${money(a.amountPaise)} to this booking's accounting balance`}
             </p>
@@ -108,7 +115,7 @@ function ConfirmationSummary({
         ))}
       </div>
       <p className="text-sm">
-        {c.kind === "payment"
+        {isPaymentLike
           ? "Records money already received externally. No bank transaction or hotel charge will be initiated."
           : "The original payment and this correction remain permanently in history."}
       </p>
@@ -116,7 +123,7 @@ function ConfirmationSummary({
         <button className={primary} disabled={busy} onClick={confirm}>
           {busy
             ? "Saving…"
-            : c.kind === "payment"
+            : isPaymentLike
               ? "Confirm payment received"
               : "Confirm correction"}
         </button>
@@ -136,7 +143,7 @@ export function DuesWorkspace({
 }) {
   const [selected, setSelected] = useState(propertyId ?? ""),
     [after, setAfter] = useState<string | null>(null),
-    [tab, setTab] = useState<"outstanding" | "attention" | "history">(
+    [tab, setTab] = useState<"outstanding" | "attention" | "history" | "reports">(
       "outstanding",
     );
   const [chosen, setChosen] = useState<string[]>([]),
@@ -152,25 +159,32 @@ export function DuesWorkspace({
     [preview, setPreview] = useState<Confirmation | null>(null),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
+  const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [reportActionMode, setReportActionMode] = useState<
+    "record" | "reject" | "flag" | null
+  >(null);
+  const [reportChosen, setReportChosen] = useState<string[]>([]);
+  const [reportReason, setReportReason] = useState("");
   const pending = useRef(new Map<string, string>());
   const hotels = useQuery({
     queryKey: ["dues-hotels", after],
     enabled: !owner,
     queryFn: () =>
-      apiFetch<Awaited<ReturnType<typeof accountingHotels>>>(
+      apiFetch<Awaited<ReturnType<typeof duesHotels>>>(
         `/api/admin/dues${after ? `?after=${encodeURIComponent(after)}` : ""}`,
         { cache: "no-store" },
       ),
     retry: false,
   });
+  const [reportsAfter, setReportsAfter] = useState<string | null>(null);
   const query = useQuery({
-    queryKey: ["hotel-dues", owner, selected],
+    queryKey: ["hotel-dues", owner, selected, reportsAfter],
     enabled: !!selected,
     queryFn: () =>
       apiFetch<View>(
         owner
           ? `/api/partner/properties/${encodeURIComponent(selected)}/dues`
-          : `/api/admin/dues?propertyId=${encodeURIComponent(selected)}`,
+          : `/api/admin/dues?${new URLSearchParams({ propertyId: selected, ...(reportsAfter ? { reportsAfter } : {}) })}`,
         { cache: "no-store" },
       ),
     retry: false,
@@ -185,8 +199,36 @@ export function DuesWorkspace({
       ? `/partner/reservations?propertyId=${encodeURIComponent(selected)}&bookingId=${encodeURIComponent(id)}`
       : `/admin/bookings?bookingId=${encodeURIComponent(id)}`;
   const accountingLink = owner
-    ? `/partner/accounting?propertyId=${encodeURIComponent(selected)}`
+    ? `/partner/finances?propertyId=${encodeURIComponent(selected)}`
     : `/admin/accounting?propertyId=${encodeURIComponent(selected)}`;
+  async function openReportAttachment(reportId: string) {
+    setNotice("");
+    try {
+      const res = await apiFetch<{ url: string }>(
+        `/api/admin/dues/reports/${encodeURIComponent(reportId)}/attachment?propertyId=${encodeURIComponent(selected)}`,
+        { cache: "no-store" },
+      );
+      window.open(res.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Unable to open payment proof.",
+      );
+    }
+  }
+  function autoSelectOldestForAmount(targetPaise: number) {
+    const picked: string[] = [];
+    let running = 0;
+    for (const p of data?.outstanding ?? []) {
+      if (picked.length >= 50) break;
+      picked.push(p.bookingId);
+      running += p.duesPaise;
+      if (running >= targetPaise) break;
+    }
+    setReportChosen(picked);
+    setPreview(null);
+  }
   async function refreshDues() {
     setPreview(null);
     const refreshed = await query.refetch();
@@ -223,13 +265,31 @@ export function DuesWorkspace({
         setReplaces(null);
         setOpen(false);
         setChosen([]);
-        setTab("history");
-        setNotice(
-          result.status === "Received"
-            ? "Payment received recorded. No bank transaction was initiated."
-            : "Payment recording corrected. No money was returned through a bank.",
-        );
-        await query.refetch();
+        setActiveReportId(null);
+        setReportActionMode(null);
+        setReportChosen([]);
+        setReportReason("");
+        if (result.status === "Rejected") {
+          setTab("reports");
+          setNotice("Reported payment rejected and owner notified.");
+        } else if (result.status === "Pending") {
+          setTab("reports");
+          setNotice("Unrecordable explanation saved; report remains pending.");
+        } else if (result.status === "Recorded") {
+          setTab("reports");
+          setNotice("Reported payment linked to the existing verified receipt.");
+        } else {
+          setTab("history");
+          setNotice(
+            result.status === "Received"
+              ? "Payment received recorded. No bank transaction was initiated."
+              : "Payment recording corrected. No money was returned through a bank.",
+          );
+        }
+        await Promise.all([
+          query.refetch(),
+          !owner ? hotels.refetch() : Promise.resolve(),
+        ]);
       }
     } catch (error) {
       if (
@@ -260,6 +320,7 @@ export function DuesWorkspace({
     }
   }
   function resetHotel(id: string) {
+    setReportsAfter(null);
     setSelected(id);
     setChosen([]);
     setPreview(null);
@@ -273,6 +334,10 @@ export function DuesWorkspace({
     setReference("");
     setNotes("");
     setReason("");
+    setActiveReportId(null);
+    setReportActionMode(null);
+    setReportChosen([]);
+    setReportReason("");
     setTab("outstanding");
   }
   function reviewPayment() {
@@ -370,6 +435,9 @@ export function DuesWorkspace({
               {hotels.data?.hotels.map((h) => (
                 <option value={h.id} key={h.id}>
                   {h.name}
+                  {h.pendingReportsCount
+                    ? ` (${h.pendingReportsCount} pending reports)`
+                    : ""}
                 </option>
               ))}
             </select>
@@ -515,6 +583,14 @@ export function DuesWorkspace({
                 ["outstanding", "Outstanding"],
                 ["attention", "Needs attention"],
                 ["history", "Payment history"],
+                ...(!owner
+                  ? ([
+                      [
+                        "reports",
+                        `Reported payments${data.pendingReportsCount ? ` (${data.pendingReportsCount})` : ""}`,
+                      ],
+                    ] as const)
+                  : []),
               ] as const
             ).map(([value, label]) => (
               <button
@@ -957,6 +1033,315 @@ export function DuesWorkspace({
               </button>
             </section>
           )}
+          {!owner && tab === "reports" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-bold">Owner-reported dues payments</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Verify reported transfers against bank statements using exact reported details, link to an existing matching receipt, or reject with an owner-visible reason.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {reportsAfter && <button className={button} disabled={busy} onClick={() => setReportsAfter(null)}>Newest reports</button>}
+                {data.nextReportsCursor && <button className={button} disabled={busy} onClick={() => setReportsAfter(data.nextReportsCursor)}>Older reports</button>}
+              </div>
+              {!data.reports.length && (
+                <p className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-500">
+                  No reported payments submitted for this hotel.
+                </p>
+              )}
+              {data.reports.map((r) => {
+                const isActive = activeReportId === r.id;
+                const reportSelectedMax = data.outstanding
+                  .filter((p) => reportChosen.includes(p.bookingId))
+                  .reduce((n, p) => n + p.duesPaise, 0);
+                return (
+                  <article
+                    key={r.id}
+                    className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-bold">{r.reference}</h4>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              r.status === "awaiting_verification"
+                                ? "bg-amber-50 text-amber-900"
+                                : r.status === "recorded"
+                                  ? "bg-emerald-50 text-emerald-800"
+                                  : r.status === "rejected"
+                                    ? "bg-rose-50 text-rose-800"
+                                    : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {r.status.replaceAll("_", " ")}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-600">
+                          {date(r.paymentDate)} · {methodLabels[r.method]} · Ref:{" "}
+                          <strong>{r.transactionReference}</strong>
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Submitted {r.submittedAt} · Hotel: {data.hotel.name}
+                        </p>
+                        {r.notes && (
+                          <p className="text-xs text-slate-600">Note: {r.notes}</p>
+                        )}
+                      </div>
+                      <strong className="text-xl">{money(r.amountPaise)}</strong>
+                    </div>
+
+                    {r.attachment && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() => void openReportAttachment(r.id)}
+                        >
+                          View proof ({r.attachment.fileName})
+                        </button>
+                      </div>
+                    )}
+
+                    {r.unrecordableReason && (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                        Pending explanation: {r.unrecordableReason}
+                      </p>
+                    )}
+
+                    {r.rejectionReason && (
+                      <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                        Rejection reason: {r.rejectionReason}
+                      </p>
+                    )}
+
+                    {r.linkedReceipt && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm text-emerald-950">
+                        <p>
+                          Linked receipt: <strong>{r.linkedReceipt.reference}</strong>{" "}
+                          ({r.linkedMode === "linked_existing" ? "Matched existing receipt" : "Recorded from report"})
+                        </p>
+                        {r.linkedReceipt.correction && (
+                          <p className="mt-1 text-amber-900">
+                            Receipt later corrected: {r.linkedReceipt.correction.reason}
+                            {r.linkedReceipt.replacement
+                              ? ` · Replaced by ${r.linkedReceipt.replacement.reference} (${money(r.linkedReceipt.replacement.amountPaise)})`
+                              : ""}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {r.status === "awaiting_verification" && (
+                      <div className="space-y-3 border-t border-slate-100 pt-3">
+                        {r.matchingReceipts.length > 0 && (
+                          <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm">
+                            <p className="font-semibold text-sky-950">
+                              Matching recorded receipt found
+                            </p>
+                            {r.matchingReceipts.map((m) => (
+                              <div
+                                key={m.id}
+                                className="flex flex-wrap items-center justify-between gap-2"
+                              >
+                                <span>
+                                  {m.reference} · {money(m.amountPaise)} ·{" "}
+                                  {m.paymentDate} · {m.transactionReference}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  className={primary}
+                                  onClick={() =>
+                                    void command({
+                                      action: "link_report_receipt",
+                                      reportId: r.id,
+                                      paymentId: m.id,
+                                    })
+                                  }
+                                >
+                                  Link to matching receipt
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={primary}
+                            onClick={() => {
+                              setActiveReportId(r.id);
+                              setReportActionMode("record");
+                              setPreview(null);
+                              autoSelectOldestForAmount(r.amountPaise);
+                            }}
+                          >
+                            Record reported payment
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={button}
+                            onClick={() => {
+                              setActiveReportId(r.id);
+                              setReportActionMode("reject");
+                              setReportReason("");
+                              setPreview(null);
+                            }}
+                          >
+                            Reject report
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className={button}
+                            onClick={() => {
+                              setActiveReportId(r.id);
+                              setReportActionMode("flag");
+                              setReportReason(r.unrecordableReason ?? "");
+                              setPreview(null);
+                            }}
+                          >
+                            Note unrecordable
+                          </button>
+                        </div>
+
+                        {isActive && reportActionMode === "record" && (
+                          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold">
+                                Select collectible bookings for {money(r.amountPaise)} (Selected max: {money(reportSelectedMax)})
+                              </p>
+                              <button
+                                type="button"
+                                className={button}
+                                onClick={() => autoSelectOldestForAmount(r.amountPaise)}
+                              >
+                                Auto-select oldest
+                              </button>
+                            </div>
+                            <div className="max-h-56 space-y-2 overflow-y-auto">
+                              {data.outstanding.map((p) => (
+                                <label
+                                  key={p.bookingId}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={reportChosen.includes(p.bookingId)}
+                                      disabled={
+                                        busy ||
+                                        (reportChosen.length >= 50 &&
+                                          !reportChosen.includes(p.bookingId))
+                                      }
+                                      onChange={(e) => {
+                                        setReportChosen((old) =>
+                                          e.target.checked
+                                            ? [...old, p.bookingId]
+                                            : old.filter((id) => id !== p.bookingId),
+                                        );
+                                        setPreview(null);
+                                      }}
+                                    />
+                                    <span>{p.reference}</span>
+                                  </span>
+                                  <strong>{money(p.duesPaise)}</strong>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy || !reportChosen.length}
+                                className={primary}
+                                onClick={() =>
+                                  void command({
+                                    action: "preview_report_payment",
+                                    reportId: r.id,
+                                    bookingIds: reportChosen,
+                                  })
+                                }
+                              >
+                                Review report allocation
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                className={button}
+                                onClick={() => {
+                                  setActiveReportId(null);
+                                  setReportActionMode(null);
+                                }}
+                              >
+                                Close
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {isActive &&
+                          (reportActionMode === "reject" ||
+                            reportActionMode === "flag") && (
+                            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <label className="block text-sm font-semibold">
+                                {reportActionMode === "reject"
+                                  ? "Owner-visible rejection reason"
+                                  : "Admin explanation (report remains pending)"}
+                                <textarea
+                                  className={field}
+                                  maxLength={500}
+                                  value={reportReason}
+                                  onChange={(e) => setReportReason(e.target.value)}
+                                />
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  disabled={busy || reportReason.trim().length < 3}
+                                  className={primary}
+                                  onClick={() =>
+                                    void command({
+                                      action:
+                                        reportActionMode === "reject"
+                                          ? "reject_report"
+                                          : "flag_report_unrecordable",
+                                      reportId: r.id,
+                                      reason: reportReason.trim(),
+                                    })
+                                  }
+                                >
+                                  {reportActionMode === "reject"
+                                    ? "Confirm rejection"
+                                    : "Save pending explanation"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  className={button}
+                                  onClick={() => {
+                                    setActiveReportId(null);
+                                    setReportActionMode(null);
+                                  }}
+                                >
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
           {!owner && preview && (
             <ConfirmationSummary
               confirmation={preview}
@@ -967,7 +1352,9 @@ export function DuesWorkspace({
                   action:
                     preview.kind === "payment"
                       ? "record_payment"
-                      : "correct_payment",
+                      : preview.kind === "report_payment"
+                        ? "record_report_payment"
+                        : "correct_payment",
                   confirmationId: preview.id,
                 })
               }
